@@ -15,9 +15,72 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cheetah-container-flv"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-bitstream",
+ "cheetah-media-types",
+]
+
+[[package]]
+name = "cheetah-container-isobmff"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-bitstream",
+ "cheetah-media-types",
+]
+
+[[package]]
+name = "cheetah-container-mpegts"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-bitstream",
+ "cheetah-media-types",
+]
+
+[[package]]
+name = "cheetah-hls-client"
+version = "0.1.0"
+dependencies = [
+ "cheetah-container-isobmff",
+ "cheetah-container-mpegts",
+ "cheetah-media-timeline",
+ "cheetah-media-types",
+]
+
+[[package]]
+name = "cheetah-media-abi"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-types",
+]
+
+[[package]]
 name = "cheetah-media-backend-api"
 version = "0.1.0"
 dependencies = [
+ "cheetah-media-types",
+]
+
+[[package]]
+name = "cheetah-media-bitstream"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-types",
+]
+
+[[package]]
+name = "cheetah-media-core"
+version = "0.1.0"
+dependencies = [
+ "cheetah-container-flv",
+ "cheetah-container-isobmff",
+ "cheetah-container-mpegts",
+ "cheetah-hls-client",
+ "cheetah-media-abi",
+ "cheetah-media-bitstream",
+ "cheetah-media-pipeline-core",
+ "cheetah-media-timeline",
  "cheetah-media-types",
 ]
 
@@ -30,7 +93,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cheetah-media-pipeline-core"
+version = "0.1.0"
+dependencies = [
+ "cheetah-container-flv",
+ "cheetah-container-isobmff",
+ "cheetah-container-mpegts",
+ "cheetah-media-abi",
+ "cheetah-media-timeline",
+ "cheetah-media-types",
+]
+
+[[package]]
 name = "cheetah-media-testkit"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-types",
+]
+
+[[package]]
+name = "cheetah-media-timeline"
 version = "0.1.0"
 dependencies = [
  "cheetah-media-types",

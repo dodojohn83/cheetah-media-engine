@@ -1,0 +1,19 @@
+[package]
+name = "cheetah-container-flv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "FLV container parser and writer."
+
+[features]
+default = ["std"]
+std = ["cheetah-media-types/std", "cheetah-media-bitstream/std"]
+
+[dependencies]
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
+cheetah-media-bitstream = { path = "../cheetah-media-bitstream", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
