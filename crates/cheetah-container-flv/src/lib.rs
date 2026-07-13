@@ -55,6 +55,7 @@ pub struct FlvHeader {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FlvTagHeader {
     pub tag_type: TagType,
+    pub filter: bool,
     pub data_size: u32,
     pub timestamp: MediaTime,
     pub stream_id: u32,
@@ -90,10 +91,9 @@ pub fn parse_header(input: &[u8]) -> Result<FlvHeader, FlvError> {
 /// Parse an FLV tag header.
 pub fn parse_tag_header(input: &[u8]) -> Result<FlvTagHeader, FlvError> {
     let mut cursor = ByteCursor::new(input);
-    let tag_type = cursor
-        .read_u8()
-        .map_err(|_| FlvError::EndOfStream)
-        .and_then(|v| TagType::from_u8(v).ok_or(FlvError::MalformedHeader))?;
+    let tag_byte = cursor.read_u8().map_err(|_| FlvError::EndOfStream)?;
+    let tag_type = TagType::from_u8(tag_byte & 0x1F).ok_or(FlvError::MalformedHeader)?;
+    let filter = (tag_byte & 0x20) != 0;
     let data_size = cursor.read_u24_be().map_err(|_| FlvError::EndOfStream)?;
     let ts_lower = cursor.read_u24_be().map_err(|_| FlvError::EndOfStream)?;
     let ts_extended = cursor.read_u8().map_err(|_| FlvError::EndOfStream)?;
@@ -102,6 +102,7 @@ pub fn parse_tag_header(input: &[u8]) -> Result<FlvTagHeader, FlvError> {
 
     Ok(FlvTagHeader {
         tag_type,
+        filter,
         data_size,
         timestamp: MediaTime::new(i64::from(timestamp_ms), i64::from(timestamp_ms), 1000),
         stream_id,
@@ -147,7 +148,27 @@ mod tests {
         buf[10] = 0;
         let tag = parse_tag_header(&buf).expect("valid tag header");
         assert_eq!(tag.tag_type, TagType::Video);
+        assert!(!tag.filter);
         assert_eq!(tag.data_size, 10);
         assert_eq!(tag.timestamp.pts_ms(), 32);
+    }
+
+    #[test]
+    fn parse_tag_header_with_filter_bit() {
+        let mut buf = [0u8; 11];
+        buf[0] = 0x29; // video (0x09) with filter bit (0x20) set
+        buf[1] = 0;
+        buf[2] = 0;
+        buf[3] = 10;
+        buf[4] = 0;
+        buf[5] = 0;
+        buf[6] = 0x20;
+        buf[7] = 0x00;
+        buf[8] = 0;
+        buf[9] = 0;
+        buf[10] = 0;
+        let tag = parse_tag_header(&buf).expect("valid tag header");
+        assert_eq!(tag.tag_type, TagType::Video);
+        assert!(tag.filter);
     }
 }
