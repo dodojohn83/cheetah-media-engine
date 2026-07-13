@@ -29,7 +29,11 @@
 9. CI 不得依赖未提交的本地 path。跨仓开发可临时使用 `[patch]`，提交前必须改为不可变 tag/revision。
 10. 性能结论必须有原始数据、环境、命令和对照；不得在无合法可复现实验时宣称优于第三方产品。
 
-## 4. 阶段索引
+## 4. 需求矩阵
+
+Web v1 原子需求清单与验收链接见 [00_requirements_matrix.md](00_requirements_matrix.md)。所有 002 任务的范围变更必须先更新需求矩阵。
+
+## 5. 阶段索引
 
 | Phase | 文档 | 阶段交付 |
 | --- | --- | --- |
@@ -39,7 +43,7 @@
 | 3 | [26](26_web_sdk_public_api_events_errors.md)–[30](30_observability_diagnostics_security_privacy.md) | SDK、组件、多画面、录制、诊断和安全 |
 | 4 | [31](31_testkit_fixtures_property_fuzz_contracts.md)–[35](35_web_v1_integration_acceptance_and_handoff.md) | 跨仓测试、浏览器、性能、发布和交接 |
 
-## 5. 全局完成定义
+## 6. 全局完成定义
 
 - [ ] 01–35 所有任务完成，无未登记 TODO、跳过测试或临时 path 依赖。
 - [ ] 共享核心 native、`no_std + alloc`、`wasm32-unknown-unknown` 构建及全部 contract suite 通过。
@@ -50,7 +54,7 @@
 - [ ] 首帧、延迟、A/V sync、丢帧、复制、密度、24 小时 soak 达到 001 门禁。
 - [ ] npm ESM/IIFE、自托管 WASM、CDN、ABI manifest、SBOM、许可证和安全门禁通过。
 
-## 6. 001→002 覆盖矩阵
+## 7. 001→002 覆盖矩阵
 
 | 001 要求 | 002 归属 |
 | --- | --- |
@@ -66,7 +70,7 @@
 | Jessibuca Pro 后续追踪 | 01、35 |
 | Native 与双向扩展入口 | 04、16、35 |
 
-## 7. 标准验证命令
+## 8. 标准验证命令
 
 各任务只运行与其仓库和 feature 相关的子集，但完成证据必须记录实际完整命令。发布候选必须运行全集。
 
@@ -105,7 +109,7 @@ CARGO_TARGET_DIR=target/test-server cargo test --workspace --all-features
 
 server 命令必须串行运行。若实际 package/feature 名在迁移前发生变化，先更新本文档，不得在完成证据中静默替换。
 
-## 8. 阶段闸门
+## 9. 阶段闸门
 
 | 闸门 | 必须满足后才能进入下一阶段 |
 | --- | --- |
