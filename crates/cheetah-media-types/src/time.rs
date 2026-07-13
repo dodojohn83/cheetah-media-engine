@@ -119,7 +119,7 @@ impl Timestamp {
 
     /// Extend a wrapped `n`-bit timestamp using a previous unwrapped value as a hint.
     ///
-    /// `wrap_bits` must be in `1..=63`. The function returns the unwrapped value
+    /// `wrap_bits` must be in `1..=62`. The function returns the unwrapped value
     /// that is closest to `previous` while preserving the low `wrap_bits` bits.
     /// This gives a deterministic interpretation of timestamp wrap without floating
     /// point arithmetic.
@@ -322,24 +322,27 @@ impl MediaTime {
 
     /// Detect a 33-bit MPEG-style timestamp wrap between `previous` and `self`.
     ///
-    /// If `self.pts` is less than `previous.pts` by more than half the wrap period,
-    /// the timestamp is considered wrapped forward. This returns the unwrapped
-    /// `MediaTime` with a 64-bit PTS; otherwise returns `self` unchanged.
+    /// Both PTS and DTS share the same 33-bit counter and are unwrapped using the
+    /// corresponding previous values. If `previous.dts` is unknown, `previous.pts`
+    /// is used as the reference for DTS.
     pub fn unwrapped_33bit(&self, previous: &Self) -> Self {
-        let Some(pts) = self.pts else {
-            return *self;
-        };
-        let Some(prev_pts) = previous.pts else {
-            return *self;
-        };
-        let unwrapped = pts.unwrapped_around(prev_pts, 33);
-        if unwrapped == pts {
-            *self
-        } else {
-            let mut result = *self;
-            result.pts = Some(unwrapped);
-            result
+        let mut result = *self;
+        if let (Some(pts), Some(prev_pts)) = (self.pts, previous.pts) {
+            let unwrapped = pts.unwrapped_around(prev_pts, 33);
+            if unwrapped != pts {
+                result.pts = Some(unwrapped);
+            }
         }
+        if let Some(dts) = self.dts {
+            let prev_dts = previous.dts.or(previous.pts);
+            if let Some(prev) = prev_dts {
+                let unwrapped = dts.unwrapped_around(prev, 33);
+                if unwrapped != dts {
+                    result.dts = Some(unwrapped);
+                }
+            }
+        }
+        result
     }
 }
 
@@ -418,6 +421,7 @@ mod tests {
         let wrapped = MediaTime::from_ticks(Some(0), Some(0), None, TimeBase::DEFAULT);
         let unwrapped = wrapped.unwrapped_33bit(&prev);
         assert_eq!(unwrapped.pts.unwrap().ticks(), half * 2);
+        assert_eq!(unwrapped.dts.unwrap().ticks(), half * 2);
     }
 
     #[test]
