@@ -124,7 +124,7 @@ impl Timestamp {
     /// This gives a deterministic interpretation of timestamp wrap without floating
     /// point arithmetic.
     pub fn unwrapped_around(self, previous: Self, wrap_bits: u8) -> Self {
-        assert!((1..=63).contains(&wrap_bits), "wrap_bits must be in 1..=63");
+        assert!((1..=62).contains(&wrap_bits), "wrap_bits must be in 1..=62");
         let mask = (1i64 << wrap_bits) - 1;
         let low = self.0 & mask;
         let prev = previous.0;
@@ -426,5 +426,13 @@ mod tests {
         let low = Timestamp::new(100);
         let unwrapped = low.unwrapped_around(prev, 33);
         assert_eq!(unwrapped.ticks(), (1i64 << 33) + 100);
+    }
+
+    #[test]
+    fn timestamp_unwrapped_around_max_bits() {
+        let prev = Timestamp::new((1i64 << 62) - 100);
+        let low = Timestamp::new(100);
+        let unwrapped = low.unwrapped_around(prev, 62);
+        assert_eq!(unwrapped.ticks(), (1i64 << 62) + 100);
     }
 }
