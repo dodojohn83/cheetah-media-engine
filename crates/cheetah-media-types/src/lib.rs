@@ -26,7 +26,7 @@ pub enum TrackKind {
 }
 
 /// A media timestamp pair in a given timescale.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaTime {
     /// Presentation timestamp.
     pub pts: i64,
@@ -34,6 +34,13 @@ pub struct MediaTime {
     pub dts: i64,
     /// Timescale (ticks per second).
     pub timescale: u32,
+}
+
+impl Default for MediaTime {
+    /// Default timestamp with a 1 kHz timescale to avoid division-by-zero in `pts_ms`.
+    fn default() -> Self {
+        Self::new(0, 0, 1000)
+    }
 }
 
 impl MediaTime {
@@ -47,7 +54,12 @@ impl MediaTime {
     }
 
     /// Convert the PTS to milliseconds.
+    ///
+    /// Returns `0` if the timescale is `0`, preventing division-by-zero panics.
     pub fn pts_ms(&self) -> i64 {
+        if self.timescale == 0 {
+            return 0;
+        }
         self.pts * 1000 / i64::from(self.timescale)
     }
 }
@@ -60,5 +72,18 @@ mod tests {
     fn media_time_pts_ms() {
         let t = MediaTime::new(3000, 3000, 1000);
         assert_eq!(t.pts_ms(), 3000);
+    }
+
+    #[test]
+    fn media_time_default_has_sane_timescale() {
+        let t = MediaTime::default();
+        assert_eq!(t.timescale, 1000);
+        assert_eq!(t.pts_ms(), 0);
+    }
+
+    #[test]
+    fn media_time_pts_ms_handles_zero_timescale() {
+        let t = MediaTime::new(3000, 3000, 0);
+        assert_eq!(t.pts_ms(), 0);
     }
 }
