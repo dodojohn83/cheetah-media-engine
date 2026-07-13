@@ -1,0 +1,21 @@
+{
+  "name": "@cheetah-media/web-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cheetah-media/components": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.1.4",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "cheetah-media-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Engine orchestration, state machine, and pipeline planner."
+
+[dependencies]
+cheetah-media-types = { path = "../cheetah-media-types" }
+cheetah-media-backend-api = { path = "../cheetah-media-backend-api" }
+
+[lints.rust]
+unsafe_code = "forbid"
