@@ -67,7 +67,9 @@ pub fn parse_master(playlist: &str) -> Result<MasterPlaylist, HlsError> {
 
 fn extract_u32(text: &str, key: &str) -> Option<u32> {
     let start = text.find(key)? + key.len();
-    let end = text[start..].find(|c: char| !c.is_ascii_digit())?;
+    let end = text[start..]
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(text.len() - start);
     text[start..start + end].parse().ok()
 }
 
@@ -88,14 +90,18 @@ mod tests {
 playlist_1.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=5000000,CODECS="avc1.64001f,mp4a.40.2"
 playlist_2.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2500000
+playlist_3.m3u8
 "#;
 
     #[test]
     fn parse_master_ok() {
         let m = parse_master(MASTER).unwrap();
-        assert_eq!(m.variants.len(), 2);
+        assert_eq!(m.variants.len(), 3);
         assert_eq!(m.variants[0].bandwidth, 1_000_000);
         assert_eq!(m.variants[0].uri, "playlist_1.m3u8");
+        assert_eq!(m.variants[2].bandwidth, 2_500_000);
+        assert_eq!(m.variants[2].uri, "playlist_3.m3u8");
     }
 
     #[test]

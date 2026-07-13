@@ -1,5 +1,9 @@
 //! Core media pipeline planner and scheduler.
 
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+extern crate alloc;
+
+use alloc::boxed::Box;
 use cheetah_media_abi::{Decoder, Error, Input, Output, Renderer};
 
 /// A simple pipeline that pairs a decoder with an optional renderer.
