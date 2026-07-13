@@ -9,6 +9,8 @@ description = "Test fixtures, property test helpers, and contract harness for Ch
 
 [dependencies]
 cheetah-media-types = { path = "../cheetah-media-types" }
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
 
 [lints.rust]
 unsafe_code = "forbid"
