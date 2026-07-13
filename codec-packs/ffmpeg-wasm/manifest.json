@@ -11,7 +11,6 @@
       "--disable-programs",
       "--disable-doc",
       "--disable-avdevice",
-      "--disable-swresample",
       "--disable-postproc",
       "--disable-avfilter",
       "--disable-encoders",
@@ -22,7 +21,9 @@
       "--enable-decoder=mp3",
       "--enable-demuxer=flv",
       "--enable-demuxer=hls",
-      "--enable-demuxer=mov,mp4,m4a,3gp,3g2,mj2"
+      "--enable-demuxer=mov,mp4,m4a,3gp,3g2,mj2",
+      "--enable-swresample",
+      "--enable-avutil"
     ]
   },
   "emscripten": {

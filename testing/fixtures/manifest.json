@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "fixtures": [
+    {
+      "id": "h264-1280x720-30fps-2s",
+      "description": "Minimal H.264 video with 2-second duration and 30 fps.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "elementary",
+      "codec": "h264",
+      "resolution": "1280x720",
+      "frame_rate": 30,
+      "duration_ms": 2000,
+      "expected": "idr-and-p-frames with monotonic pts"
+    },
+    {
+      "id": "aac-48khz-2ch-2s",
+      "description": "Minimal AAC audio with 48 kHz sample rate and 2 channels.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "adts",
+      "codec": "aac",
+      "sample_rate": 48000,
+      "channels": 2,
+      "duration_ms": 2000,
+      "expected": "continuous audio frames"
+    },
+    {
+      "id": "g711a-8khz-1ch-500ms",
+      "description": "G.711 A-law mono PCM 8 kHz 500 ms.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "pcm",
+      "codec": "g711a",
+      "sample_rate": 8000,
+      "channels": 1,
+      "duration_ms": 500,
+      "expected": "raw pcm samples"
+    },
+    {
+      "id": "h264-33bit-wrap",
+      "description": "H.264 stream with PTS wrapping around 33-bit boundary.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "elementary",
+      "codec": "h264",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "duration_ms": 1000,
+      "anomaly": "33-bit timestamp wrap",
+      "expected": "parser handles wrap without overflow"
+    },
+    {
+      "id": "corrupt-flv",
+      "description": "FLV file with invalid tag type and truncated header.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "flv",
+      "codec": "h264",
+      "duration_ms": 0,
+      "anomaly": "corrupt header and truncated tag",
+      "expected": "parser returns MalformedHeader or EndOfStream"
+    }
+  ]
+}
