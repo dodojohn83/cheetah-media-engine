@@ -1,0 +1,12 @@
+/target
+**/node_modules/
+**/dist/
+/.pnpm-store
+/.cargo
+*.log
+.DS_Store
+test-results/
+playwright-report/
+# Lock files are committed per 002 plan
+# Cargo.lock
+# pnpm-lock.yaml

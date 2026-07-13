@@ -1,0 +1,98 @@
+//! Cheetah media engine orchestration.
+//!
+//! This crate contains the platform-neutral state machine and pipeline planner.
+//! Platform specifics live in `cheetah-media-web-bindings` and future native bindings.
+
+use cheetah_media_backend_api::CapabilityProbe;
+use cheetah_media_types::CodecId;
+
+/// Engine version.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Player lifecycle states.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerState {
+    Idle,
+    Loading,
+    Probing,
+    Buffering,
+    Playing,
+    Paused,
+    Stopping,
+    Failed,
+    Destroyed,
+}
+
+/// Resource budget for a single player instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlayerBudget {
+    /// Maximum video decoder instances.
+    pub max_video_decoders: u8,
+    /// Maximum buffered milliseconds.
+    pub max_buffer_ms: u32,
+}
+
+impl PlayerBudget {
+    /// Default budget for desktop playback.
+    pub fn desktop() -> Self {
+        Self {
+            max_video_decoders: 1,
+            max_buffer_ms: 3000,
+        }
+    }
+}
+
+/// Select the best backend for a given codec from a list of probes.
+pub fn select_backend<'a>(
+    codec: CodecId,
+    probes: &'a [&'a dyn CapabilityProbe],
+) -> Option<&'a dyn CapabilityProbe> {
+    probes
+        .iter()
+        .copied()
+        .find(|probe| probe.supports_codec(codec))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct AlwaysSupported;
+    impl CapabilityProbe for AlwaysSupported {
+        fn name(&self) -> &str {
+            "always"
+        }
+        fn supports_codec(&self, _codec: CodecId) -> bool {
+            true
+        }
+    }
+
+    struct NeverSupported;
+    impl CapabilityProbe for NeverSupported {
+        fn name(&self) -> &str {
+            "never"
+        }
+        fn supports_codec(&self, _codec: CodecId) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn version_is_set() {
+        assert!(!VERSION.is_empty());
+    }
+
+    #[test]
+    fn select_backend_picks_first_supported() {
+        let probes: Vec<&dyn CapabilityProbe> = vec![&NeverSupported, &AlwaysSupported];
+        let chosen = select_backend(CodecId::H264, &probes);
+        assert!(chosen.is_some());
+        assert_eq!(chosen.unwrap().name(), "always");
+    }
+
+    #[test]
+    fn select_backend_returns_none_when_all_unsupported() {
+        let probes: Vec<&dyn CapabilityProbe> = vec![&NeverSupported];
+        assert!(select_backend(CodecId::H264, &probes).is_none());
+    }
+}
