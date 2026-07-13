@@ -284,8 +284,9 @@ impl MediaTime {
         ))
     }
 
-    /// Checked addition of a duration to the PTS/DTS/duration.
+    /// Checked addition of a time offset to PTS/DTS.
     ///
+    /// The sample `duration` is preserved; only timestamp positions are shifted.
     /// Returns `None` if any known timestamp overflows.
     pub fn checked_add(&self, rhs: MediaDuration) -> Option<Self> {
         let pts = match self.pts {
@@ -296,14 +297,10 @@ impl MediaTime {
             Some(t) => Some(t.0.checked_add(rhs.0).map(Timestamp::new)?),
             None => None,
         };
-        let duration = match self.duration {
-            Some(t) => Some(t.0.checked_add(rhs.0).map(Timestamp::new)?),
-            None => None,
-        };
-        Some(Self::new(pts, dts, duration, self.timebase))
+        Some(Self::new(pts, dts, self.duration, self.timebase))
     }
 
-    /// Checked subtraction of a duration.
+    /// Checked subtraction of a time offset from PTS/DTS.
     pub fn checked_sub(&self, rhs: MediaDuration) -> Option<Self> {
         let pts = match self.pts {
             Some(t) => Some(t.0.checked_sub(rhs.0).map(Timestamp::new)?),
@@ -313,11 +310,7 @@ impl MediaTime {
             Some(t) => Some(t.0.checked_sub(rhs.0).map(Timestamp::new)?),
             None => None,
         };
-        let duration = match self.duration {
-            Some(t) => Some(t.0.checked_sub(rhs.0).map(Timestamp::new)?),
-            None => None,
-        };
-        Some(Self::new(pts, dts, duration, self.timebase))
+        Some(Self::new(pts, dts, self.duration, self.timebase))
     }
 
     /// True if `self` comes before `other` in presentation order.
@@ -408,6 +401,14 @@ mod tests {
     fn media_time_checked_add_overflow_returns_none() {
         let t = MediaTime::from_ticks(Some(i64::MAX), None, None, TimeBase::DEFAULT);
         assert!(t.checked_add(MediaDuration::new(1)).is_none());
+    }
+
+    #[test]
+    fn media_time_checked_add_preserves_duration() {
+        let t = MediaTime::from_ticks(Some(100), Some(100), Some(40), TimeBase::DEFAULT);
+        let shifted = t.checked_add(MediaDuration::new(50)).expect("no overflow");
+        assert_eq!(shifted.pts.map(|p| p.ticks()), Some(150));
+        assert_eq!(shifted.duration.map(|d| d.ticks()), Some(40));
     }
 
     #[test]

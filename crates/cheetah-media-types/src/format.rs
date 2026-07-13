@@ -67,11 +67,12 @@ impl ChannelLayout {
             Self::Stereo => 2,
             Self::Surround21 => 3,
             Self::Surround31 => 4,
-            Self::Surround40 | Self::Surround41 => 4,
+            Self::Surround40 => 4,
+            Self::Surround41 => 5,
             Self::Surround50 => 5,
             Self::Surround51 => 6,
-            Self::Surround61 => 6,
-            Self::Surround71 => 7,
+            Self::Surround61 => 7,
+            Self::Surround71 => 8,
             Self::Unknown(mask) => mask.count_ones(),
         }
     }
@@ -125,5 +126,31 @@ impl AudioFormat {
     /// Total samples in the frame across all channels.
     pub const fn total_samples(self) -> u32 {
         self.sample_count * self.channel_layout.channels()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channel_layout_counts_include_lfe() {
+        assert_eq!(ChannelLayout::Surround40.channels(), 4);
+        assert_eq!(ChannelLayout::Surround41.channels(), 5);
+        assert_eq!(ChannelLayout::Surround50.channels(), 5);
+        assert_eq!(ChannelLayout::Surround51.channels(), 6);
+        assert_eq!(ChannelLayout::Surround61.channels(), 7);
+        assert_eq!(ChannelLayout::Surround71.channels(), 8);
+    }
+
+    #[test]
+    fn audio_format_total_samples() {
+        let fmt = AudioFormat {
+            sample_format: SampleFormat::S16,
+            sample_rate: 48000,
+            channel_layout: ChannelLayout::Surround51,
+            sample_count: 1024,
+        };
+        assert_eq!(fmt.total_samples(), 1024 * 6);
     }
 }
