@@ -3,23 +3,24 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 extern crate alloc;
 
-use cheetah_media_types::{CodecId, MediaTime};
+use cheetah_media_types::{CodecId, MediaTime, TrackId};
 
 /// Data carrying a compressed sample and its timestamp.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Input<'a> {
     pub data: &'a [u8],
-    pub pts: MediaTime,
-    pub dts: MediaTime,
+    pub time: MediaTime,
     pub codec: CodecId,
+    pub track_id: TrackId,
 }
 
 /// A decoded or post-processed media sample.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Output<'a> {
     pub data: &'a [u8],
-    pub pts: MediaTime,
+    pub time: MediaTime,
     pub duration_ms: u64,
+    pub track_id: TrackId,
 }
 
 /// Stable ABI error.

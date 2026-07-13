@@ -55,7 +55,7 @@ impl Pipeline {
 mod tests {
     use super::*;
     use cheetah_media_abi::{DecoderProbe, Error, Input, Output, Renderer};
-    use cheetah_media_types::{CodecId, MediaTime};
+    use cheetah_media_types::{CodecId, MediaTime, TimeBase, Timestamp, TrackId};
 
     struct DummyDecoder;
     impl DecoderProbe for DummyDecoder {
@@ -67,8 +67,9 @@ mod tests {
         fn decode<'a>(&mut self, input: &Input<'a>) -> Result<Output<'a>, Error> {
             Ok(Output {
                 data: input.data,
-                pts: input.pts,
+                time: input.time,
                 duration_ms: 0,
+                track_id: input.track_id,
             })
         }
         fn flush(&mut self) -> Result<(), Error> {
@@ -86,14 +87,22 @@ mod tests {
         }
     }
 
+    fn dummy_time() -> MediaTime {
+        MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT)
+    }
+
+    fn dummy_track() -> TrackId {
+        TrackId::new(1).unwrap()
+    }
+
     #[test]
     fn feed_without_decoder_fails() {
         let mut pipeline = Pipeline::new();
         let input = Input {
             data: &[],
-            pts: MediaTime::default(),
-            dts: MediaTime::default(),
+            time: dummy_time(),
             codec: CodecId::H264,
+            track_id: dummy_track(),
         };
         assert_eq!(pipeline.feed(&input).unwrap_err(), Error::NotSupported);
     }
@@ -105,9 +114,9 @@ mod tests {
         pipeline.set_renderer(Box::new(DummyRenderer));
         let input = Input {
             data: b"data",
-            pts: MediaTime::default(),
-            dts: MediaTime::default(),
+            time: dummy_time(),
             codec: CodecId::H264,
+            track_id: dummy_track(),
         };
         let output = pipeline.feed(&input).unwrap();
         assert_eq!(output.data, b"data");

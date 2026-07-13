@@ -1,11 +1,27 @@
 //! Shared media types used across the Cheetah media engine.
 //!
-//! This crate is `no_std` compatible when the `std` feature is disabled. It only
-//! depends on `core` and optionally `alloc`.
+//! This crate is `no_std` compatible when the `std` feature is disabled. It depends
+//! on `core` and the `alloc` crate for owned containers and `Cow`.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
+
+pub mod error;
+pub mod format;
+pub mod frame;
+pub mod limits;
+pub mod packet;
+pub mod time;
+pub mod track;
+
+pub use error::{MediaError, Recoverability};
+pub use format::{AudioFormat, ChannelLayout, ColorSpace, PixelFormat, SampleFormat, VideoFormat};
+pub use frame::{AudioFrame, ExternalFrameHandle, VideoFrame};
+pub use limits::MediaLimits;
+pub use packet::{MediaPacket, PacketFlags};
+pub use time::{MediaDuration, MediaTime, TimeBase, Timestamp};
+pub use track::{CodecConfig, SequenceNumber, StreamEpoch, TrackId, TrackInfo};
 
 /// Identifies a compressed media codec.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -16,6 +32,10 @@ pub enum CodecId {
     G711A,
     G711U,
     Mp3,
+    Opus,
+    PcmU8,
+    PcmS16,
+    Unknown(u32),
 }
 
 /// Whether a track carries video or audio samples.
@@ -23,45 +43,7 @@ pub enum CodecId {
 pub enum TrackKind {
     Video,
     Audio,
-}
-
-/// A media timestamp pair in a given timescale.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MediaTime {
-    /// Presentation timestamp.
-    pub pts: i64,
-    /// Decode timestamp.
-    pub dts: i64,
-    /// Timescale (ticks per second).
-    pub timescale: u32,
-}
-
-impl Default for MediaTime {
-    /// Default timestamp with a 1 kHz timescale to avoid division-by-zero in `pts_ms`.
-    fn default() -> Self {
-        Self::new(0, 0, 1000)
-    }
-}
-
-impl MediaTime {
-    /// Create a new `MediaTime`.
-    pub const fn new(pts: i64, dts: i64, timescale: u32) -> Self {
-        Self {
-            pts,
-            dts,
-            timescale,
-        }
-    }
-
-    /// Convert the PTS to milliseconds.
-    ///
-    /// Returns `0` if the timescale is `0`, preventing division-by-zero panics.
-    pub fn pts_ms(&self) -> i64 {
-        if self.timescale == 0 {
-            return 0;
-        }
-        self.pts * 1000 / i64::from(self.timescale)
-    }
+    Data,
 }
 
 #[cfg(test)]
@@ -69,21 +51,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn media_time_pts_ms() {
-        let t = MediaTime::new(3000, 3000, 1000);
-        assert_eq!(t.pts_ms(), 3000);
+    fn codec_id_round_trip_unknown() {
+        let id = CodecId::Unknown(42);
+        assert_eq!(id, CodecId::Unknown(42));
     }
 
     #[test]
-    fn media_time_default_has_sane_timescale() {
-        let t = MediaTime::default();
-        assert_eq!(t.timescale, 1000);
-        assert_eq!(t.pts_ms(), 0);
-    }
-
-    #[test]
-    fn media_time_pts_ms_handles_zero_timescale() {
-        let t = MediaTime::new(3000, 3000, 0);
-        assert_eq!(t.pts_ms(), 0);
+    fn track_kind_defaults() {
+        let kinds = [TrackKind::Video, TrackKind::Audio, TrackKind::Data];
+        assert!(kinds.contains(&TrackKind::Video));
     }
 }
