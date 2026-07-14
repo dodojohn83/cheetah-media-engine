@@ -47,11 +47,19 @@ pub struct QueueConfig {
 
 impl QueueConfig {
     /// Create a config with `capacity` and watermarks at 75% / 25%.
+    ///
+    /// For capacity 1 the high watermark is clamped to 1 so that an empty queue
+    /// does not immediately report high pressure.
     pub const fn with_watermarks(capacity: usize) -> Self {
+        let mut high = capacity * 3 / 4;
+        if capacity > 0 && high == 0 {
+            high = 1;
+        }
+        let low = capacity / 4;
         Self {
             capacity,
-            high: capacity * 3 / 4,
-            low: capacity / 4,
+            high,
+            low,
         }
     }
 }
@@ -89,6 +97,10 @@ impl<T> BoundedQueue<T> {
     /// newcomer. Returns `0` if the item was accepted and `1` if the item itself
     /// was dropped.
     pub fn push(&mut self, priority: Priority, item: T) -> u64 {
+        if self.config.capacity == 0 {
+            self.dropped += 1;
+            return 1;
+        }
         if self.items.len() >= self.config.capacity {
             let (victim_idx, victim_priority) = self
                 .items
@@ -133,6 +145,9 @@ impl<T> BoundedQueue<T> {
     /// Poll for watermark events and update the internal state.
     pub fn poll_watermarks(&mut self) -> Vec<SchedulerEvent> {
         let mut events = Vec::new();
+        if self.config.capacity == 0 {
+            return events;
+        }
         let level = self.items.len();
         if !self.over_high && level >= self.config.high {
             self.over_high = true;
@@ -330,6 +345,28 @@ mod tests {
         s.push(QueueName::Audio, Priority::AudioClock, 2);
         let (_, item) = s.pop().unwrap();
         assert_eq!(item, 2);
+    }
+
+    #[test]
+    fn zero_capacity_drops_everything() {
+        let mut q = BoundedQueue::new("test", QueueConfig::with_watermarks(0));
+        assert_eq!(q.push(Priority::Control, 0), 1);
+        assert!(q.is_empty());
+        assert!(q.poll_watermarks().is_empty());
+    }
+
+    #[test]
+    fn capacity_one_watermarks_do_not_oscillate_empty() {
+        let mut q = BoundedQueue::new("test", QueueConfig::with_watermarks(1));
+        let events = q.poll_watermarks();
+        assert!(events.is_empty());
+        q.push(Priority::Data, 1);
+        let events = q.poll_watermarks();
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SchedulerEvent::HighWatermark { .. }))
+        );
     }
 
     #[test]
