@@ -457,8 +457,14 @@ export class WebCodecsBackend implements MediaBackend {
       return;
     }
     this._metrics.decodedVideoFrames += 1;
+    const onVideoFrame = this.callbacks.onVideoFrame;
+    if (!onVideoFrame) {
+      // No consumer registered; close the GPU-backed frame immediately.
+      frame.close();
+      return;
+    }
     try {
-      this.callbacks.onVideoFrame?.(frame);
+      onVideoFrame(frame);
     } catch (err) {
       // The callback failed to take ownership of the frame; close it so the
       // GPU-backed resource is not leaked.
@@ -474,8 +480,13 @@ export class WebCodecsBackend implements MediaBackend {
       return;
     }
     this._metrics.decodedAudioFrames += 1;
+    const onAudioData = this.callbacks.onAudioData;
+    if (!onAudioData) {
+      data.close();
+      return;
+    }
     try {
-      this.callbacks.onAudioData?.(data);
+      onAudioData(data);
     } catch (err) {
       data.close();
       this.handleError(err instanceof Error ? err : new Error(String(err)));
