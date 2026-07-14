@@ -196,7 +196,7 @@ fn write_ftyp() -> Vec<u8> {
     write_box(types::FTYP, &body)
 }
 
-fn write_moov(configs: &BTreeMap<u32, TrackConfig>) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_moov(configs: &BTreeMap<u32, TrackConfig>) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::new();
     body.extend(write_mvhd(configs));
     for cfg in configs.values() {
@@ -206,7 +206,7 @@ fn write_moov(configs: &BTreeMap<u32, TrackConfig>) -> Result<Vec<u8>, Mp4Error>
     Ok(write_box(types::MOOV, &body))
 }
 
-fn write_mvhd(configs: &BTreeMap<u32, TrackConfig>) -> Vec<u8> {
+pub(crate) fn write_mvhd(configs: &BTreeMap<u32, TrackConfig>) -> Vec<u8> {
     let mut body = Vec::with_capacity(100);
     body.extend_from_slice(&write_fullbox(0, 0)); // version/flags
     write_u32(&mut body, 0); // creation_time
@@ -224,14 +224,14 @@ fn write_mvhd(configs: &BTreeMap<u32, TrackConfig>) -> Vec<u8> {
     write_box(types::MVHD, &body)
 }
 
-fn write_trak(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_trak(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::new();
     body.extend(write_tkhd(cfg));
     body.extend(write_mdia(cfg)?);
     Ok(write_box(types::TRAK, &body))
 }
 
-fn write_tkhd(cfg: &TrackConfig) -> Vec<u8> {
+pub(crate) fn write_tkhd(cfg: &TrackConfig) -> Vec<u8> {
     let mut body = Vec::with_capacity(84);
     body.extend_from_slice(&write_fullbox(0, 0x0000_0003)); // enabled + in_movie
     write_u32(&mut body, 0); // creation_time
@@ -255,7 +255,7 @@ fn write_tkhd(cfg: &TrackConfig) -> Vec<u8> {
     write_box(types::TKHD, &body)
 }
 
-fn write_mdia(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_mdia(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::new();
     body.extend(write_mdhd(cfg));
     body.extend(write_hdlr(cfg));
@@ -263,7 +263,7 @@ fn write_mdia(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(types::MDIA, &body))
 }
 
-fn write_mdhd(cfg: &TrackConfig) -> Vec<u8> {
+pub(crate) fn write_mdhd(cfg: &TrackConfig) -> Vec<u8> {
     let mut body = Vec::with_capacity(24);
     body.extend_from_slice(&write_fullbox(0, 0));
     write_u32(&mut body, 0); // creation_time
@@ -275,7 +275,7 @@ fn write_mdhd(cfg: &TrackConfig) -> Vec<u8> {
     write_box(types::MDHD, &body)
 }
 
-fn write_hdlr(cfg: &TrackConfig) -> Vec<u8> {
+pub(crate) fn write_hdlr(cfg: &TrackConfig) -> Vec<u8> {
     let mut body = Vec::with_capacity(33);
     body.extend_from_slice(&write_fullbox(0, 0));
     write_u32(&mut body, 0); // pre_defined
@@ -294,7 +294,7 @@ fn write_hdlr(cfg: &TrackConfig) -> Vec<u8> {
     write_box(types::HDLR, &body)
 }
 
-fn write_minf(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_minf(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::new();
     if cfg.kind == TrackKind::Video {
         body.extend(write_vmhd());
@@ -306,7 +306,7 @@ fn write_minf(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(types::MINF, &body))
 }
 
-fn write_vmhd() -> Vec<u8> {
+pub(crate) fn write_vmhd() -> Vec<u8> {
     let mut body = Vec::with_capacity(12);
     body.extend_from_slice(&write_fullbox(0, 0x0000_0001));
     write_u16(&mut body, 0); // graphicsmode
@@ -314,7 +314,7 @@ fn write_vmhd() -> Vec<u8> {
     write_box(types::VMHD, &body)
 }
 
-fn write_smhd() -> Vec<u8> {
+pub(crate) fn write_smhd() -> Vec<u8> {
     let mut body = Vec::with_capacity(8);
     body.extend_from_slice(&write_fullbox(0, 0));
     write_u16(&mut body, 0); // balance
@@ -322,7 +322,7 @@ fn write_smhd() -> Vec<u8> {
     write_box(types::SMHD, &body)
 }
 
-fn write_dinf() -> Vec<u8> {
+pub(crate) fn write_dinf() -> Vec<u8> {
     let mut dref_body = Vec::new();
     dref_body.extend_from_slice(&write_fullbox(0, 0));
     write_u32(&mut dref_body, 1); // entry_count
@@ -331,7 +331,7 @@ fn write_dinf() -> Vec<u8> {
     write_box(types::DREF, &dref_body)
 }
 
-fn write_stbl(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_stbl(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::new();
     body.extend(write_stsd(cfg)?);
     body.extend(write_stts());
@@ -341,7 +341,7 @@ fn write_stbl(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(types::STBL, &body))
 }
 
-fn write_stsd(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_stsd(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::new();
     body.extend_from_slice(&write_fullbox(0, 0));
     write_u32(&mut body, 1); // entry_count
@@ -349,7 +349,7 @@ fn write_stsd(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(types::STSD, &body))
 }
 
-fn write_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     match cfg.kind {
         TrackKind::Video => write_visual_sample_entry(cfg),
         TrackKind::Audio => write_audio_sample_entry(cfg),
@@ -360,7 +360,7 @@ fn write_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     }
 }
 
-fn write_visual_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_visual_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::with_capacity(78);
     body.extend_from_slice(&[0u8; 6]); // reserved
     write_u16(&mut body, 1); // data_reference_index
@@ -387,7 +387,7 @@ fn write_visual_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(box_type, &body))
 }
 
-fn write_audio_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_audio_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::with_capacity(28);
     body.extend_from_slice(&[0u8; 6]); // reserved
     write_u16(&mut body, 1); // data_reference_index
@@ -402,7 +402,7 @@ fn write_audio_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(types::MP4A, &body))
 }
 
-fn codec_config_box(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn codec_config_box(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     match &cfg.codec_config {
         CodecConfig::AvcC(bytes) => Ok(write_box(types::AVCC, bytes)),
         CodecConfig::HevcC(bytes) => Ok(write_box(types::HVCC, bytes)),
@@ -413,7 +413,7 @@ fn codec_config_box(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     }
 }
 
-fn write_esds(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+pub(crate) fn write_esds(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let asc = match &cfg.codec_config {
         CodecConfig::AacAudioSpecificConfig(bytes) => bytes.as_slice(),
         _ => {
@@ -451,7 +451,7 @@ fn write_esds(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_fullbox_box(types::ESDS, 0, 0, &esd))
 }
 
-fn write_descriptor(tag: u8, body: &[u8]) -> Vec<u8> {
+pub(crate) fn write_descriptor(tag: u8, body: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(2 + body.len());
     out.push(tag);
     let mut len = body.len();

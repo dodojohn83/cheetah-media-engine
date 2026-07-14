@@ -9,12 +9,14 @@ pub mod error;
 pub mod fragment;
 pub mod moov;
 pub mod muxer;
+pub mod recorder;
 pub mod sample_entry;
 
 pub use demuxer::{IsobmffDemuxer, Mp4Event};
 pub use error::Mp4Error;
 pub use moov::TrackData;
 pub use muxer::{FragmentedMp4Muxer, SegmentOutput, TrackConfig};
+pub use recorder::Mp4Muxer as ProgressiveMp4Muxer;
 
 #[cfg(test)]
 mod tests;

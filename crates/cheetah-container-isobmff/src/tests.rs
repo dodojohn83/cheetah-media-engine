@@ -6,8 +6,8 @@ use cheetah_media_types::{
 };
 
 use crate::{
-    FragmentedMp4Muxer, IsobmffDemuxer, Mp4Event, SegmentOutput, TrackConfig,
-    boxes::{BoxHeader, iter_boxes, types},
+    FragmentedMp4Muxer, IsobmffDemuxer, Mp4Event, ProgressiveMp4Muxer, SegmentOutput, TrackConfig,
+    boxes::{BoxHeader, iter_boxes, read_fullbox_header, types},
 };
 
 fn make_audio_config() -> TrackConfig {
@@ -129,6 +129,98 @@ fn collect_packets_from_muxer_and_demux(
         }
     }
     packets
+}
+
+// Helpers for standard/progressive MP4 verification.
+fn find_box(data: &[u8], fourcc: u32) -> Option<(BoxHeader, &[u8])> {
+    iter_boxes(data, 0, 4)
+        .ok()?
+        .find(|item| {
+            item.as_ref()
+                .map(|(h, _)| h.box_type == fourcc)
+                .unwrap_or(false)
+        })
+        .and_then(|item| item.ok())
+}
+
+fn read_u32_be(data: &[u8], offset: usize) -> u32 {
+    u32::from_be_bytes([
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ])
+}
+
+fn parse_stsz(body: &[u8]) -> Vec<u32> {
+    if body.len() < 8 {
+        return Vec::new();
+    }
+    let sample_size = read_u32_be(body, 4);
+    let sample_count = read_u32_be(body, 8) as usize;
+    if sample_size != 0 {
+        // all samples same size
+        return vec![sample_size; sample_count];
+    }
+    let mut sizes = Vec::with_capacity(sample_count);
+    for i in 0..sample_count {
+        let off = 12 + i * 4;
+        if off + 4 > body.len() {
+            break;
+        }
+        sizes.push(read_u32_be(body, off));
+    }
+    sizes
+}
+
+fn parse_stco(body: &[u8]) -> Vec<u64> {
+    if body.len() < 8 {
+        return Vec::new();
+    }
+    let entry_count = read_u32_be(body, 4) as usize;
+    let mut offsets = Vec::with_capacity(entry_count);
+    for i in 0..entry_count {
+        let off = 8 + i * 4;
+        if off + 4 > body.len() {
+            break;
+        }
+        offsets.push(read_u32_be(body, off) as u64);
+    }
+    offsets
+}
+
+fn parse_stss(body: &[u8]) -> Vec<u32> {
+    if body.len() < 8 {
+        return Vec::new();
+    }
+    let entry_count = read_u32_be(body, 4) as usize;
+    let mut syncs = Vec::with_capacity(entry_count);
+    for i in 0..entry_count {
+        let off = 8 + i * 4;
+        if off + 4 > body.len() {
+            break;
+        }
+        syncs.push(read_u32_be(body, off));
+    }
+    syncs
+}
+
+fn total_duration_from_stts(body: &[u8]) -> u64 {
+    if body.len() < 8 {
+        return 0;
+    }
+    let entry_count = read_u32_be(body, 4) as usize;
+    let mut total = 0u64;
+    for i in 0..entry_count {
+        let off = 8 + i * 8;
+        if off + 8 > body.len() {
+            break;
+        }
+        let count = read_u32_be(body, off) as u64;
+        let delta = read_u32_be(body, off + 4) as u64;
+        total += count * delta;
+    }
+    total
 }
 
 #[test]
@@ -373,4 +465,137 @@ fn malicious_size_offset_count_returns_error() {
     let mut demuxer = IsobmffDemuxer::new();
     demuxer.push(&buf);
     assert!(demuxer.next_event().is_err());
+}
+
+#[test]
+fn progressive_mp4_audio_roundtrip() {
+    let mut muxer = ProgressiveMp4Muxer::new();
+    muxer.configure(make_audio_config());
+
+    let payloads: Vec<_> = (0..3).map(|i| vec![i as u8; 16]).collect();
+    for (i, payload) in payloads.iter().cloned().enumerate() {
+        muxer
+            .push_packet(make_audio_packet(1, i as u64, i as i64 * 1024, payload))
+            .unwrap();
+    }
+
+    let mp4 = muxer.finish().unwrap();
+    let (ftyp, _) = find_box(&mp4, types::FTYP).unwrap();
+    assert_eq!(ftyp.box_type, types::FTYP);
+
+    let (_moov_header, moov_body) = find_box(&mp4, types::MOOV).unwrap();
+    let (mdat_header, mdat_body) = find_box(&mp4, types::MDAT).unwrap();
+
+    // moov -> trak -> mdia -> minf -> stbl
+    let (_, trak_body) = find_box(moov_body, types::TRAK).unwrap();
+    let (_, mdia_body) = find_box(trak_body, types::MDIA).unwrap();
+    let (_, minf_body) = find_box(mdia_body, types::MINF).unwrap();
+    let (_, stbl_body) = find_box(minf_body, types::STBL).unwrap();
+
+    let (_, stsz_body) = find_box(stbl_body, types::STSZ).unwrap();
+    let (_, stco_body) = find_box(stbl_body, types::STCO).unwrap();
+
+    let sizes = parse_stsz(stsz_body);
+    let offsets = parse_stco(stco_body);
+
+    assert_eq!(sizes.len(), 3);
+    assert_eq!(sizes, vec![16u32; 3]);
+    assert_eq!(offsets.len(), 1);
+
+    let mdat_data_offset = mdat_header.body_offset();
+    let chunk_start = offsets[0];
+    assert_eq!(chunk_start, mdat_data_offset);
+
+    let mut pos = (chunk_start - mdat_data_offset) as usize;
+    for (i, expected) in payloads.iter().enumerate() {
+        let end = pos + sizes[i] as usize;
+        assert_eq!(&mdat_body[pos..end], expected.as_slice());
+        pos = end;
+    }
+    assert_eq!(pos, mdat_body.len());
+
+    // stts total duration
+    let (_, stts_body) = find_box(stbl_body, types::STTS).unwrap();
+    assert_eq!(total_duration_from_stts(stts_body), 3 * 1024);
+}
+
+#[test]
+fn progressive_mp4_video_roundtrip_with_b_frames() {
+    let mut muxer = ProgressiveMp4Muxer::new();
+    muxer.configure(make_video_config());
+
+    let payloads = [vec![1u8; 10], vec![2u8; 10], vec![3u8; 10]];
+    let _ = muxer.push_packet(make_video_packet(1, 0, 0, 0, true, payloads[0].clone()));
+    let _ = muxer.push_packet(make_video_packet(
+        1,
+        1,
+        3000,
+        2000,
+        false,
+        payloads[1].clone(),
+    ));
+    let _ = muxer.push_packet(make_video_packet(
+        1,
+        2,
+        6000,
+        6000,
+        true,
+        payloads[2].clone(),
+    ));
+
+    let mp4 = muxer.finish().unwrap();
+
+    let (_moov_header, moov_body) = find_box(&mp4, types::MOOV).unwrap();
+    let (mdat_header, mdat_body) = find_box(&mp4, types::MDAT).unwrap();
+
+    let (_, trak_body) = find_box(moov_body, types::TRAK).unwrap();
+    let (_, mdia_body) = find_box(trak_body, types::MDIA).unwrap();
+    let (_, minf_body) = find_box(mdia_body, types::MINF).unwrap();
+    let (_, stbl_body) = find_box(minf_body, types::STBL).unwrap();
+
+    let (_, stsz_body) = find_box(stbl_body, types::STSZ).unwrap();
+    let (_, stco_body) = find_box(stbl_body, types::STCO).unwrap();
+    let (_, stss_body) = find_box(stbl_body, types::STSS).unwrap();
+    let (_, ctts_body) = find_box(stbl_body, types::CTTS).unwrap();
+
+    let sizes = parse_stsz(stsz_body);
+    let offsets = parse_stco(stco_body);
+    let syncs = parse_stss(stss_body);
+
+    assert_eq!(sizes, vec![10u32; 3]);
+    assert_eq!(offsets[0], mdat_header.body_offset());
+
+    let mut pos = (offsets[0] - mdat_header.body_offset()) as usize;
+    for (i, expected) in payloads.iter().enumerate() {
+        let end = pos + sizes[i] as usize;
+        assert_eq!(&mdat_body[pos..end], expected.as_slice());
+        pos = end;
+    }
+
+    assert_eq!(syncs, vec![1, 3]);
+
+    // ctts version 1, one entry for the B-frame negative offset.
+    let (_, _, ctts_body_after) = read_fullbox_header(ctts_body).unwrap();
+    let ctts_entry_count = read_u32_be(ctts_body_after, 0);
+    assert!(ctts_entry_count >= 1);
+    let mut ctts_off = 4usize;
+    let mut total_ctts_count = 0u32;
+    for _ in 0..ctts_entry_count {
+        let count = read_u32_be(ctts_body_after, ctts_off);
+        let offset = i32::from_be_bytes([
+            ctts_body_after[ctts_off + 4],
+            ctts_body_after[ctts_off + 5],
+            ctts_body_after[ctts_off + 6],
+            ctts_body_after[ctts_off + 7],
+        ]);
+        total_ctts_count += count;
+        if total_ctts_count == 2 {
+            assert_eq!(offset, -1000);
+            break;
+        }
+        ctts_off += 8;
+    }
+
+    let (_, stts_body) = find_box(stbl_body, types::STTS).unwrap();
+    assert_eq!(total_duration_from_stts(stts_body), 3 * 3000);
 }
