@@ -50,7 +50,6 @@ type MutableMetrics = {
   decodedVideoFrames: number;
   decodedAudioFrames: number;
   droppedChunks: number;
-  pendingDecodes: number;
 };
 
 // Minimal WebCodecs type surface; real browser objects are structurally
@@ -246,11 +245,12 @@ export class WebCodecsBackend implements MediaBackend {
   private videoDecoder: VideoDecoderLike | undefined = undefined;
   private audioDecoder: AudioDecoderLike | undefined = undefined;
   private pendingReconfigure = false;
+  private _pendingVideo = 0;
+  private _pendingAudio = 0;
   private _metrics: MutableMetrics = {
     decodedVideoFrames: 0,
     decodedAudioFrames: 0,
     droppedChunks: 0,
-    pendingDecodes: 0,
   };
 
   constructor(_ctx: BackendContext, options: WebCodecsBackendOptions) {
@@ -259,8 +259,15 @@ export class WebCodecsBackend implements MediaBackend {
     this.maxPending = options.maxPendingDecodes ?? 32;
   }
 
+  private totalPending(): number {
+    return this._pendingVideo + this._pendingAudio;
+  }
+
   get metrics(): WebCodecsMetrics {
-    return this._metrics;
+    return {
+      ...this._metrics,
+      pendingDecodes: this.totalPending(),
+    };
   }
 
   async configure(): Promise<void> {
@@ -328,6 +335,8 @@ export class WebCodecsBackend implements MediaBackend {
       this.audioDecoder = undefined;
       this.stopped = true;
       this.configured = false;
+      this._pendingVideo = 0;
+      this._pendingAudio = 0;
       this.generation += 1;
       this.pendingReconfigure = false;
       throw err;
@@ -339,7 +348,7 @@ export class WebCodecsBackend implements MediaBackend {
   pushVideo(data: Uint8Array, timestamp: number, opts?: { isKeyFrame?: boolean; duration?: number }): void {
     if (this.stopped || this.closing || this.errored || !this.videoDecoder || !this.videoConfig) return;
 
-    if (this._metrics.pendingDecodes >= this.maxPending) {
+    if (this.totalPending() >= this.maxPending) {
       this._metrics.droppedChunks += 1;
       return;
     }
@@ -359,14 +368,14 @@ export class WebCodecsBackend implements MediaBackend {
       data,
     });
 
-    this._metrics.pendingDecodes += 1;
+    this._pendingVideo += 1;
     this.videoDecoder.decode(chunk);
   }
 
   pushAudio(data: Uint8Array, timestamp: number, opts?: { duration?: number }): void {
     if (this.stopped || this.closing || this.errored || !this.audioDecoder || !this.audioConfig) return;
 
-    if (this._metrics.pendingDecodes >= this.maxPending) {
+    if (this.totalPending() >= this.maxPending) {
       this._metrics.droppedChunks += 1;
       return;
     }
@@ -381,7 +390,7 @@ export class WebCodecsBackend implements MediaBackend {
       data,
     });
 
-    this._metrics.pendingDecodes += 1;
+    this._pendingAudio += 1;
     this.audioDecoder.decode(chunk);
   }
 
@@ -397,9 +406,9 @@ export class WebCodecsBackend implements MediaBackend {
   private reconfigureVideo(): void {
     if (!this.videoDecoder || !this.videoConfig) return;
     this.pendingReconfigure = false;
-    // `reset()` discards all pending decode operations and their output
-    // callbacks will never fire, so we must zero the counter.
-    this._metrics.pendingDecodes = 0;
+    // `reset()` discards all pending video decode operations and their output
+    // callbacks will never fire, so we must zero only the video counter.
+    this._pendingVideo = 0;
     // `reset()` keeps the decoder object but clears internal state; reconfigure
     // with the current (presumably updated) description.
     this.videoDecoder.reset();
@@ -419,6 +428,8 @@ export class WebCodecsBackend implements MediaBackend {
     this.closing = false;
     this.errored = false;
     this.configured = false;
+    this._pendingVideo = 0;
+    this._pendingAudio = 0;
     this.generation += 1;
     this.pendingReconfigure = false;
   }
@@ -440,7 +451,7 @@ export class WebCodecsBackend implements MediaBackend {
   }
 
   private handleVideoOutput(frame: CloseableVideoFrame, gen: number): void {
-    this._metrics.pendingDecodes -= 1;
+    this._pendingVideo -= 1;
     if (this.stopped || gen !== this.generation) {
       frame.close();
       return;
@@ -450,7 +461,7 @@ export class WebCodecsBackend implements MediaBackend {
   }
 
   private handleAudioOutput(data: CloseableAudioData, gen: number): void {
-    this._metrics.pendingDecodes -= 1;
+    this._pendingAudio -= 1;
     if (this.stopped || gen !== this.generation) {
       data.close();
       return;
@@ -463,8 +474,9 @@ export class WebCodecsBackend implements MediaBackend {
     if (this.stopped || this.errored) return;
     this.errored = true;
     // Pending decodes will never complete once the decoder is in an error state;
-    // reset the counter so the bounded queue does not stay saturated.
-    this._metrics.pendingDecodes = 0;
+    // reset the counters so the bounded queue does not stay saturated.
+    this._pendingVideo = 0;
+    this._pendingAudio = 0;
     this.callbacks.onError?.(error);
     // Begin async cleanup; the fallback controller will normally replace this
     // backend, but stopping here prevents further decode() calls on a broken
