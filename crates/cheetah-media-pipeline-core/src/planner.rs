@@ -308,8 +308,17 @@ fn base_plan(request: &PipelineRequest, caps: &CapabilitySnapshot) -> PipelinePl
 
 fn fallback_plan(request: &PipelineRequest, caps: &CapabilitySnapshot) -> PipelinePlan {
     let mut plan = base_plan(request, caps);
-    plan.video_decode = DecodePath::FFmpegWasm;
-    plan.audio_decode = DecodePath::FFmpegWasm;
+    for track in &request.tracks {
+        let prefers_ffmpeg = caps
+            .ffmpeg_wasm
+            .iter()
+            .any(|(c, l)| *c == track.codec && !matches!(l, SupportLevel::Unsupported));
+        match track.kind {
+            TrackKind::Video if prefers_ffmpeg => plan.video_decode = DecodePath::FFmpegWasm,
+            TrackKind::Audio if prefers_ffmpeg => plan.audio_decode = DecodePath::FFmpegWasm,
+            _ => {}
+        }
+    }
     plan.render = RenderTarget::Canvas2d;
     plan.audio = AudioPath::Software;
     plan.reason_codes.clear();
