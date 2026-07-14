@@ -80,8 +80,6 @@ struct EpochState {
     base_us: i64,
     /// Last raw source ticks in the original timebase.
     last_source_ticks: i64,
-    /// Original timebase for `last_source_ticks`.
-    last_source_base: TimeBase,
     /// Last rescaled timestamp in microseconds.
     last_raw_us: i64,
     last_clock_us: i64,
@@ -221,18 +219,9 @@ impl MediaClock {
             self.stats.jitter_ms = jitter_deviation / 1000;
         }
 
-        let (last_source_ticks, last_source_base) = if is_discontinuity || is_wrap {
-            (current_source_ticks, source_base)
-        } else if let Some(state) = existing {
-            (state.last_source_ticks, state.last_source_base)
-        } else {
-            (current_source_ticks, source_base)
-        };
-
         let new_state = EpochState {
             base_us,
-            last_source_ticks,
-            last_source_base,
+            last_source_ticks: current_source_ticks,
             last_raw_us: current_raw_us,
             last_clock_us: clock_us,
             last_delta_us: if is_discontinuity || is_wrap {
