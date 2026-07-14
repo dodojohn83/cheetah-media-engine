@@ -1,7 +1,23 @@
-//! Byte-level cursor for parsing media containers.
+//! Byte and bit-level cursor for parsing media containers.
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 extern crate alloc;
+
+pub mod aac;
+pub mod bit;
+pub mod g711;
+pub mod h264;
+pub mod h265;
+pub mod mp3;
+
+pub use aac::{AdtsHeader, AudioSpecificConfig};
+pub use bit::{BitCursor, BitError};
+pub use g711::{G711Kind, PcmFormat};
+pub use h264::{H264CodecConfig, H264Error, NalUnit as H264NalUnit};
+pub use h265::{
+    H265CodecConfig, H265Error, NalUnit as H265NalUnit, NalUnitType as H265NalUnitType,
+};
+pub use mp3::{Mp3Error, Mp3Header};
 
 /// Error returned when a read request exceeds the remaining bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
