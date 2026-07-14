@@ -1,9 +1,10 @@
 //! Decoded video and audio frames.
 
-use alloc::borrow::Cow;
 use alloc::vec::Vec;
 
-use crate::{AudioFormat, MediaError, MediaLimits, MediaTime, VideoFormat};
+use crate::{
+    AudioFormat, BufferLifecycle, BufferRef, MediaError, MediaLimits, MediaTime, VideoFormat,
+};
 
 /// Opaque external frame resource handle.
 ///
@@ -28,12 +29,12 @@ impl ExternalFrameHandle {
 
 /// A decoded video frame.
 ///
-/// Planar frames store each plane as a `Cow` slice; interleaved frames keep all
+/// Planar frames store each plane as a `BufferRef`; interleaved frames keep all
 /// data in `payload` with `planes` empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoFrame<'a> {
-    pub payload: Cow<'a, [u8]>,
-    pub planes: Vec<Cow<'a, [u8]>>,
+    pub payload: BufferRef<'a>,
+    pub planes: Vec<BufferRef<'a>>,
     pub format: VideoFormat,
     pub timestamp: MediaTime,
     pub handle: Option<ExternalFrameHandle>,
@@ -42,7 +43,7 @@ pub struct VideoFrame<'a> {
 impl<'a> VideoFrame<'a> {
     /// Create an owned video frame from a single contiguous buffer.
     pub fn new(
-        payload: impl Into<Cow<'a, [u8]>>,
+        payload: impl Into<BufferRef<'a>>,
         format: VideoFormat,
         timestamp: MediaTime,
     ) -> Self {
@@ -56,7 +57,7 @@ impl<'a> VideoFrame<'a> {
     }
 
     /// Add a separate plane slice for planar formats.
-    pub fn with_plane(mut self, plane: impl Into<Cow<'a, [u8]>>) -> Self {
+    pub fn with_plane(mut self, plane: impl Into<BufferRef<'a>>) -> Self {
         self.planes.push(plane.into());
         self
     }
@@ -86,13 +87,22 @@ impl<'a> VideoFrame<'a> {
         }
         Ok(())
     }
+
+    /// Lifetime classification of the frame buffer.
+    pub fn lifecycle(&self) -> BufferLifecycle {
+        if self.handle.is_some() {
+            BufferLifecycle::External
+        } else {
+            self.payload.lifecycle()
+        }
+    }
 }
 
 /// A decoded audio frame.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioFrame<'a> {
-    pub payload: Cow<'a, [u8]>,
-    pub planes: Vec<Cow<'a, [u8]>>,
+    pub payload: BufferRef<'a>,
+    pub planes: Vec<BufferRef<'a>>,
     pub format: AudioFormat,
     pub timestamp: MediaTime,
     pub handle: Option<ExternalFrameHandle>,
@@ -100,7 +110,7 @@ pub struct AudioFrame<'a> {
 
 impl<'a> AudioFrame<'a> {
     pub fn new(
-        payload: impl Into<Cow<'a, [u8]>>,
+        payload: impl Into<BufferRef<'a>>,
         format: AudioFormat,
         timestamp: MediaTime,
     ) -> Self {
@@ -113,7 +123,7 @@ impl<'a> AudioFrame<'a> {
         }
     }
 
-    pub fn with_plane(mut self, plane: impl Into<Cow<'a, [u8]>>) -> Self {
+    pub fn with_plane(mut self, plane: impl Into<BufferRef<'a>>) -> Self {
         self.planes.push(plane.into());
         self
     }
@@ -132,6 +142,15 @@ impl<'a> AudioFrame<'a> {
             });
         }
         Ok(())
+    }
+
+    /// Lifetime classification of the frame buffer.
+    pub fn lifecycle(&self) -> BufferLifecycle {
+        if self.handle.is_some() {
+            BufferLifecycle::External
+        } else {
+            self.payload.lifecycle()
+        }
     }
 }
 
@@ -158,6 +177,25 @@ mod tests {
     }
 
     #[test]
+    fn video_frame_with_planes() {
+        let fmt = VideoFormat {
+            pixel_format: PixelFormat::Yuv420P,
+            coded_width: 1280,
+            coded_height: 720,
+            visible_width: 1280,
+            visible_height: 720,
+            stride: 1280,
+            color_space: ColorSpace::Bt709,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let frame = VideoFrame::new(vec![0u8; 0], fmt, ts)
+            .with_plane(vec![0u8; 100])
+            .with_plane(vec![0u8; 50]);
+        assert_eq!(frame.planes.len(), 2);
+        assert_eq!(frame.min_required_size(), 2 * 720 * 1280);
+    }
+
+    #[test]
     fn video_frame_limit_rejects_oversized() {
         let fmt = VideoFormat {
             pixel_format: PixelFormat::Yuv420P,
@@ -173,5 +211,23 @@ mod tests {
         let limits = MediaLimits::default();
         let err = frame.check_limits(&limits).unwrap_err();
         assert_eq!(err.code(), 5001);
+    }
+
+    #[test]
+    fn video_frame_external_lifecycle() {
+        let fmt = VideoFormat {
+            pixel_format: PixelFormat::Rgba,
+            coded_width: 1,
+            coded_height: 1,
+            visible_width: 1,
+            visible_height: 1,
+            stride: 4,
+            color_space: ColorSpace::Bt709,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let mut frame = VideoFrame::new(vec![0u8; 4], fmt, ts);
+        assert_eq!(frame.lifecycle(), BufferLifecycle::Shared);
+        frame.handle = Some(ExternalFrameHandle::new(1));
+        assert_eq!(frame.lifecycle(), BufferLifecycle::External);
     }
 }

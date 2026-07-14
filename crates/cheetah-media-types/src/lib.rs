@@ -7,6 +7,7 @@
 
 extern crate alloc;
 
+pub mod buffer;
 pub mod error;
 pub mod format;
 pub mod frame;
@@ -15,6 +16,10 @@ pub mod packet;
 pub mod time;
 pub mod track;
 
+pub use buffer::{
+    BufferLifecycle, BufferPool, BufferPoolConfig, BufferRef, CopyBudget, CopyReason, DropPolicy,
+    LinearMemoryRef, PoolStats, SimpleBufferPool, StageBudget,
+};
 pub use error::{MediaError, Recoverability};
 pub use format::{AudioFormat, ChannelLayout, ColorSpace, PixelFormat, SampleFormat, VideoFormat};
 pub use frame::{AudioFrame, ExternalFrameHandle, VideoFrame};
