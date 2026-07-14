@@ -183,43 +183,53 @@ function buildAudioConfig(track: TrackProfile): AudioDecoderConfig {
   };
 }
 
-function isAnnexBKeyFrame(data: Uint8Array, codec: string): boolean | undefined {
-  let offset = 0;
-  let found = false;
-  // Allow 3- and 4-byte start codes and protect the NAL header read.
+function findStartCode(data: Uint8Array, from: number): [start: number, end: number] | undefined {
+  let offset = from;
   while (offset + 3 <= data.length) {
     const b0 = data[offset]!;
     const b1 = data[offset + 1]!;
     const b2 = data[offset + 2]!;
     if (b0 === 0 && b1 === 0 && b2 === 1) {
-      offset += 3;
-      found = true;
-      break;
+      return [offset, offset + 3];
     }
     if (offset + 4 <= data.length) {
       const b3 = data[offset + 3]!;
       if (b0 === 0 && b1 === 0 && b2 === 0 && b3 === 1) {
-        offset += 4;
-        found = true;
-        break;
+        return [offset, offset + 4];
       }
     }
     offset += 1;
   }
-  if (!found || offset >= data.length) return undefined;
-
-  const header = data[offset]!;
-  const c = codec.toLowerCase();
-  if (c.startsWith('avc') || c === 'h264') {
-    const nalType = header & 0x1f;
-    return nalType === 5;
-  }
-  if (c.startsWith('hvc') || c === 'h265' || c === 'hevc') {
-    const nalType = (header >> 1) & 0x3f;
-    // BLA / IDR / CRA NAL types are random access points.
-    return nalType >= 16 && nalType <= 23;
-  }
   return undefined;
+}
+
+function isAnnexBKeyFrame(data: Uint8Array, codec: string): boolean | undefined {
+  const c = codec.toLowerCase();
+  const isH264 = c.startsWith('avc') || c === 'h264';
+  const isH265 = c.startsWith('hvc') || c === 'h265' || c === 'hevc';
+  if (!isH264 && !isH265) return undefined;
+
+  let foundStart = false;
+  let offset = 0;
+  while (offset + 3 <= data.length) {
+    const start = findStartCode(data, offset);
+    if (!start) break;
+    foundStart = true;
+    const end = start[1];
+    if (end >= data.length) return undefined; // start code without a NAL header
+
+    const header = data[end]!;
+    offset = end + 1;
+    if (isH264) {
+      const nalType = header & 0x1f;
+      if (nalType === 5) return true;
+    } else {
+      const nalType = (header >> 1) & 0x3f;
+      // BLA / IDR / CRA NAL types are random access points.
+      if (nalType >= 16 && nalType <= 23) return true;
+    }
+  }
+  return foundStart ? false : undefined;
 }
 
 function guessKeyFrame(data: Uint8Array, codec: string): boolean {
@@ -451,11 +461,11 @@ export class WebCodecsBackend implements MediaBackend {
   }
 
   private handleVideoOutput(frame: CloseableVideoFrame, gen: number): void {
-    this._pendingVideo -= 1;
-    if (this.stopped || gen !== this.generation) {
+    if (this.stopped || this.errored || gen !== this.generation) {
       frame.close();
       return;
     }
+    this._pendingVideo -= 1;
     this._metrics.decodedVideoFrames += 1;
     const onVideoFrame = this.callbacks.onVideoFrame;
     if (!onVideoFrame) {
@@ -474,11 +484,11 @@ export class WebCodecsBackend implements MediaBackend {
   }
 
   private handleAudioOutput(data: CloseableAudioData, gen: number): void {
-    this._pendingAudio -= 1;
-    if (this.stopped || gen !== this.generation) {
+    if (this.stopped || this.errored || gen !== this.generation) {
       data.close();
       return;
     }
+    this._pendingAudio -= 1;
     this._metrics.decodedAudioFrames += 1;
     const onAudioData = this.callbacks.onAudioData;
     if (!onAudioData) {

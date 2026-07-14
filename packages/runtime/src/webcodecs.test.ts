@@ -308,6 +308,38 @@ describe('WebCodecsBackend', () => {
     expect(last.chunks[2]?.type).toBe('delta');
   });
 
+  it('detects H.264 keyframes with leading SPS/PPS NAL units', async () => {
+    class CaptureVideoDecoder extends MockVideoDecoder {
+      chunks: MockEncodedVideoChunk[] = [];
+      decode(chunk: object): void {
+        this.chunks.push(chunk as MockEncodedVideoChunk);
+        super.decode(chunk);
+      }
+    }
+
+    const decoders: CaptureVideoDecoder[] = [];
+    vi.stubGlobal('VideoDecoder', class extends CaptureVideoDecoder {
+      constructor(init: { output: () => void; error: (err: Error) => void }) {
+        super(init);
+        decoders.push(this);
+      }
+    });
+
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+
+    // SPS (type 7), PPS (type 8), then IDR (type 5) access unit.
+    const buffer = new Uint8Array([
+      0, 0, 0, 1, 0x67, // SPS
+      0, 0, 0, 1, 0x68, // PPS
+      0, 0, 0, 1, 0x65, // IDR
+    ]);
+    backend.pushVideo(buffer, 1000);
+
+    const last = decoders[decoders.length - 1]!;
+    expect(last.chunks[0]?.type).toBe('key');
+  });
+
   it('throws when configure is called twice', async () => {
     const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
     await backend.configure();
