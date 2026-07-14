@@ -318,6 +318,19 @@ describe('MseBackend', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it('fails immediately when quota cleanup has no buffer to remove', async () => {
+    const onError = vi.fn((err: MseError) => err);
+    const backend = new MseBackend(ctx, makeOptions({ callbacks: { onError }, maxQuotaRetries: 1 }));
+    await backend.configure();
+    const sb = getSourceBuffer();
+    sb.setBuffered([]);
+    sb.setThrowQuotaOnce();
+    backend.pushSegment(new Uint8Array([1, 2, 3]));
+    await flushMicrotasks(5);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'quota-exceeded' }));
+    expect(sb.appended.length).toBe(0);
+  });
+
   it('forwards source buffer errors to onError callback', async () => {
     const onError = vi.fn((err: MseError) => err);
     const backend = new MseBackend(ctx, makeOptions({ callbacks: { onError } }));
@@ -389,6 +402,18 @@ describe('MseBackend', () => {
     vi.stubGlobal('MediaSource', SlowMediaSource);
     const backend = new MseBackend(ctx, makeOptions({ sourceOpenTimeoutMs: 50 }));
     await expect(backend.configure()).rejects.toThrow('MediaSource did not open');
+  });
+
+  it('cleans up resources when configure fails', async () => {
+    class SlowMediaSource extends MockMediaSource {
+      readyState = 'closed';
+    }
+    vi.stubGlobal('MediaSource', SlowMediaSource);
+    const video = new MockHTMLVideoElement();
+    const backend = new MseBackend(ctx, makeOptions({ videoElement: video, sourceOpenTimeoutMs: 50 }));
+    await expect(backend.configure()).rejects.toThrow('MediaSource did not open');
+    expect(video.src).toBe('');
+    expect(MockURL.revokeObjectURL).toHaveBeenCalled();
   });
 });
 

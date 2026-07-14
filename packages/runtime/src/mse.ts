@@ -287,20 +287,26 @@ export class MseBackend implements MediaBackend {
 
     const mediaSource = new MediaSource();
     this.mediaSource = mediaSource;
-    mediaSource.addEventListener('error', this.onMediaSourceError);
 
-    this.objectUrl = URL.createObjectURL(mediaSource);
-    this.videoElement.src = this.objectUrl;
+    try {
+      mediaSource.addEventListener('error', this.onMediaSourceError);
 
-    if (mediaSource.readyState !== 'open') {
-      await this.waitForSourceOpen(mediaSource);
+      this.objectUrl = URL.createObjectURL(mediaSource);
+      this.videoElement.src = this.objectUrl;
+
+      if (mediaSource.readyState !== 'open') {
+        await this.waitForSourceOpen(mediaSource);
+      }
+
+      this.sourceBuffer = this.addSourceBuffer(mediaSource);
+      this.videoElement.addEventListener('error', this.onVideoError);
+
+      this.startLiveControl();
+      this.configured = true;
+    } catch (err) {
+      await this.stop();
+      throw err;
     }
-
-    this.sourceBuffer = this.addSourceBuffer(mediaSource);
-    this.videoElement.addEventListener('error', this.onVideoError);
-
-    this.startLiveControl();
-    this.configured = true;
   }
 
   pushSegment(
@@ -556,7 +562,14 @@ export class MseBackend implements MediaBackend {
       if (isQuotaExceeded(err) && !this.cleanupInProgress && this.quotaRetryCount < this.maxQuotaRetries) {
         this.quotaRetryCount += 1;
         this._metrics.quotaCleanupCount += 1;
-        this.startBufferCleanup();
+        if (!this.startBufferCleanup()) {
+          // Nothing could be removed; fail the append immediately.
+          this.appendQueue.shift();
+          this.handleError(
+            new MseError('quota-exceeded', 'QuotaExceededError and no removable buffered range'),
+            'quota-exceeded',
+          );
+        }
         return;
       }
       this.appendQueue.shift();
@@ -565,8 +578,10 @@ export class MseBackend implements MediaBackend {
     }
   }
 
-  private startBufferCleanup(): void {
-    if (this.cleanupInProgress || !this.sourceBuffer || this.sourceBuffer.buffered.length === 0) return;
+  private startBufferCleanup(): boolean {
+    if (this.cleanupInProgress || !this.sourceBuffer || this.sourceBuffer.updating || this.sourceBuffer.buffered.length === 0) {
+      return false;
+    }
     const buffered = this.sourceBuffer.buffered;
     const current = this.videoElement.currentTime;
     const bufferedStart = buffered.start(0);
@@ -578,9 +593,9 @@ export class MseBackend implements MediaBackend {
       try {
         this.sourceBuffer.remove(bufferedStart, Math.min(removeEnd, bufferedEnd));
         this.cleanupInProgress = true;
-        return;
+        return true;
       } catch {
-        // ignore; fail the append below
+        // ignore; try ahead
       }
     }
 
@@ -590,10 +605,13 @@ export class MseBackend implements MediaBackend {
       try {
         this.sourceBuffer.remove(removeStart, bufferedEnd);
         this.cleanupInProgress = true;
+        return true;
       } catch {
         // ignore
       }
     }
+
+    return false;
   }
 
   private handleError(error: Error | MseError, code: MseErrorCode): void {
@@ -629,7 +647,12 @@ export class MseBackend implements MediaBackend {
     if (isQuotaExceeded(error) && !this.cleanupInProgress && this.quotaRetryCount < this.maxQuotaRetries) {
       this.quotaRetryCount += 1;
       this._metrics.quotaCleanupCount += 1;
-      this.startBufferCleanup();
+      if (!this.startBufferCleanup()) {
+        this.handleError(
+          new MseError('quota-exceeded', 'QuotaExceededError and no removable buffered range'),
+          'quota-exceeded',
+        );
+      }
       return;
     }
     this.handleError(error, 'source-buffer-error');
