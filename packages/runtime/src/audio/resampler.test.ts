@@ -59,6 +59,19 @@ describe('AudioResampler', () => {
     expect(resampler.currentRatio).toBeCloseTo(1.05);
   });
 
+  it('clamps ratio relative to the base ratio', () => {
+    const resampler = new AudioResampler({
+      inputSampleRate: 44100,
+      outputSampleRate: 48000,
+      channels: 1,
+      minRatio: 0.95,
+      maxRatio: 1.05,
+      maxRatioDelta: 1,
+    });
+    resampler.setRatio(2);
+    expect(resampler.currentRatio).toBeCloseTo((44100 / 48000) * 1.05, 2);
+  });
+
   it('resets ratio to default after reset', () => {
     const resampler = new AudioResampler({
       inputSampleRate: 44100,

@@ -111,6 +111,26 @@ describe('AudioPipeline', () => {
     expect(metrics.ratio).toBeGreaterThan(1);
   });
 
+  it('keeps 44.1k->48k ratio near base after drift correction', async () => {
+    const context = makeContext(48000, 0);
+    const pipeline = new AudioPipeline({
+      audioContext: context,
+      smallDriftMs: 10,
+      largeDriftMs: 100,
+    });
+    await pipeline.configure({ inputSampleRate: 44100, inputChannels: 1 });
+    pipeline.push(makeFrame(44100, 1, 4410, 0, 0.5));
+
+    // Clock runs ahead of media, triggering a small negative drift correction.
+    setCurrentTime(context, 0.1);
+    pipeline.push(makeFrame(44100, 1, 4410, 50, 0.5));
+
+    const metrics = pipeline.getMetrics();
+    expect(metrics.driftMs).toBeLessThan(0);
+    expect(metrics.ratio).toBeGreaterThan(0.91);
+    expect(metrics.ratio).toBeLessThan(0.93);
+  });
+
   it('requires configure before push', async () => {
     const context = makeContext();
     const onError = vi.fn();

@@ -16,9 +16,8 @@ export interface ResamplerOptions {
 }
 
 export class AudioResampler {
-  private inputSampleRate: number;
-  private outputSampleRate: number;
   readonly channels: number;
+  private baseRatio: number;
   private minRatio: number;
   private maxRatio: number;
   private maxRatioDelta: number;
@@ -27,13 +26,12 @@ export class AudioResampler {
   private leftover: Float32Array[] = [];
 
   constructor(options: ResamplerOptions) {
-    this.inputSampleRate = options.inputSampleRate;
-    this.outputSampleRate = options.outputSampleRate;
     this.channels = options.channels;
+    this.baseRatio = options.inputSampleRate / options.outputSampleRate;
     this.minRatio = options.minRatio ?? 0.95;
     this.maxRatio = options.maxRatio ?? 1.05;
     this.maxRatioDelta = options.maxRatioDelta ?? 0.01;
-    this.ratio = options.inputSampleRate / options.outputSampleRate;
+    this.ratio = this.baseRatio;
   }
 
   get currentRatio(): number {
@@ -42,7 +40,9 @@ export class AudioResampler {
 
   /** Adapt the resampling ratio to correct clock drift without sudden jumps. */
   setRatio(ratio: number): void {
-    const clamped = Math.max(this.minRatio, Math.min(this.maxRatio, ratio));
+    const minAbsolute = this.baseRatio * this.minRatio;
+    const maxAbsolute = this.baseRatio * this.maxRatio;
+    const clamped = Math.max(minAbsolute, Math.min(maxAbsolute, ratio));
     const delta = clamped - this.ratio;
     if (delta > this.maxRatioDelta) {
       this.ratio += this.maxRatioDelta;
@@ -57,7 +57,7 @@ export class AudioResampler {
   reset(): void {
     this.position = 0;
     this.leftover = [];
-    this.ratio = this.inputSampleRate / this.outputSampleRate;
+    this.ratio = this.baseRatio;
   }
 
   private combineInput(frames: readonly Float32Array[]): Float32Array[] {
