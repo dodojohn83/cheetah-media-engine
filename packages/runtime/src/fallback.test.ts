@@ -1,0 +1,190 @@
+import { describe, it, expect, vi } from 'vitest';
+import { FallbackController, type MediaBackend, type BackendContext, type FallbackEvent } from './fallback';
+import type { PlaybackPlan, PlanCandidate } from './planner';
+
+function makePlan(candidates: PlanCandidate[]): PlaybackPlan {
+  return {
+    candidates,
+    primary: candidates[0] ?? {
+      rank: 0,
+      videoBackend: undefined,
+      audioBackend: undefined,
+      renderer: undefined,
+      transport: 'fetch',
+      reason: 'empty',
+    },
+    fallback: candidates.slice(1),
+    unsupported: [],
+    degraded: false,
+    reasonChain: ['test'],
+  };
+}
+
+function candidate(video: string, audio: string): PlanCandidate {
+  return {
+    rank: 1,
+    videoBackend: video as PlanCandidate['videoBackend'],
+    audioBackend: audio as PlanCandidate['audioBackend'],
+    renderer: undefined,
+    transport: 'fetch',
+    reason: `video=${video}, audio=${audio}`,
+  };
+}
+
+function fakeBackend(ctx: BackendContext, fail = false): MediaBackend {
+  return {
+    identity: ctx.candidate.videoBackend ?? 'wasm-baseline',
+    configure: fail
+      ? () => Promise.reject(new Error('configure failed'))
+      : () => Promise.resolve(),
+    stop: () => Promise.resolve(),
+  };
+}
+
+describe('FallbackController', () => {
+  it('activates the first candidate when configureNext is called', async () => {
+    const plan = makePlan([
+      candidate('webcodecs', 'webcodecs'),
+      candidate('mse', 'mse'),
+    ]);
+    const factory = vi.fn(fakeBackend);
+    const controller = new FallbackController({ plan, factory });
+
+    const backend = await controller.configureNext('initial');
+
+    expect(backend?.identity).toBe('webcodecs');
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits backendchange events on transitions', async () => {
+    const plan = makePlan([
+      candidate('webcodecs', 'webcodecs'),
+      candidate('mse', 'mse'),
+    ]);
+    const events: FallbackEvent[] = [];
+    const controller = new FallbackController({
+      plan,
+      factory: (ctx) => fakeBackend(ctx),
+      onEvent: (e) => events.push(e),
+    });
+
+    await controller.configureNext('start');
+    await controller.reportFailure('decode error');
+
+    const changes = events.filter((e) => e.type === 'backendchange') as { type: 'backendchange'; payload: { to: string } }[];
+    expect(changes.length).toBeGreaterThanOrEqual(1);
+    expect(changes[changes.length - 1]?.payload.to).toBe('mse');
+  });
+
+  it('falls back to the next candidate when the first configure fails', async () => {
+    const plan = makePlan([
+      candidate('webcodecs', 'webcodecs'),
+      candidate('mse', 'mse'),
+      candidate('wasm-simd', 'wasm-simd'),
+    ]);
+    const factory = vi.fn((ctx: BackendContext) => fakeBackend(ctx, ctx.candidate.videoBackend === 'webcodecs'));
+    const controller = new FallbackController({ plan, factory });
+
+    const first = await controller.configureNext('initial');
+    // webcodecs fails during configure, so the first *successful* backend is mse.
+    expect(first?.identity).toBe('mse');
+
+    const second = await controller.reportFailure('mse decode failed');
+    expect(second?.identity).toBe('wasm-simd');
+  });
+
+  it('does not loop back to an already-tried backend in the same epoch', async () => {
+    const plan = makePlan([
+      candidate('webcodecs', 'webcodecs'),
+      candidate('mse', 'mse'),
+    ]);
+    const factory = vi.fn((ctx: BackendContext) => fakeBackend(ctx, true));
+    const controller = new FallbackController({ plan, factory });
+
+    const first = await controller.configureNext('initial');
+    expect(first).toBeUndefined();
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports unsupported after all candidates fail', async () => {
+    const plan = makePlan([
+      candidate('webcodecs', 'webcodecs'),
+      candidate('mse', 'mse'),
+    ]);
+    const events: FallbackEvent[] = [];
+    const controller = new FallbackController({
+      plan,
+      factory: (ctx) => fakeBackend(ctx, true),
+      onEvent: (e) => events.push(e),
+    });
+
+    await controller.configureNext('initial');
+
+    expect(events.some((e) => e.type === 'unsupported')).toBe(true);
+  });
+
+  it('stops accepting new work after stop()', async () => {
+    const plan = makePlan([candidate('webcodecs', 'webcodecs')]);
+    const controller = new FallbackController({
+      plan,
+      factory: (ctx) => fakeBackend(ctx),
+    });
+
+    await controller.stop();
+    const backend = await controller.configureNext('initial');
+    expect(backend).toBeUndefined();
+  });
+
+  it('newEpoch clears tried set so backends can be retried', async () => {
+    const plan = makePlan([
+      candidate('webcodecs', 'webcodecs'),
+      candidate('mse', 'mse'),
+    ]);
+    const factory = vi.fn((ctx: BackendContext) => fakeBackend(ctx, ctx.candidate.videoBackend === 'webcodecs'));
+    const controller = new FallbackController({ plan, factory });
+
+    const first = await controller.configureNext('initial');
+    expect(first?.identity).toBe('mse');
+
+    await controller.reportFailure('mse decode failed');
+    controller.newEpoch();
+
+    const retry = await controller.configureNext('retry');
+    // webcodecs still fails, but because the epoch was reset it is attempted again before mse.
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({ candidate: expect.objectContaining({ videoBackend: 'webcodecs' }) }));
+    expect(retry?.identity).toBe('mse');
+  });
+
+  it('setPlan replaces the candidate list and resets tried state', async () => {
+    const plan = makePlan([candidate('webcodecs', 'webcodecs')]);
+    const controller = new FallbackController({
+      plan,
+      factory: (ctx) => fakeBackend(ctx, ctx.candidate.videoBackend === 'webcodecs'),
+    });
+
+    await controller.configureNext('initial');
+    controller.setPlan(makePlan([candidate('mse', 'mse')]));
+
+    const backend = await controller.configureNext('new plan');
+    expect(backend?.identity).toBe('mse');
+  });
+
+  it('stops the previous backend before switching', async () => {
+    const plan = makePlan([
+      candidate('webcodecs', 'webcodecs'),
+      candidate('mse', 'mse'),
+    ]);
+    const stop = vi.fn(() => Promise.resolve());
+    const factory = vi.fn((ctx: BackendContext): MediaBackend => ({
+      identity: ctx.candidate.videoBackend ?? 'wasm-baseline',
+      configure: () => Promise.resolve(),
+      stop,
+    }));
+    const controller = new FallbackController({ plan, factory });
+
+    await controller.configureNext('initial');
+    await controller.reportFailure('decode failure');
+
+    expect(stop).toHaveBeenCalled();
+  });
+});
