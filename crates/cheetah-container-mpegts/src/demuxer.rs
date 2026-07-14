@@ -238,7 +238,8 @@ impl TsDemuxer {
 
     fn process_pat(&mut self, payload: &[u8], pus: bool) -> Result<(), TsError> {
         let asm = self.section_assemblers.entry(0x0000).or_default();
-        if let Some(section) = asm.feed(payload, pus)? {
+        let sections = asm.feed(payload, pus)?;
+        for section in sections {
             let entries = parse_pat(&section)?;
             self.pmt_pids = entries.iter().map(|e| e.pmt_pid).collect();
             for entry in entries {
@@ -255,7 +256,8 @@ impl TsDemuxer {
         payload_unit_start: bool,
     ) -> Result<(), TsError> {
         let asm = self.section_assemblers.entry(pid).or_default();
-        if let Some(section) = asm.feed(payload, payload_unit_start)? {
+        let sections = asm.feed(payload, payload_unit_start)?;
+        for section in sections {
             let (new_pcr_pid, streams) = parse_pmt(&section)?;
             self.pcr_pid = Some(new_pcr_pid);
             let entries: Vec<PmtEntry> = streams
@@ -398,25 +400,32 @@ impl TsDemuxer {
             return Ok(());
         }
 
-        // Use the parameter sets present in this access unit.
+        // Accumulate parameter sets from this access unit, replacing only the
+        // lists for which the AU actually contains that parameter-set NAL type.
+        let mut sps_nals = Vec::new();
+        let mut pps_nals = Vec::new();
+        let mut parsed = None;
+        for nal in &nals {
+            if nal.nal_type == 7 && !nal.data.is_empty() {
+                sps_nals.push(nal.data.to_vec());
+                let rbsp = h264::unescape_rbsp(nal.payload);
+                if let Ok(sps) = h264::Sps::parse(&rbsp) {
+                    parsed = Some(sps);
+                }
+            } else if nal.nal_type == 8 && !nal.data.is_empty() {
+                pps_nals.push(nal.data.to_vec());
+            }
+        }
         {
             let state = self
                 .tracks
                 .get_mut(&pid)
                 .ok_or_else(|| TsError::invalid_input(2203, Some("missing track state")))?;
-            state.h264_sps_nals.clear();
-            state.h264_pps_nals.clear();
-            let mut parsed = None;
-            for nal in &nals {
-                if nal.nal_type == 7 && !nal.data.is_empty() {
-                    state.h264_sps_nals.push(nal.data.to_vec());
-                    let rbsp = h264::unescape_rbsp(nal.payload);
-                    if let Ok(sps) = h264::Sps::parse(&rbsp) {
-                        parsed = Some(sps);
-                    }
-                } else if nal.nal_type == 8 && !nal.data.is_empty() {
-                    state.h264_pps_nals.push(nal.data.to_vec());
-                }
+            if !sps_nals.is_empty() {
+                state.h264_sps_nals = sps_nals;
+            }
+            if !pps_nals.is_empty() {
+                state.h264_pps_nals = pps_nals;
             }
             if let Some(sps) = parsed {
                 state.h264_sps = Some(sps);
@@ -494,23 +503,32 @@ impl TsDemuxer {
             return Ok(());
         }
 
+        let mut vps_nals = Vec::new();
+        let mut sps_nals = Vec::new();
+        let mut pps_nals = Vec::new();
+        for nal in &nals {
+            let t = nal.nal_unit_type;
+            if t == 32 && nal.data.len() > 2 {
+                vps_nals.push(nal.data.to_vec());
+            } else if t == 33 && nal.data.len() > 2 {
+                sps_nals.push(nal.data.to_vec());
+            } else if t == 34 && nal.data.len() > 2 {
+                pps_nals.push(nal.data.to_vec());
+            }
+        }
         {
             let state = self
                 .tracks
                 .get_mut(&pid)
                 .ok_or_else(|| TsError::invalid_input(2203, Some("missing track state")))?;
-            state.h265_vps.clear();
-            state.h265_sps.clear();
-            state.h265_pps.clear();
-            for nal in &nals {
-                let t = nal.nal_unit_type;
-                if t == 32 && nal.data.len() > 2 {
-                    state.h265_vps.push(nal.data.to_vec());
-                } else if t == 33 && nal.data.len() > 2 {
-                    state.h265_sps.push(nal.data.to_vec());
-                } else if t == 34 && nal.data.len() > 2 {
-                    state.h265_pps.push(nal.data.to_vec());
-                }
+            if !vps_nals.is_empty() {
+                state.h265_vps = vps_nals;
+            }
+            if !sps_nals.is_empty() {
+                state.h265_sps = sps_nals;
+            }
+            if !pps_nals.is_empty() {
+                state.h265_pps = pps_nals;
             }
         }
         self.update_h265_config(pid)?;
@@ -568,7 +586,7 @@ impl TsDemuxer {
                 .get_mut(&pid)
                 .ok_or_else(|| TsError::invalid_input(2203, Some("missing track state")))?;
             if let Ok(header) = AdtsHeader::parse(frames[0]) {
-                let fmt = cheetah_media_types::AudioFormat {
+                let new_fmt = cheetah_media_types::AudioFormat {
                     sample_format: SampleFormat::S16,
                     sample_rate: header.sampling_frequency,
                     channel_layout: if header.channel_count == 1 {
@@ -578,7 +596,6 @@ impl TsDemuxer {
                     },
                     sample_count: header.samples_per_frame as u32,
                 };
-                state.info.set_audio_format(fmt).ok();
                 let aot = header.profile + 1;
                 let asc = AudioSpecificConfig {
                     audio_object_type: aot,
@@ -587,11 +604,15 @@ impl TsDemuxer {
                     channel_configuration: header.channel_configuration,
                     channel_count: header.channel_count,
                 };
-                state
-                    .info
-                    .set_codec_config(CodecConfig::AacAudioSpecificConfig(asc.build()));
-                self.pending_events
-                    .push_back(TsEvent::Track(state.info.clone()));
+                let new_config = CodecConfig::AacAudioSpecificConfig(asc.build());
+                let old_config = state.info.codec_config.clone();
+                let old_fmt = state.info.audio_format;
+                state.info.set_audio_format(new_fmt).ok();
+                state.info.set_codec_config(new_config);
+                if state.info.codec_config != old_config || state.info.audio_format != old_fmt {
+                    self.pending_events
+                        .push_back(TsEvent::Track(state.info.clone()));
+                }
             }
         }
 

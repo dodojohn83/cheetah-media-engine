@@ -151,7 +151,7 @@ fn section_assembler_completes_pat() {
     let mut payload = Vec::new();
     payload.push(0x00); // pointer field
     payload.extend_from_slice(&section);
-    assert!(asm.feed(&payload, true).unwrap().is_some());
+    assert_eq!(asm.feed(&payload, true).unwrap().len(), 1);
 }
 
 #[test]
@@ -162,8 +162,40 @@ fn section_assembler_completes_across_packets() {
     payload.extend_from_slice(&section);
     let split = payload.len() / 2;
     let mut asm = SectionAssembler::new();
-    assert!(asm.feed(&payload[..split], true).unwrap().is_none());
-    assert!(asm.feed(&payload[split..], false).unwrap().is_some());
+    assert!(asm.feed(&payload[..split], true).unwrap().is_empty());
+    assert_eq!(asm.feed(&payload[split..], false).unwrap().len(), 1);
+}
+
+#[test]
+fn section_assembler_completes_tail_with_new_pusi() {
+    let section1 = pat_section(&[(1, 0x100)]);
+    let section2 = pat_section(&[(2, 0x200)]);
+
+    // First packet starts section1 but doesn't finish it.
+    let split = section1.len() / 2;
+    let mut payload1 = Vec::new();
+    payload1.push(0x00); // pointer field
+    payload1.extend_from_slice(&section1[..split]);
+
+    // Second packet contains the tail of section1 and all of section2.
+    let tail = &section1[split..];
+    let mut payload2 = Vec::new();
+    payload2.push(tail.len() as u8); // pointer field
+    payload2.extend_from_slice(tail);
+    payload2.extend_from_slice(&section2);
+
+    let mut asm = SectionAssembler::new();
+    assert!(asm.feed(&payload1, true).unwrap().is_empty());
+    let completed = asm.feed(&payload2, true).unwrap();
+    assert_eq!(completed.len(), 2);
+    assert_eq!(
+        parse_pat(&completed[0]).unwrap(),
+        parse_pat(&section1).unwrap()
+    );
+    assert_eq!(
+        parse_pat(&completed[1]).unwrap(),
+        parse_pat(&section2).unwrap()
+    );
 }
 
 #[test]

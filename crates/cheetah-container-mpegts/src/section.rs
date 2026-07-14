@@ -25,38 +25,52 @@ impl SectionAssembler {
 
     /// Feed a payload belonging to this PID.
     ///
-    /// Returns `Some(complete section data)` when a section has been assembled.
+    /// Returns all completed section data buffers from this payload.
     pub fn feed(
         &mut self,
         payload: &[u8],
         payload_unit_start: bool,
-    ) -> Result<Option<Vec<u8>>, TsError> {
+    ) -> Result<Vec<Vec<u8>>, TsError> {
+        let mut completed = Vec::new();
         if payload_unit_start {
             // The first byte is the pointer field.
             if payload.is_empty() {
-                return Ok(None);
+                return Ok(completed);
             }
             let pointer = payload[0] as usize;
-            // Start of a new section. Reset any stale assembler.
-            self.buffer.clear();
-            self.section_length = None;
-
             if pointer + 1 > payload.len() {
                 return Err(TsError::invalid_input(
                     2001,
                     Some("PUSI pointer beyond payload"),
                 ));
             }
-            let section_data = &payload[1 + pointer..];
-            return self.append(section_data);
+
+            // Bytes before the next section are the tail of the previous one.
+            if pointer > 0
+                && !self.buffer.is_empty()
+                && let Some(section) = self.append(&payload[1..1 + pointer])?
+            {
+                completed.push(section);
+            }
+
+            // Start a new section.
+            self.buffer.clear();
+            self.section_length = None;
+            if let Some(section) = self.append(&payload[1 + pointer..])? {
+                completed.push(section);
+            }
+            return Ok(completed);
         }
 
         // Continuation of a section in progress.
         if self.buffer.is_empty() && self.section_length.is_none() {
             // No active section; ignore this payload.
-            return Ok(None);
+            return Ok(completed);
         }
-        self.append(payload)
+        if let Some(section) = self.append(payload)? {
+            completed.push(section);
+        }
+        Ok(completed)
     }
 
     fn append(&mut self, data: &[u8]) -> Result<Option<Vec<u8>>, TsError> {
