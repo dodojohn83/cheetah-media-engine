@@ -67,3 +67,16 @@ export {
   type WebCodecsBackendOptions,
   type WebCodecsMetrics,
 } from './webcodecs';
+export {
+  MseBackend,
+  mseBackendFactory,
+  MseError,
+  type MseErrorCode,
+  type MseCallbacks,
+  type MseBackendOptions,
+  type MseMetrics,
+  type HTMLVideoElementLike,
+  type TimeRangesLike,
+  type SourceBufferLike,
+  type MediaSourceLike,
+} from './mse';
