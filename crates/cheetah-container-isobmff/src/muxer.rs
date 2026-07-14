@@ -217,7 +217,7 @@ pub(crate) fn write_mvhd(configs: &BTreeMap<u32, TrackConfig>) -> Vec<u8> {
     write_u32(&mut body, 0x00010000); // rate
     write_u16(&mut body, 0x0100); // volume
     body.extend_from_slice(&[0u8; 10]); // reserved
-    body.extend_from_slice(&[0u8; 36]); // matrix
+    body.extend_from_slice(&identity_matrix()); // matrix
     body.extend_from_slice(&[0u8; 24]); // pre_defined
     let next_track_id = configs.keys().next_back().copied().unwrap_or(0) + 1;
     write_u32(&mut body, next_track_id);
@@ -244,7 +244,7 @@ pub(crate) fn write_tkhd(cfg: &TrackConfig) -> Vec<u8> {
     write_u16(&mut body, 0); // alternate_group
     write_u16(&mut body, 0); // volume
     write_u16(&mut body, 0); // reserved
-    body.extend_from_slice(&[0u8; 36]); // matrix
+    body.extend_from_slice(&identity_matrix()); // matrix
     let (w, h) = if cfg.kind == TrackKind::Video {
         (u32::from(cfg.width) << 16, u32::from(cfg.height) << 16)
     } else {
@@ -397,10 +397,10 @@ pub(crate) fn write_audio_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4
     write_u16(&mut body, 16); // samplesize
     write_u16(&mut body, 0); // pre_defined
     write_u16(&mut body, 0); // reserved
-    write_u32(
-        &mut body,
-        cfg.sample_rate.checked_shl(16).unwrap_or(cfg.sample_rate),
-    );
+    let sample_rate_fixed = (cfg.sample_rate as u64) << 16;
+    let sample_rate_u32 = u32::try_from(sample_rate_fixed)
+        .map_err(|_| Mp4Error::limit_exceeded("sample rate exceeds 16.16 fixed-point range"))?;
+    write_u32(&mut body, sample_rate_u32);
 
     body.extend(write_esds(cfg)?);
     Ok(write_box(types::MP4A, &body))
@@ -648,6 +648,14 @@ fn write_trun(packets: &[MediaPacket<'static>]) -> Result<(Vec<u8>, usize), Mp4E
     }
 
     Ok((write_box(types::TRUN, &body), data_offset_pos + 8))
+}
+
+fn identity_matrix() -> [u8; 36] {
+    let mut matrix = [0u8; 36];
+    matrix[0..4].copy_from_slice(&0x0001_0000u32.to_be_bytes()); // a
+    matrix[16..20].copy_from_slice(&0x0001_0000u32.to_be_bytes()); // d
+    matrix[32..36].copy_from_slice(&0x4000_0000u32.to_be_bytes()); // w
+    matrix
 }
 
 fn write_mdat(track_packets: &BTreeMap<u32, Vec<MediaPacket<'static>>>) -> Vec<u8> {
