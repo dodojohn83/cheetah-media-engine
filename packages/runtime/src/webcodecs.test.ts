@@ -346,4 +346,16 @@ describe('WebCodecsBackend', () => {
     await expect(backend.configure()).rejects.toThrow('audio decoder boom');
     expect(videoInstances[0]?.closed).toBe(true);
   });
+
+  it('completes stop even when decoder close throws', async () => {
+    class CloseThrowingVideoDecoder extends MockVideoDecoder {
+      close(): void {
+        throw new Error('already closed');
+      }
+    }
+    vi.stubGlobal('VideoDecoder', CloseThrowingVideoDecoder);
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+    await expect(backend.stop()).resolves.toBeUndefined();
+  });
 });

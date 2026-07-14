@@ -429,7 +429,11 @@ export class WebCodecsBackend implements MediaBackend {
     } catch {
       // ignore
     }
-    decoder.close();
+    try {
+      decoder.close();
+    } catch {
+      // ignore – decoder may already be closed (e.g. after an error)
+    }
   }
 
   private handleVideoOutput(frame: CloseableVideoFrame, gen: number): void {
