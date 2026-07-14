@@ -80,7 +80,7 @@ fn variant_selection_prefers_highest_under_cap() {
         ..Default::default()
     };
     let v = select_initial_variant(&master.variants, &caps).unwrap();
-    assert_eq!(v.bandwidth, 2_500_000);
+    assert_eq!(v.bandwidth, 1_000_000);
 }
 
 #[test]
@@ -161,4 +161,67 @@ fn master_variant_count_limit_rejected() {
         master.push_str(&alloc::format!("v{}.m3u8\n", i));
     }
     assert!(parse_master(&master, "http://x/").is_err());
+}
+
+#[test]
+fn resolve_absolute_path_no_double_slash() {
+    let master = r#"#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,CODECS="avc1.42e00a,mp4a.40.2"
+/live/playlist_1.m3u8
+"#;
+    let m = parse_master(master, "http://example.com").unwrap();
+    assert_eq!(m.variants[0].uri, "http://example.com/live/playlist_1.m3u8");
+
+    let m2 = parse_master(master, "http://example.com/").unwrap();
+    assert_eq!(
+        m2.variants[0].uri,
+        "http://example.com/live/playlist_1.m3u8"
+    );
+}
+
+#[test]
+fn llhls_tick_uses_part_target_interval() {
+    let media = r#"#EXTM3U
+#EXT-X-TARGETDURATION:6
+#EXT-X-PART-INF:PART-TARGET=0.5
+#EXT-X-SERVER-CONTROL:CAN-BLOCK-LOAD=YES,PART-HOLD-BACK=1.5
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-PART:DURATION=0.5,URI="part0.m4s",INDEPENDENT=YES
+#EXTINF:1.0,
+seg0.m4s
+"#;
+    let mut client = HlsClient::new("http://x/master.m3u8", HlsConfig::default());
+    let _ = client.start();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: "http://x/master.m3u8".to_string(),
+        body: MASTER.as_bytes().to_vec(),
+    });
+    let actions = client.handle_event(HlsEvent::PlaylistLoaded {
+        url: "http://example.com/playlist_1.m3u8".to_string(),
+        body: media.as_bytes().to_vec(),
+    });
+    assert!(!actions.is_empty());
+
+    // First tick should always reload.
+    let first = client.handle_event(HlsEvent::Tick { now_ms: 0 });
+    let reload1 = first
+        .iter()
+        .any(|a| matches!(a.kind, ActionKind::LoadPlaylist { .. }));
+    assert!(reload1);
+
+    // 200 ms is less than 0.5 s part target, so no reload.
+    let second = client.handle_event(HlsEvent::Tick { now_ms: 200 });
+    assert!(
+        !second
+            .iter()
+            .any(|a| matches!(a.kind, ActionKind::LoadPlaylist { .. }))
+    );
+
+    // 600 ms exceeds 500 ms part target, reload again.
+    let third = client.handle_event(HlsEvent::Tick { now_ms: 600 });
+    assert!(
+        third
+            .iter()
+            .any(|a| matches!(a.kind, ActionKind::LoadPlaylist { .. }))
+    );
 }

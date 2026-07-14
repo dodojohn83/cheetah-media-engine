@@ -227,9 +227,16 @@ impl HlsClient {
     fn on_tick(&mut self, now_ms: u64) -> Vec<HlsAction> {
         let mut actions = Vec::new();
         if self.media.is_some() && !self.media.as_ref().unwrap().end_list {
-            let interval = if self.media.as_ref().unwrap().server_control.is_some() {
-                // LL-HLS: reload as fast as part target.
-                self.config.reload_interval_ms
+            let interval = if let Some(part_target) = self
+                .media
+                .as_ref()
+                .unwrap()
+                .part_inf
+                .as_ref()
+                .map(|p| p.part_target)
+            {
+                // LL-HLS: poll at part-target cadence.
+                (part_target * 1000.0).max(1.0) as u64
             } else {
                 self.config.reload_interval_ms
             };
@@ -295,10 +302,6 @@ impl HlsClient {
                 discontinuity,
             }));
             return actions; // one segment per scheduling call
-        }
-
-        if media.end_list {
-            actions.push(error_action(HlsError::missing_tag("end")));
         }
 
         actions

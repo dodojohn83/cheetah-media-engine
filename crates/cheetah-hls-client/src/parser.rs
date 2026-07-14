@@ -676,14 +676,12 @@ fn resolve_url(base_uri: &str, uri: &str) -> Result<String, HlsError> {
         return Ok(uri.to_string());
     }
     if uri.starts_with('/') {
-        // Absolute path: keep scheme://host.
+        // Absolute path: keep scheme://authority only.
         if let Some(scheme_end) = base_uri.find("://") {
             let after_scheme = &base_uri[scheme_end + 3..];
-            if let Some(path_start) = after_scheme.find('/') {
-                let base_root = &base_uri[..scheme_end + 3 + path_start];
-                return Ok(format!("{}{}", base_root, uri));
-            }
-            return Ok(format!("{}/{}", base_uri, uri));
+            let authority_end = after_scheme.find('/').unwrap_or(after_scheme.len());
+            let root = &base_uri[..scheme_end + 3 + authority_end];
+            return Ok(format!("{}{}", root, uri));
         }
         return Ok(uri.to_string());
     }

@@ -104,8 +104,8 @@ fn codec_compatible(variant: &Variant, caps: &VariantCapabilities) -> bool {
         return true;
     }
     if variant.codecs.is_empty() {
-        // Conservative: if no codec info, only allow when no specific codec required.
-        return true;
+        // Without codec info we cannot confirm compatibility.
+        return false;
     }
     caps.required_codecs
         .iter()
