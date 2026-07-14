@@ -65,6 +65,7 @@ export class FallbackController {
   private current: MediaBackend | undefined = undefined;
   private currentCandidate: PlanCandidate | undefined = undefined;
   private tried = new Map<Backend, number>();
+  private attemptReasons = new Map<Backend, string>();
   private epoch = 0;
   private recoveryStartMs = 0;
   private stopped = false;
@@ -83,6 +84,7 @@ export class FallbackController {
   newEpoch(): void {
     this.epoch += 1;
     this.tried.clear();
+    this.attemptReasons.clear();
     this.recoveryStartMs = performance.now();
   }
 
@@ -129,7 +131,9 @@ export class FallbackController {
   async reportFailure(failureReason: string): Promise<MediaBackend | undefined> {
     if (this.stopped) return undefined;
     if (this.current) {
-      this.tried.set(this.current.identity, (this.tried.get(this.current.identity) ?? 0) + 1);
+      const identity = this.current.identity;
+      this.tried.set(identity, (this.tried.get(identity) ?? 0) + 1);
+      this.attemptReasons.set(identity, failureReason);
     }
     await this.stopCurrent();
     return this.configureNext(failureReason);
@@ -150,6 +154,7 @@ export class FallbackController {
   setPlan(plan: PlaybackPlan): void {
     this.plan = plan;
     this.tried.clear();
+    this.attemptReasons.clear();
   }
 
   getState(): FallbackState {
@@ -174,9 +179,21 @@ export class FallbackController {
     try {
       await backend.configure();
     } catch (err) {
-      // Mark both backend identities as tried for this epoch.
-      if (candidate.videoBackend) this.tried.set(candidate.videoBackend, 1);
-      if (candidate.audioBackend) this.tried.set(candidate.audioBackend, 1);
+      // Mark both backend identities as tried for this epoch and record reason.
+      const message = err instanceof Error ? err.message : String(err);
+      if (candidate.videoBackend) {
+        this.tried.set(candidate.videoBackend, 1);
+        this.attemptReasons.set(candidate.videoBackend, message);
+      }
+      if (candidate.audioBackend) {
+        this.tried.set(candidate.audioBackend, 1);
+        this.attemptReasons.set(candidate.audioBackend, message);
+      }
+      try {
+        await backend.stop();
+      } catch {
+        // ignore cleanup errors
+      }
       return undefined;
     }
 
@@ -216,7 +233,16 @@ export class FallbackController {
   }
 
   private buildAttemptChain(): { backend: Backend; reason: string }[] {
-    return this.plan.unsupported.map((u) => ({ backend: u.backend, reason: u.reason }));
+    const chain: { backend: Backend; reason: string }[] = [];
+    for (const [backend, reason] of this.attemptReasons) {
+      chain.push({ backend, reason });
+    }
+    for (const u of this.plan.unsupported) {
+      if (!this.attemptReasons.has(u.backend)) {
+        chain.push({ backend: u.backend, reason: u.reason });
+      }
+    }
+    return chain;
   }
 
   private describe(candidate: PlanCandidate): string {

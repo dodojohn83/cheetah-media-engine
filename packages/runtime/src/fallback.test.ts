@@ -120,7 +120,12 @@ describe('FallbackController', () => {
 
     await controller.configureNext('initial');
 
-    expect(events.some((e) => e.type === 'unsupported')).toBe(true);
+    const unsupported = events.find((e) => e.type === 'unsupported') as { type: 'unsupported'; payload: { attemptChain: { backend: string; reason: string }[] } } | undefined;
+    expect(unsupported).toBeDefined();
+    const chain = unsupported?.payload.attemptChain ?? [];
+    expect(chain.map((a) => a.backend)).toContain('webcodecs');
+    expect(chain.map((a) => a.backend)).toContain('mse');
+    expect(chain.every((a) => typeof a.reason === 'string' && a.reason.length > 0)).toBe(true);
   });
 
   it('stops accepting new work after stop()', async () => {
