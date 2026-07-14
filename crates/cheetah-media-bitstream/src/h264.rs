@@ -134,7 +134,7 @@ pub fn split_annexb<'a>(data: &'a [u8]) -> Result<Vec<NalUnit<'a>>, H264Error> {
     while pos < data.len() {
         let start = find_start_code(data, pos).ok_or(H264Error::InvalidStartCode)?;
         let mut code_len = 3usize;
-        if start + 3 < data.len() && data[start + 3] == 0x01 {
+        if start + 3 < data.len() && data[start + 2] == 0x00 && data[start + 3] == 0x01 {
             code_len = 4;
         }
         let header_pos = start + code_len;
@@ -276,18 +276,28 @@ impl Sps {
                 for i in 0..n {
                     let present = cursor.read_bool()?;
                     if present {
-                        // Skip scaling list coefficients. We only need dimensions,
-                        // so consume enough bits to stay aligned with the SPS bitstream.
+                        // Consume scaling_list() coefficients per H.264 spec
+                        // 7.3.2.1.1.1; values are discarded because we only need
+                        // dimensions from the SPS.
                         let size = if i < 6 { 16 } else { 64 };
-                        let use_default = cursor.read_bool()?;
-                        if !use_default {
-                            for _ in 0..size {
-                                let _coef = cursor.read_se()?;
+                        let mut last_scale = 8i64;
+                        let mut next_scale = 8i64;
+                        for _ in 0..size {
+                            if next_scale != 0 {
+                                let delta_scale = cursor.read_se()?;
+                                next_scale = (last_scale + delta_scale + 256) % 256;
                             }
+                            last_scale = next_scale;
                         }
                     }
                 }
             }
+        }
+
+        // For non-high profiles, chroma_format_idc is not explicitly signalled and
+        // shall be inferred as 1 (4:2:0) per H.264 spec 7.4.2.1.1.
+        if !high_profiles.contains(&sps.profile_idc) {
+            sps.chroma_format_idc = 1;
         }
 
         sps.log2_max_frame_num_minus4 = cursor.read_ue()?;
@@ -323,16 +333,17 @@ impl Sps {
         let width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
         let height_in_map_units = sps.pic_height_in_map_units_minus1 + 1;
         let mb_height = if sps.frame_mbs_only_flag { 1 } else { 2 };
-        let crop_unit_x = if sps.chroma_format_idc == 1 || sps.chroma_format_idc == 2 {
+
+        // SubWidthC / SubHeightC per H.264 Table 6-1.
+        let sub_width_c = if sps.chroma_format_idc == 1 || sps.chroma_format_idc == 2 {
             2
         } else {
             1
         };
-        let crop_unit_y = if sps.chroma_format_idc == 1 || sps.chroma_format_idc == 3 {
-            2
-        } else {
-            1
-        };
+        let sub_height_c = if sps.chroma_format_idc == 1 { 2 } else { 1 };
+        let crop_unit_x = sub_width_c;
+        // CropUnitY includes the frame_mbs_only_flag factor per spec.
+        let crop_unit_y = sub_height_c * mb_height;
 
         let mut width = (width_in_mbs * 16) as u32;
         let mut height = (height_in_map_units * 16 * mb_height) as u32;
@@ -561,5 +572,46 @@ mod tests {
         let config = H264CodecConfig::parse(&avcc).unwrap();
         assert_eq!(config.avc_profile_indication, 0x42);
         assert!(config.sps.starts_with(&[0x67, 0x42, 0x00, 0x1e]));
+    }
+
+    #[test]
+    fn annexb_distinguishes_3byte_start_code_from_4byte() {
+        // 3-byte start code followed by a NAL header byte of 0x01 (non-IDR slice).
+        let data = [0x00, 0x00, 0x01, 0x01, 0xab, 0xcd];
+        let units = split_annexb(&data).unwrap();
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].nal_type, 1);
+        assert_eq!(units[0].data, &[0x01, 0xab, 0xcd]);
+    }
+
+    #[test]
+    fn sps_crop_defaults_to_4_2_0_for_baseline() {
+        // Baseline profile SPS (66) with frame_mbs_only_flag=1 and
+        // frame cropping offsets of 8 on all sides. With 4:2:0 inferred
+        // chroma_format_idc, crop units are 2, so width/height should be
+        // 256 - (8+8)*2 = 224. Before the fix they were 240 because
+        // crop_unit_x/y defaulted to 1.
+        let sps_rbsp = [
+            0x42, 0x00, 0x1e, 0xf8, 0x20, 0x10, 0xe2, 0x44, 0x89, 0x12, 0x80,
+        ];
+        let sps = Sps::parse(&sps_rbsp).unwrap();
+        assert_eq!(sps.profile_idc, 66);
+        assert_eq!(sps.chroma_format_idc, 1);
+        assert_eq!(sps.width, 224);
+        assert_eq!(sps.height, 224);
+    }
+
+    #[test]
+    fn sps_scaling_list_parses_high_profile() {
+        // High profile (100) SPS with seq_scaling_matrix_present_flag=1,
+        // one 4x4 scaling list whose first delta_scale terminates parsing.
+        // Before the fix this SPS failed because the parser read a
+        // non-existent use_default flag.
+        let sps_rbsp = [0x64, 0x00, 0x1e, 0xad, 0x84, 0x40, 0x78, 0x20, 0x10, 0xc8];
+        let sps = Sps::parse(&sps_rbsp).unwrap();
+        assert_eq!(sps.profile_idc, 100);
+        assert_eq!(sps.chroma_format_idc, 1);
+        assert_eq!(sps.width, 256);
+        assert_eq!(sps.height, 256);
     }
 }

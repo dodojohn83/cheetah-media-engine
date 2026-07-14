@@ -30,9 +30,11 @@ impl MpegVersion {
             (Self::V1, Layer::I) => 384,
             (Self::V1, Layer::II) | (Self::V1, Layer::III) => 1152,
             (Self::V2, Layer::I) => 384,
-            (Self::V2, Layer::II) | (Self::V2, Layer::III) => 1152,
+            (Self::V2, Layer::II) => 1152,
+            (Self::V2, Layer::III) => 576,
             (Self::V25, Layer::I) => 384,
-            (Self::V25, Layer::II) | (Self::V25, Layer::III) => 1152,
+            (Self::V25, Layer::II) => 1152,
+            (Self::V25, Layer::III) => 576,
             _ => 0,
         }
     }
@@ -308,5 +310,16 @@ mod tests {
     fn mp3_header_invalid_sync() {
         let data = [0x00, 0x00, 0x00, 0x00];
         assert!(Mp3Header::parse(&data).is_err());
+    }
+
+    #[test]
+    fn mp3_mpeg2_layer_iii_samples_per_frame() {
+        // 0xfff2 9064 -> MPEG-2 Layer III, 80kbps, 22.05kHz, joint stereo.
+        let data = [0xff, 0xf2, 0x90, 0x64];
+        let header = Mp3Header::parse(&data).unwrap();
+        assert_eq!(header.version, MpegVersion::V2);
+        assert_eq!(header.layer, Layer::III);
+        assert_eq!(header.samples_per_frame, 576);
+        assert_eq!(header.frame_length, 261);
     }
 }

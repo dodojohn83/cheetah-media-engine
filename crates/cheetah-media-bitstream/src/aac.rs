@@ -172,7 +172,7 @@ impl AdtsHeader {
         let mut out = Vec::with_capacity(7);
         out.push(0xff);
         out.push(
-            0xf1 | ((self.id & 0x01) << 3)
+            0xf0 | ((self.id & 0x01) << 3)
                 | ((self.layer & 0x03) << 1)
                 | (if self.protection_absent { 0x01 } else { 0x00 }),
         );
@@ -261,5 +261,30 @@ mod tests {
         assert_eq!(parsed.frame_length, 100);
         assert_eq!(parsed.sampling_frequency, 44100);
         assert_eq!(parsed.channel_count, 2);
+    }
+
+    #[test]
+    fn adts_header_build_respects_protection_absent() {
+        let header = AdtsHeader {
+            id: 0,
+            layer: 0,
+            protection_absent: false,
+            profile: 1,
+            sampling_frequency_index: 4,
+            sampling_frequency: 44100,
+            private_bit: 0,
+            channel_configuration: 2,
+            channel_count: 2,
+            frame_length: 100,
+            buffer_fullness: 0,
+            number_of_raw_data_blocks_in_frame: 0,
+            crc_present: true,
+            samples_per_frame: 1024,
+            duration_ms: 23,
+        };
+        let bytes = header.build();
+        let parsed = AdtsHeader::parse(&bytes).unwrap();
+        assert!(!parsed.protection_absent);
+        assert!(parsed.crc_present);
     }
 }

@@ -202,7 +202,7 @@ pub fn split_annexb<'a>(data: &'a [u8]) -> Result<Vec<NalUnit<'a>>, H265Error> {
     while pos < data.len() {
         let start = find_start_code(data, pos).ok_or(H265Error::InvalidStartCode)?;
         let mut code_len = 3usize;
-        if start + 3 < data.len() && data[start + 3] == 0x01 {
+        if start + 3 < data.len() && data[start + 2] == 0x00 && data[start + 3] == 0x01 {
             code_len = 4;
         }
         let header_pos = start + code_len;
@@ -549,5 +549,16 @@ mod tests {
         assert_eq!(parsed.pps, pps.to_vec());
         assert_eq!(parsed.general_profile_idc, 1);
         assert_eq!(parsed.general_level_idc, 93);
+    }
+
+    #[test]
+    fn annexb_distinguishes_3byte_start_code_from_4byte() {
+        // 3-byte start code followed by a NAL header whose first byte is 0x01.
+        let data = [0x00, 0x00, 0x01, 0x01, 0x02, 0xab, 0xcd];
+        let units = split_annexb(&data).unwrap();
+        assert_eq!(units.len(), 1);
+        // nal_unit_type is (0x01 >> 1) & 0x3f = 0.
+        assert_eq!(units[0].nal_unit_type, 0);
+        assert_eq!(units[0].data, &[0x01, 0x02, 0xab, 0xcd]);
     }
 }

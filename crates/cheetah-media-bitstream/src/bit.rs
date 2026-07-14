@@ -66,8 +66,10 @@ impl<'a> BitCursor<'a> {
     /// Skip to the next byte boundary, returning the skipped bits.
     pub fn skip_to_byte_alignment(&mut self) -> u8 {
         let skipped = if self.bit == 0 { 0 } else { 8 - self.bit };
-        self.bit = 0;
-        self.pos += 1;
+        if self.bit != 0 {
+            self.bit = 0;
+            self.pos += 1;
+        }
         skipped
     }
 
@@ -174,5 +176,15 @@ mod tests {
         assert_eq!(c.read_se().unwrap(), 1);
         assert_eq!(c.read_se().unwrap(), -1);
         assert_eq!(c.read_se().unwrap(), 2);
+    }
+
+    #[test]
+    fn skip_to_byte_alignment_only_advances_when_needed() {
+        let mut c = BitCursor::new(&[0xff, 0x00]);
+        assert!(c.read_bool().unwrap());
+        assert_eq!(c.skip_to_byte_alignment(), 7);
+        assert!(c.is_byte_aligned());
+        assert_eq!(c.read_u32(8).unwrap(), 0x00);
+        assert_eq!(c.skip_to_byte_alignment(), 0);
     }
 }
