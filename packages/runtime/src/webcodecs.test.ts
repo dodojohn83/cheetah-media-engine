@@ -182,6 +182,13 @@ describe('WebCodecsBackend', () => {
     await expect(backend.configure()).rejects.toThrow('WebCodecs API not available');
   });
 
+  it('configures video-only when AudioDecoder is missing', async () => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal('VideoDecoder', MockVideoDecoder);
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await expect(backend.configure()).resolves.toBeUndefined();
+  });
+
   it('emits decoded video and audio frames', async () => {
     const onVideoFrame = vi.fn();
     const onAudioData = vi.fn();
@@ -224,7 +231,7 @@ describe('WebCodecsBackend', () => {
     expect(onVideoFrame).toHaveBeenCalledTimes(before);
   });
 
-  it('forwards decoder errors to onError callback', async () => {
+  it('forwards decoder errors to onError callback and resets pending count', async () => {
     const onError = vi.fn();
     const decoders: MockVideoDecoder[] = [];
     vi.stubGlobal('VideoDecoder', class extends MockVideoDecoder {
@@ -239,9 +246,16 @@ describe('WebCodecsBackend', () => {
       callbacks: { onError },
     });
     await backend.configure();
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x65]), 1000, { isKeyFrame: true });
+    expect(backend.metrics.pendingDecodes).toBe(1);
+
     decoders[decoders.length - 1]?.simulateError('decode failed');
 
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'decode failed' }));
+    expect(backend.metrics.pendingDecodes).toBe(0);
+    // Further pushes are ignored after error.
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x65]), 2000, { isKeyFrame: true });
+    expect(backend.metrics.pendingDecodes).toBe(0);
   });
 
   it('drops video chunks when the decode queue is full', async () => {

@@ -15,7 +15,7 @@ export interface CloseableVideoFrame {
   readonly timestamp: number;
   readonly codedWidth: number;
   readonly codedHeight: number;
-  readonly format: string;
+  readonly format: string | null;
   close(): void;
 }
 
@@ -230,6 +230,7 @@ export class WebCodecsBackend implements MediaBackend {
   private generation = 0;
   private stopped = true;
   private closing = false;
+  private errored = false;
   private configured = false;
   private videoConfig: VideoDecoderConfig | undefined = undefined;
   private audioConfig: AudioDecoderConfig | undefined = undefined;
@@ -258,16 +259,16 @@ export class WebCodecsBackend implements MediaBackend {
       throw new Error('WebCodecsBackend already configured');
     }
 
-    const VideoDecoder = getGlobal<VideoDecoderConstructor>('VideoDecoder');
-    const AudioDecoder = getGlobal<AudioDecoderConstructor>('AudioDecoder');
-    if (!VideoDecoder || !AudioDecoder) {
-      throw new Error('WebCodecs API not available');
-    }
+    const VideoDecoder = getGlobal<unknown>('VideoDecoder') as VideoDecoderConstructor | undefined;
+    const AudioDecoder = getGlobal<unknown>('AudioDecoder') as AudioDecoderConstructor | undefined;
 
     const videoTrack = this.tracks.find((t) => t.kind === 'video');
     const audioTrack = this.tracks.find((t) => t.kind === 'audio');
 
     if (videoTrack) {
+      if (!VideoDecoder) {
+        throw new Error('WebCodecs API not available (VideoDecoder missing)');
+      }
       this.videoConfig = buildVideoConfig(videoTrack);
       const support = await VideoDecoder.isConfigSupported(this.videoConfig);
       if (!support.supported) {
@@ -275,13 +276,14 @@ export class WebCodecsBackend implements MediaBackend {
       }
     }
 
-    if (audioTrack) {
-      if (isAudioCodec(audioTrack.codec)) {
-        this.audioConfig = buildAudioConfig(audioTrack);
-        const support = await AudioDecoder.isConfigSupported(this.audioConfig);
-        if (!support.supported) {
-          throw new Error(`AudioDecoder does not support ${this.audioConfig.codec}`);
-        }
+    if (audioTrack && isAudioCodec(audioTrack.codec)) {
+      if (!AudioDecoder) {
+        throw new Error('WebCodecs API not available (AudioDecoder missing)');
+      }
+      this.audioConfig = buildAudioConfig(audioTrack);
+      const support = await AudioDecoder.isConfigSupported(this.audioConfig);
+      if (!support.supported) {
+        throw new Error(`AudioDecoder does not support ${this.audioConfig.codec}`);
       }
     }
 
@@ -289,6 +291,7 @@ export class WebCodecsBackend implements MediaBackend {
     this.stopped = false;
 
     if (this.videoConfig) {
+      if (!VideoDecoder) throw new Error('VideoDecoder disappeared during configure');
       const gen = this.generation;
       this.videoDecoder = new VideoDecoder({
         output: (frame) => this.handleVideoOutput(frame, gen),
@@ -298,6 +301,7 @@ export class WebCodecsBackend implements MediaBackend {
     }
 
     if (this.audioConfig) {
+      if (!AudioDecoder) throw new Error('AudioDecoder disappeared during configure');
       const gen = this.generation;
       this.audioDecoder = new AudioDecoder({
         output: (data) => this.handleAudioOutput(data, gen),
@@ -310,14 +314,14 @@ export class WebCodecsBackend implements MediaBackend {
   }
 
   pushVideo(data: Uint8Array, timestamp: number, opts?: { isKeyFrame?: boolean; duration?: number }): void {
-    if (this.stopped || this.closing || !this.videoDecoder || !this.videoConfig) return;
+    if (this.stopped || this.closing || this.errored || !this.videoDecoder || !this.videoConfig) return;
 
     if (this._metrics.pendingDecodes >= this.maxPending) {
       this._metrics.droppedChunks += 1;
       return;
     }
 
-    const EncodedVideoChunk = getGlobal<EncodedVideoChunkConstructor>('EncodedVideoChunk');
+    const EncodedVideoChunk = getGlobal<unknown>('EncodedVideoChunk') as EncodedVideoChunkConstructor | undefined;
     if (!EncodedVideoChunk) return;
 
     const type = opts?.isKeyFrame ?? guessKeyFrame(data, this.videoConfig.codec) ? 'key' : 'delta';
@@ -337,14 +341,14 @@ export class WebCodecsBackend implements MediaBackend {
   }
 
   pushAudio(data: Uint8Array, timestamp: number, opts?: { duration?: number }): void {
-    if (this.stopped || this.closing || !this.audioDecoder || !this.audioConfig) return;
+    if (this.stopped || this.closing || this.errored || !this.audioDecoder || !this.audioConfig) return;
 
     if (this._metrics.pendingDecodes >= this.maxPending) {
       this._metrics.droppedChunks += 1;
       return;
     }
 
-    const EncodedAudioChunk = getGlobal<EncodedAudioChunkConstructor>('EncodedAudioChunk');
+    const EncodedAudioChunk = getGlobal<unknown>('EncodedAudioChunk') as EncodedAudioChunkConstructor | undefined;
     if (!EncodedAudioChunk) return;
 
     const chunk = new EncodedAudioChunk({
@@ -387,6 +391,7 @@ export class WebCodecsBackend implements MediaBackend {
 
     this.stopped = true;
     this.closing = false;
+    this.errored = false;
     this.configured = false;
     this.generation += 1;
     this.pendingReconfigure = false;
@@ -425,8 +430,16 @@ export class WebCodecsBackend implements MediaBackend {
   }
 
   private handleError(error: Error): void {
-    if (this.stopped) return;
+    if (this.stopped || this.errored) return;
+    this.errored = true;
+    // Pending decodes will never complete once the decoder is in an error state;
+    // reset the counter so the bounded queue does not stay saturated.
+    this._metrics.pendingDecodes = 0;
     this.callbacks.onError?.(error);
+    // Begin async cleanup; the fallback controller will normally replace this
+    // backend, but stopping here prevents further decode() calls on a broken
+    // decoder.
+    this.stop().catch(() => undefined);
   }
 }
 
