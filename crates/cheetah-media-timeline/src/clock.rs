@@ -212,8 +212,10 @@ impl MediaClock {
         }
 
         // Update running jitter estimate: maximum deviation of consecutive deltas.
+        // Skip when `last_delta` is zero (first sample or after a reset/wrap/discontinuity)
+        // so the metric is not seeded with the first interval.
         let jitter_deviation = delta.saturating_sub(last_delta).abs();
-        if jitter_deviation > self.stats.jitter_ms * 1000 {
+        if last_delta != 0 && jitter_deviation > self.stats.jitter_ms * 1000 {
             self.stats.jitter_ms = jitter_deviation / 1000;
         }
 
@@ -221,7 +223,11 @@ impl MediaClock {
             base_us,
             last_raw_us: current_raw_us,
             last_clock_us: clock_us,
-            last_delta_us: delta,
+            last_delta_us: if is_discontinuity || is_wrap {
+                0
+            } else {
+                delta
+            },
         };
         self.epochs.insert(epoch, new_state);
 

@@ -99,13 +99,13 @@ impl AvSync {
         // Large forward jump: drop non-reference frames and hold keyframes until
         // the audio clock catches up.
         if self.audio_available && drift_ms > self.max_drift_ms {
-            self.clock.add_dropped(drift_ms);
             self.clock.set_state(ClockState::CatchUp);
             if is_keyframe {
                 return Ok(SyncDecision::Hold {
                     until: ClockTime::new(audio_ms * 1000),
                 });
             }
+            self.clock.add_dropped(drift_ms);
             return Ok(SyncDecision::Drop {
                 reason: "video too far ahead, dropping non-reference frame",
             });
@@ -114,14 +114,14 @@ impl AvSync {
         // Late video: drop non-reference frames to catch up, but render keyframes
         // so the decoder still has a valid reference point.
         if self.audio_available && drift_ms < -self.late_threshold_ms {
-            self.clock
-                .add_dropped((-drift_ms).min(self.late_threshold_ms));
             self.clock.set_state(ClockState::CatchUp);
             if is_keyframe {
                 return Ok(SyncDecision::Render {
                     target: render_time,
                 });
             }
+            self.clock
+                .add_dropped((-drift_ms).min(self.late_threshold_ms));
             return Ok(SyncDecision::Drop {
                 reason: "video late, dropping non-reference frame",
             });
