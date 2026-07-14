@@ -55,6 +55,8 @@ pub enum NalUnitType {
     IdrWRadl = 19,
     IdrNLp = 20,
     CraNut = 21,
+    RsvIrapVcl22 = 22,
+    RsvIrapVcl23 = 23,
     VpsNut = 32,
     SpsNut = 33,
     PpsNut = 34,
@@ -83,6 +85,8 @@ impl NalUnitType {
             19 => Self::IdrWRadl,
             20 => Self::IdrNLp,
             21 => Self::CraNut,
+            22 => Self::RsvIrapVcl22,
+            23 => Self::RsvIrapVcl23,
             32 => Self::VpsNut,
             33 => Self::SpsNut,
             34 => Self::PpsNut,
@@ -571,5 +575,19 @@ mod tests {
         // nal_unit_type is (0x01 >> 1) & 0x3f = 0.
         assert_eq!(units[0].nal_unit_type, 0);
         assert_eq!(units[0].data, &[0x01, 0x02, 0xab, 0xcd]);
+    }
+
+    #[test]
+    fn reserved_irap_nal_types_recognized() {
+        // Reserved IRAP NAL types 22 and 23 must still be detected as IRAP.
+        for nal_type in [22u8, 23u8] {
+            let header0 = (nal_type << 1) & 0x7e; // forbidden=0, nal_type in upper 6 bits
+            let header1 = 0x01; // nuh_layer_id=0, temporal_id_plus1=1
+            let data = [0x00, 0x00, 0x00, 0x01, header0, header1, 0xab, 0xcd];
+            let units = split_annexb(&data).unwrap();
+            assert_eq!(units.len(), 1);
+            assert_eq!(units[0].nal_unit_type, nal_type);
+            assert!(units[0].is_irap());
+        }
     }
 }
