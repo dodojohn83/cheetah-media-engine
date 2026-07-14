@@ -71,21 +71,15 @@ impl TsPacket {
                 has_random_access_indicator = (flags & 0x40) != 0;
                 let pcr_flag = (flags & 0x10) != 0;
                 if pcr_flag && adapt_len >= 7 {
-                    let pcr_base =
-                        (u64::from(cursor.read_u8().map_err(|_| TsError::PacketTooShort)?) << 25)
-                            | (u64::from(cursor.read_u8().map_err(|_| TsError::PacketTooShort)?)
-                                << 17)
-                            | (u64::from(cursor.read_u8().map_err(|_| TsError::PacketTooShort)?)
-                                << 9)
-                            | (u64::from(cursor.read_u8().map_err(|_| TsError::PacketTooShort)?)
-                                << 1)
-                            | (u64::from(cursor.read_u8().map_err(|_| TsError::PacketTooShort)?)
-                                >> 7);
-                    let _reserved = cursor.read_u8().map_err(|_| TsError::PacketTooShort)?;
-                    let ext_hi =
-                        u16::from(cursor.read_u8().map_err(|_| TsError::PacketTooShort)? & 0x01);
-                    let ext_lo = u16::from(cursor.read_u8().map_err(|_| TsError::PacketTooShort)?);
-                    let pcr_ext = u64::from((ext_hi << 8) | ext_lo);
+                    let pcr_bytes = cursor.read_bytes(6).map_err(|_| TsError::PacketTooShort)?;
+                    let pcr_base = ((u64::from(pcr_bytes[0]) << 25)
+                        | (u64::from(pcr_bytes[1]) << 17)
+                        | (u64::from(pcr_bytes[2]) << 9)
+                        | (u64::from(pcr_bytes[3]) << 1)
+                        | (u64::from(pcr_bytes[4]) >> 7))
+                        & 0x1FFFFFFFF;
+                    let pcr_ext =
+                        ((u16::from(pcr_bytes[4] & 0x01) << 8) | u16::from(pcr_bytes[5])) as u64;
                     pcr = Some(pcr_base * 300 + pcr_ext);
                     has_pcr = true;
                 }

@@ -507,5 +507,33 @@ fn demuxer_buffer_compaction_does_not_panic() {
             packets += 1;
         }
     }
-    assert!(packets >= 30, "expected at least 30 packets after buffer compaction");
+    assert!(
+        packets >= 30,
+        "expected at least 30 packets after buffer compaction"
+    );
+}
+
+#[test]
+fn parse_pcr_round_trip() {
+    let mut pkt = [0xff; 188];
+    pkt[0] = 0x47;
+    pkt[1] = 0x00;
+    pkt[2] = 0x00;
+    pkt[3] = 0x20; // afc=2, cc=0
+    pkt[4] = 0x07; // adaptation field length
+    pkt[5] = 0x10; // PCR flag
+
+    let pcr = 3_703_567u64;
+    let base = pcr / 300;
+    let ext = pcr % 300;
+    pkt[6] = ((base >> 25) & 0xff) as u8;
+    pkt[7] = ((base >> 17) & 0xff) as u8;
+    pkt[8] = ((base >> 9) & 0xff) as u8;
+    pkt[9] = ((base >> 1) & 0xff) as u8;
+    pkt[10] = (((base & 0x01) << 7) | 0x7e | ((ext >> 8) & 0x01)) as u8;
+    pkt[11] = (ext & 0xff) as u8;
+
+    let p = packet::TsPacket::parse(&pkt).unwrap();
+    assert!(p.has_pcr);
+    assert_eq!(p.pcr, Some(pcr));
 }
