@@ -186,19 +186,28 @@ function buildAudioConfig(track: TrackProfile): AudioDecoderConfig {
 
 function isAnnexBKeyFrame(data: Uint8Array, codec: string): boolean | undefined {
   let offset = 0;
-  // Skip leading start code(s).
-  while (offset + 4 < data.length) {
-    if (data[offset] === 0 && data[offset + 1] === 0 && data[offset + 2] === 1) {
+  let found = false;
+  // Allow 3- and 4-byte start codes and protect the NAL header read.
+  while (offset + 3 <= data.length) {
+    const b0 = data[offset]!;
+    const b1 = data[offset + 1]!;
+    const b2 = data[offset + 2]!;
+    if (b0 === 0 && b1 === 0 && b2 === 1) {
       offset += 3;
+      found = true;
       break;
     }
-    if (data[offset] === 0 && data[offset + 1] === 0 && data[offset + 2] === 0 && data[offset + 3] === 1) {
-      offset += 4;
-      break;
+    if (offset + 4 <= data.length) {
+      const b3 = data[offset + 3]!;
+      if (b0 === 0 && b1 === 0 && b2 === 0 && b3 === 1) {
+        offset += 4;
+        found = true;
+        break;
+      }
     }
     offset += 1;
   }
-  if (offset >= data.length) return undefined;
+  if (!found || offset >= data.length) return undefined;
 
   const header = data[offset]!;
   const c = codec.toLowerCase();

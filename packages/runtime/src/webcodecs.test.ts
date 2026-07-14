@@ -278,6 +278,36 @@ describe('WebCodecsBackend', () => {
     expect(onVideoFrame).toHaveBeenCalledTimes(2);
   });
 
+  it('detects Annex-B keyframes in short buffers', async () => {
+    class CaptureVideoDecoder extends MockVideoDecoder {
+      chunks: MockEncodedVideoChunk[] = [];
+      decode(chunk: object): void {
+        this.chunks.push(chunk as MockEncodedVideoChunk);
+        super.decode(chunk);
+      }
+    }
+
+    const decoders: CaptureVideoDecoder[] = [];
+    vi.stubGlobal('VideoDecoder', class extends CaptureVideoDecoder {
+      constructor(init: { output: () => void; error: (err: Error) => void }) {
+        super(init);
+        decoders.push(this);
+      }
+    });
+
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+
+    backend.pushVideo(new Uint8Array([0, 0, 1, 0x65]), 1000); // 3-byte start code + IDR
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x41]), 2000); // 4-byte start code + non-IDR
+    backend.pushVideo(new Uint8Array([0, 1, 2, 3, 0x65]), 3000); // no start code
+
+    const last = decoders[decoders.length - 1]!;
+    expect(last.chunks[0]?.type).toBe('key');
+    expect(last.chunks[1]?.type).toBe('delta');
+    expect(last.chunks[2]?.type).toBe('delta');
+  });
+
   it('throws when configure is called twice', async () => {
     const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
     await backend.configure();
