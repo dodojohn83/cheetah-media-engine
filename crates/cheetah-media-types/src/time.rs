@@ -125,20 +125,25 @@ impl Timestamp {
     /// point arithmetic.
     pub fn unwrapped_around(self, previous: Self, wrap_bits: u8) -> Self {
         assert!((1..=62).contains(&wrap_bits), "wrap_bits must be in 1..=62");
-        let mask = (1i64 << wrap_bits) - 1;
-        let low = self.0 & mask;
-        let prev = previous.0;
-        let half = 1i64 << (wrap_bits - 1);
-        let delta = low.wrapping_sub(prev & mask);
+        let value = i128::from(self.0);
+        let prev = i128::from(previous.0);
+        let mask = (1i128 << wrap_bits) - 1;
+        let low = value & mask;
+        let prev_low = prev & mask;
+        let half = 1i128 << (wrap_bits - 1);
+        let delta = low - prev_low;
         let adjust = if delta > half {
-            -(1i64 << wrap_bits)
+            -(1i128 << wrap_bits)
         } else if delta < -half {
-            1i64 << wrap_bits
+            1i128 << wrap_bits
         } else {
             0
         };
-        let base = (prev & !mask) + adjust;
-        Self::new(base + low)
+        let result = (prev & !mask) + low + adjust;
+        match i64::try_from(result) {
+            Ok(ticks) => Self::new(ticks),
+            Err(_) => self,
+        }
     }
 
     /// True if this timestamp is within `threshold` ticks before `other`, indicating

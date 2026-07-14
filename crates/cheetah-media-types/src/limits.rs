@@ -92,15 +92,21 @@ impl MediaLimits {
     /// Check a resolution against `max_resolution`.
     pub fn check_resolution(&self, width: u32, height: u32) -> Result<(), MediaError> {
         let (max_w, max_h) = self.max_resolution;
-        if width > max_w || height > max_h {
-            Err(MediaError::ResourceLimit {
-                name: "resolution",
+        if width > max_w {
+            return Err(MediaError::ResourceLimit {
+                name: "resolution_width",
                 current: u64::from(width),
                 limit: u64::from(max_w),
-            })
-        } else {
-            Ok(())
+            });
         }
+        if height > max_h {
+            return Err(MediaError::ResourceLimit {
+                name: "resolution_height",
+                current: u64::from(height),
+                limit: u64::from(max_h),
+            });
+        }
+        Ok(())
     }
 
     /// Check that queue depth is within `max_queue_depth`.
@@ -141,10 +147,18 @@ mod tests {
     }
 
     #[test]
-    fn default_limits_reject_excessive_resolution() {
+    fn default_limits_reject_excessive_resolution_width() {
         let limits = MediaLimits::default();
         let err = limits.check_resolution(8192, 4320).unwrap_err();
         assert_eq!(err.code(), 5001);
+    }
+
+    #[test]
+    fn default_limits_reject_excessive_resolution_height() {
+        let limits = MediaLimits::default();
+        let err = limits.check_resolution(7680, 4321).unwrap_err();
+        assert_eq!(err.code(), 5001);
+        assert_eq!(err.stage(), "limit");
     }
 
     #[test]
