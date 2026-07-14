@@ -692,6 +692,11 @@ fn resolve_url(base_uri: &str, uri: &str) -> Result<String, HlsError> {
     }
     // Relative path: append to directory of base.
     let base_dir = if let Some(slash) = base_uri.rfind('/') {
+        // Make sure we don't match the '/' inside '://'.
+        if slash >= 2 && &base_uri[slash - 2..=slash] == "://" {
+            // No path component; append a slash after the authority.
+            return Ok(format!("{}/{}", base_uri, uri));
+        }
         &base_uri[..slash + 1]
     } else {
         base_uri
@@ -724,6 +729,18 @@ mod tests {
         assert_eq!(
             resolve_url("http://x/a/b.m3u8", "c.m3u8").unwrap(),
             "http://x/a/c.m3u8"
+        );
+    }
+
+    #[test]
+    fn resolve_relative_no_path() {
+        assert_eq!(
+            resolve_url("http://example.com", "playlist.m3u8").unwrap(),
+            "http://example.com/playlist.m3u8"
+        );
+        assert_eq!(
+            resolve_url("http://example.com/", "playlist.m3u8").unwrap(),
+            "http://example.com/playlist.m3u8"
         );
     }
 }
