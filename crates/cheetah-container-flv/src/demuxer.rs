@@ -138,6 +138,11 @@ impl FlvDemuxer {
 
             let event = self.process_tag(tag)?;
 
+            // The tag body is not fully buffered yet.
+            if event.is_none() {
+                return Ok(None);
+            }
+
             // After a tag, optionally consume the 4-byte previous tag size.
             if let Some(total) = self.try_consume_previous_tag_size()? {
                 self.previous_tag_total_size = total;

@@ -60,6 +60,8 @@ pub struct FlvMuxer {
     output: Vec<u8>,
     audio: Option<TrackInfo>,
     video: Option<TrackInfo>,
+    audio_config_emitted: bool,
+    video_config_emitted: bool,
     queue: BinaryHeap<Reverse<QueuedPacket>>,
     header_written: bool,
     previous_tag_size: u32,
@@ -80,6 +82,8 @@ impl FlvMuxer {
             output: Vec::new(),
             audio: None,
             video: None,
+            audio_config_emitted: false,
+            video_config_emitted: false,
             queue: BinaryHeap::new(),
             header_written: false,
             previous_tag_size: 0,
@@ -101,38 +105,11 @@ impl FlvMuxer {
         self.queue.len()
     }
 
-    /// Write the FLV file header and any known track config tags.
+    /// Register a track. The header and config tags are emitted on the first
+    /// packet or on `finish`, so all `add_track` calls can complete before the
+    /// flags byte is written.
     pub fn add_track(&mut self, track: &TrackInfo) -> Result<(), FlvError> {
-        if !self.header_written {
-            self.write_header();
-        }
-
-        match track.kind {
-            TrackKind::Audio => {
-                if self.audio.is_some() {
-                    return Ok(());
-                }
-                self.audio = Some(track.clone());
-                if track.codec == CodecId::Aac {
-                    let body = build_aac_config(track)?;
-                    let ts = 0u32;
-                    self.write_tag(TagType::Audio, ts, &body)?;
-                }
-                // MP3/G.711 have no in-band config in FLV.
-            }
-            TrackKind::Video => {
-                if self.video.is_some() {
-                    return Ok(());
-                }
-                self.video = Some(track.clone());
-                if matches!(track.codec, CodecId::H264 | CodecId::H265) {
-                    let body = build_video_config(track)?;
-                    self.write_tag(TagType::Video, 0, &body)?;
-                }
-            }
-            TrackKind::Data => {}
-        }
-
+        self.ensure_track(track);
         Ok(())
     }
 
@@ -143,9 +120,11 @@ impl FlvMuxer {
         packet: MediaPacket<'static>,
         track: &TrackInfo,
     ) -> Result<(), FlvError> {
+        self.ensure_track(track);
         if !self.header_written {
             self.write_header();
         }
+        self.write_config_for_track(track)?;
 
         self.queue.push(Reverse(QueuedPacket {
             packet,
@@ -161,6 +140,15 @@ impl FlvMuxer {
 
     /// Flush the reorder queue and return all remaining bytes.
     pub fn finish(mut self) -> Result<Vec<u8>, FlvError> {
+        if !self.header_written {
+            self.write_header();
+        }
+        if let Some(track) = self.audio.clone() {
+            self.write_config_for_track(&track)?;
+        }
+        if let Some(track) = self.video.clone() {
+            self.write_config_for_track(&track)?;
+        }
         while self.queue.peek().is_some() {
             self.flush_oldest()?;
         }
@@ -172,13 +160,74 @@ impl FlvMuxer {
         Ok(self.output)
     }
 
+    fn ensure_track(&mut self, track: &TrackInfo) {
+        match track.kind {
+            TrackKind::Audio if self.audio.is_none() => {
+                self.audio = Some(track.clone());
+                self.patch_header_flags();
+            }
+            TrackKind::Video if self.video.is_none() => {
+                self.video = Some(track.clone());
+                self.patch_header_flags();
+            }
+            _ => {}
+        }
+    }
+
+    fn patch_header_flags(&mut self) {
+        if !self.header_written {
+            return;
+        }
+        let mut flags = 0u8;
+        if self.audio.is_some() {
+            flags |= 1 << 2;
+        }
+        if self.video.is_some() {
+            flags |= 1;
+        }
+        if self.output.len() > 4 {
+            self.output[4] = flags;
+        }
+    }
+
+    fn write_config_for_track(&mut self, track: &TrackInfo) -> Result<(), FlvError> {
+        match track.kind {
+            TrackKind::Audio => {
+                if self.audio_config_emitted {
+                    return Ok(());
+                }
+                if track.codec == CodecId::Aac {
+                    let body = build_aac_config(track)?;
+                    self.write_tag(TagType::Audio, 0, &body)?;
+                }
+                self.audio_config_emitted = true;
+            }
+            TrackKind::Video => {
+                if self.video_config_emitted {
+                    return Ok(());
+                }
+                if matches!(track.codec, CodecId::H264 | CodecId::H265) {
+                    let body = build_video_config(track)?;
+                    self.write_tag(TagType::Video, 0, &body)?;
+                }
+                self.video_config_emitted = true;
+            }
+            TrackKind::Data => {}
+        }
+        Ok(())
+    }
+
     fn write_header(&mut self) {
         if self.header_written {
             return;
         }
-        let has_audio = self.audio.is_some();
-        let has_video = self.video.is_some();
-        let flags = ((has_audio as u8) << 2) | (has_video as u8);
+        let mut flags = 0u8;
+        if self.audio.is_some() {
+            flags |= 1 << 2;
+        }
+        if self.video.is_some() {
+            flags |= 1;
+        }
         self.output.extend_from_slice(b"FLV");
         self.output.push(1); // version
         self.output.push(flags);

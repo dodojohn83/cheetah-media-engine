@@ -170,8 +170,14 @@ impl<'a> AmfParser<'a> {
             0x08 => self.parse_ecma_array(),
             0x09 => Ok(AmfValue::Unsupported), // Object end marker
             0x0a => self.parse_strict_array(),
-            0x0b => Ok(AmfValue::String(self.read_long_string()?)),
-            0x0c => Ok(AmfValue::Unsupported), // XML document
+            0x0b => {
+                // Date: 8-byte f64 milliseconds + 2-byte timezone offset.
+                let ts = self.read_f64_be()?;
+                self.ensure(2)?;
+                self.pos += 2;
+                Ok(AmfValue::Number(ts))
+            }
+            0x0c => Ok(AmfValue::String(self.read_long_string()?)), // Long string
             _ => Ok(AmfValue::Unsupported),
         }
     }
