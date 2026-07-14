@@ -7,9 +7,15 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Engine orchestration, state machine, and pipeline planner."
 
+[features]
+std = ["cheetah-media-pipeline-core/std", "cheetah-media-types/std"]
+
 [dependencies]
-cheetah-media-types = { path = "../cheetah-media-types" }
+cheetah-media-abi = { path = "../cheetah-media-abi" }
 cheetah-media-backend-api = { path = "../cheetah-media-backend-api" }
+cheetah-media-pipeline-core = { path = "../cheetah-media-pipeline-core" }
+cheetah-media-timeline = { path = "../cheetah-media-timeline" }
+cheetah-media-types = { path = "../cheetah-media-types" }
 
 [lints.rust]
 unsafe_code = "forbid"
