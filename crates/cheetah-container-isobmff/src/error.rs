@@ -25,6 +25,10 @@ impl Mp4Error {
         Self::InvalidInput { code, context }
     }
 
+    pub const fn limit_exceeded(limit: &'static str) -> Self {
+        Self::LimitExceeded { limit }
+    }
+
     pub const fn unsupported(code: u32, context: Option<&'static str>) -> Self {
         Self::Unsupported { code, context }
     }

@@ -229,3 +229,148 @@ fn demuxer_rejects_zero_size_box() {
     demuxer.push(&data);
     assert!(demuxer.next_event().is_err());
 }
+
+#[test]
+fn negative_composition_offset_roundtrip() {
+    let mut muxer = FragmentedMp4Muxer::new();
+    muxer.configure(make_video_config());
+
+    // pts = dts - 1000 ticks (B-frame-like negative CTS).
+    let mut pkt = make_video_packet(1, 0, 0, 0, true, vec![1u8; 10]);
+    pkt.flags.is_keyframe = true;
+    muxer.push_packet(pkt);
+
+    let mut pkt2 = make_video_packet(1, 1, 3000, 2000, false, vec![2u8; 10]);
+    pkt2.flags.is_keyframe = false;
+    muxer.push_packet(pkt2);
+
+    // Need a closing keyframe so the segment is flushed.
+    let mut pkt3 = make_video_packet(1, 2, 6000, 6000, true, vec![3u8; 10]);
+    pkt3.flags.is_keyframe = true;
+    muxer.push_packet(pkt3);
+
+    let out = collect_packets_from_muxer_and_demux(&mut muxer);
+    assert_eq!(out.len(), 3);
+    assert_eq!(out[0].time.pts.map(|t| t.ticks()), Some(0));
+    assert_eq!(out[0].time.dts.map(|t| t.ticks()), Some(0));
+    assert_eq!(out[1].time.pts.map(|t| t.ticks()), Some(2000));
+    assert_eq!(out[1].time.dts.map(|t| t.ticks()), Some(3000));
+    assert!(out[1].time.pts.map(|t| t.ticks()) < out[1].time.dts.map(|t| t.ticks()));
+    assert_eq!(out[2].time.pts.map(|t| t.ticks()), Some(6000));
+    assert_eq!(out[2].time.dts.map(|t| t.ticks()), Some(6000));
+}
+
+#[test]
+fn multi_track_av_sync_roundtrip() {
+    let mut muxer = FragmentedMp4Muxer::new();
+    let mut audio_cfg = make_audio_config();
+    let mut video_cfg = make_video_config();
+    audio_cfg.track_id = 1;
+    video_cfg.track_id = 2;
+    muxer.configure(audio_cfg);
+    muxer.configure(video_cfg);
+
+    let audio_payloads: Vec<_> = (0..3).map(|i| vec![0xa0 + i; 16]).collect();
+    let video_payloads: Vec<_> = (0..3).map(|i| vec![0x10 + i; 10]).collect();
+
+    for (i, payload) in audio_payloads.iter().cloned().enumerate() {
+        let a = make_audio_packet(1, i as u64, i as i64 * 1024, payload);
+        muxer.push_packet(a);
+    }
+    for (i, payload) in video_payloads.iter().cloned().enumerate() {
+        let v = make_video_packet(
+            2,
+            i as u64 + 10,
+            i as i64 * 3000,
+            i as i64 * 3000,
+            true,
+            payload,
+        );
+        muxer.push_packet(v);
+    }
+
+    let out = collect_packets_from_muxer_and_demux(&mut muxer);
+    let audio_out: Vec<_> = out.iter().filter(|p| p.track_id.get() == 1).collect();
+    let video_out: Vec<_> = out.iter().filter(|p| p.track_id.get() == 2).collect();
+    assert_eq!(audio_out.len(), 3);
+    assert_eq!(video_out.len(), 3);
+    for (i, pkt) in audio_out.iter().enumerate() {
+        assert_eq!(pkt.payload.as_ref(), &audio_payloads[i]);
+    }
+    for (i, pkt) in video_out.iter().enumerate() {
+        assert_eq!(pkt.payload.as_ref(), &video_payloads[i]);
+        assert!(pkt.flags.is_keyframe);
+    }
+}
+
+#[test]
+fn config_change_emits_new_init_segment() {
+    let mut muxer = FragmentedMp4Muxer::new();
+    muxer.configure(make_audio_config());
+    muxer.push_packet(make_audio_packet(1, 0, 0, vec![0u8; 16]));
+
+    let first = muxer.flush_segment().unwrap().unwrap();
+    assert!(first.init_segment.is_some());
+
+    // Same config: no new init segment.
+    muxer.push_packet(make_audio_packet(1, 1, 1024, vec![1u8; 16]));
+    let second = muxer.flush_segment().unwrap().unwrap();
+    assert!(second.init_segment.is_none());
+
+    // Change timescale -> new init segment.
+    let mut new_cfg = make_audio_config();
+    new_cfg.timescale = 48000;
+    muxer.configure(new_cfg);
+    muxer.push_packet(make_audio_packet(1, 2, 1024, vec![2u8; 16]));
+    let third = muxer.flush_segment().unwrap().unwrap();
+    assert!(third.init_segment.is_some());
+}
+
+#[test]
+fn fuzz_random_bytes_no_panic() {
+    // Deterministic pseudo-random bytes.
+    let mut state = 0x12345678u32;
+    let mut buf = Vec::with_capacity(4096);
+    for _ in 0..4096 {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        buf.push((state & 0xff) as u8);
+    }
+
+    let mut demuxer = IsobmffDemuxer::new();
+    demuxer.push(&buf);
+    for _ in 0..100 {
+        match demuxer.next_event() {
+            Ok(None) | Err(_) => break,
+            Ok(Some(_)) => {}
+        }
+    }
+}
+
+#[test]
+fn malicious_size_offset_count_returns_error() {
+    // A moof box with a traf/trun claiming 0xffff samples but providing no data.
+    let mut buf = Vec::new();
+    // moof size = 48 (header 8 + body 40)
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x30]);
+    buf.extend_from_slice(b"moof");
+    // mfhd size = 16
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x10]);
+    buf.extend_from_slice(b"mfhd");
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // version/flags
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // sequence
+    // traf size = 24 (header 8 + body 16)
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x18]);
+    buf.extend_from_slice(b"traf");
+    // trun size = 20 (header 8 + body 12): fullbox 4 + sample_count 4 + data_offset 4
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x14]);
+    buf.extend_from_slice(b"trun");
+    buf.extend_from_slice(&[0x01, 0x00, 0x0f, 0x01]); // version 1, all flags
+    buf.extend_from_slice(&0x0000_ffffu32.to_be_bytes()); // sample_count huge
+    buf.extend_from_slice(&0u32.to_be_bytes()); // data_offset
+
+    let mut demuxer = IsobmffDemuxer::new();
+    demuxer.push(&buf);
+    assert!(demuxer.next_event().is_err());
+}

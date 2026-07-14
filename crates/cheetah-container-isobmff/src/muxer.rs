@@ -576,7 +576,7 @@ fn write_traf(
     inner.extend_from_slice(&tfhd);
     let tfdt = write_tfdt(packets)?;
     inner.extend_from_slice(&tfdt);
-    let (trun_box, patch_pos_in_trun) = write_trun(packets);
+    let (trun_box, patch_pos_in_trun) = write_trun(packets)?;
     inner.extend_from_slice(&trun_box);
 
     // patch position relative to the start of the full `traf` box (size/type included).
@@ -604,7 +604,7 @@ fn write_tfdt(packets: &[MediaPacket<'static>]) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(types::TFDT, &body))
 }
 
-fn write_trun(packets: &[MediaPacket<'static>]) -> (Vec<u8>, usize) {
+fn write_trun(packets: &[MediaPacket<'static>]) -> Result<(Vec<u8>, usize), Mp4Error> {
     let mut body = Vec::new();
     let flags = 0x0000_0f01u32; // data_offset, duration, size, flags, composition offset
     body.extend_from_slice(&write_fullbox(1, flags));
@@ -615,26 +615,35 @@ fn write_trun(packets: &[MediaPacket<'static>]) -> (Vec<u8>, usize) {
     write_u32(&mut body, 0);
 
     for pkt in packets {
-        let duration = pkt.time.duration.map(|d| d.ticks() as u32).unwrap_or(0);
-        let size = pkt.payload.as_ref().len() as u32;
+        let duration = pkt.time.duration.map(|d| d.ticks()).unwrap_or(0);
+        let size = pkt.payload.as_ref().len() as u64;
         let composition_offset = pkt
             .time
             .pts
             .zip(pkt.time.dts)
-            .map(|(p, d)| (p.ticks() - d.ticks()) as i32)
+            .map(|(p, d)| p.ticks() - d.ticks())
             .unwrap_or(0);
         let flags = if pkt.flags.is_keyframe {
             0x02000000
         } else {
             0x01010000
         };
-        write_u32(&mut body, duration);
-        write_u32(&mut body, size);
+        write_u32(
+            &mut body,
+            u32::try_from(duration)
+                .map_err(|_| Mp4Error::limit_exceeded("trun sample duration > u32"))?,
+        );
+        write_u32(
+            &mut body,
+            u32::try_from(size).map_err(|_| Mp4Error::limit_exceeded("trun sample size > u32"))?,
+        );
         write_u32(&mut body, flags);
-        write_u32(&mut body, composition_offset as u32);
+        let cts = i32::try_from(composition_offset)
+            .map_err(|_| Mp4Error::limit_exceeded("trun composition offset > i32"))?;
+        write_u32(&mut body, cts as u32);
     }
 
-    (write_box(types::TRUN, &body), data_offset_pos + 8)
+    Ok((write_box(types::TRUN, &body), data_offset_pos + 8))
 }
 
 fn write_mdat(track_packets: &BTreeMap<u32, Vec<MediaPacket<'static>>>) -> Vec<u8> {

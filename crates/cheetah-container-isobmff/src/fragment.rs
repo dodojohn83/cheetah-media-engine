@@ -329,7 +329,7 @@ pub fn emit_packets(
             ));
         }
         let payload = mdat_buf.clone().slice(start..end);
-        let pts = dts.saturating_add(s.composition_offset as u64);
+        let pts = dts.saturating_add_signed(s.composition_offset);
         let is_key = !is_non_sync_sample(s.flags);
         let time = MediaTime::from_ticks(
             Some(pts as i64),
