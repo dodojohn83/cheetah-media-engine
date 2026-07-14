@@ -296,9 +296,20 @@ function probeRenderer(): { webgpu: boolean; webgl2: boolean; canvas2d: boolean;
   const videoFrame = hasGlobal('VideoFrame');
   let preferredPixelFormat: string | undefined;
 
-  if (videoFrame && typeof (globalThis as unknown as { VideoFrame?: { prototype: { format?: string } } }).VideoFrame?.prototype?.format === 'string') {
-    const VideoFrame = (globalThis as unknown as { VideoFrame: { prototype: { format: string } } }).VideoFrame;
-    preferredPixelFormat = VideoFrame.prototype.format;
+  if (videoFrame) {
+    try {
+      const VideoFrame = (globalThis as unknown as { VideoFrame: { prototype: { format?: string; close?: () => void } } }).VideoFrame;
+      // Probe with the smallest possible RGBA frame to safely read back the
+      // actual pixel format from an instance, not from the prototype.
+      const frame = new (VideoFrame as { new (data: Uint8Array, init: object): { format?: string; close?: () => void } })(
+        new Uint8Array(4),
+        { format: 'RGBA', timestamp: 0, codedWidth: 1, codedHeight: 1 },
+      );
+      preferredPixelFormat = frame.format;
+      frame.close?.();
+    } catch {
+      preferredPixelFormat = undefined;
+    }
   }
   return { webgpu, webgl2, canvas2d, videoFrame, preferredPixelFormat };
 }
