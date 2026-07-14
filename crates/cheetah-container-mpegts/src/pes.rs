@@ -101,8 +101,10 @@ impl PesAssembler {
                 .expected_length
                 .unwrap_or(self.raw.len())
                 .min(self.raw.len());
-            let payload = self.raw[header.header_size..end].to_vec();
-            outputs.push(PesOutput { header, payload });
+            if end >= header.header_size {
+                let payload = self.raw[header.header_size..end].to_vec();
+                outputs.push(PesOutput { header, payload });
+            }
         }
         self.reset();
     }
@@ -116,7 +118,14 @@ impl PesAssembler {
             self.header = Some(header);
             self.header_parsed = true;
             if header.packet_length != 0 {
-                self.expected_length = Some((header.packet_length as usize) + 6);
+                let expected = (header.packet_length as usize) + 6;
+                if expected < header.header_size {
+                    return Err(TsError::invalid_input(
+                        2107,
+                        Some("PES packet length smaller than header"),
+                    ));
+                }
+                self.expected_length = Some(expected);
             }
             if let Some(expected) = self.expected_length
                 && self.raw.len() >= expected

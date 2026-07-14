@@ -145,6 +145,30 @@ fn parse_lost_sync_byte_fails() {
 }
 
 #[test]
+fn parse_packet_adaptation_only_has_no_payload() {
+    let mut pkt = [0xff; 188];
+    pkt[0] = 0x47;
+    pkt[1] = 0x00;
+    pkt[2] = 0x00;
+    pkt[3] = 0x20; // afc=2, cc=0
+    pkt[4] = 0xb7; // adaptation field length = 183
+    pkt[5] = 0x00; // no flags
+    let p = packet::TsPacket::parse(&pkt).unwrap();
+    assert_eq!(p.adaptation_field_control, 2);
+    assert!(p.payload(&pkt).is_empty());
+}
+
+#[test]
+fn pes_assembler_rejects_short_packet_length() {
+    // PES start code, stream id, packet_length=2 (too small for header), valid marker bits.
+    let pes = vec![0x00, 0x00, 0x01, 0xe0, 0x00, 0x02, 0x80, 0x80, 0x00];
+    // 9-byte header with header_data_length=0; packet_length=2 means expected=8 < header_size=9.
+    let asm = &mut PesAssembler::new();
+    let result = asm.feed(&pes, true);
+    assert!(result.is_err());
+}
+
+#[test]
 fn section_assembler_completes_pat() {
     let section = pat_section(&[(1, 0x100)]);
     let mut asm = SectionAssembler::new();

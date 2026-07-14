@@ -618,13 +618,13 @@ impl TsDemuxer {
 
         let track_id = self.track_id_for(pid)?;
         for frame in frames {
-            let duration_ms = AdtsHeader::parse(frame)
-                .map(|h| h.duration_ms as i64)
+            let duration_ticks = AdtsHeader::parse(frame)
+                .map(|h| h.samples_per_frame as i64 * 90000 / h.sampling_frequency as i64)
                 .unwrap_or(0);
             self.emit_packet(track_id, frame, time, false);
-            if duration_ms > 0 {
+            if duration_ticks > 0 {
                 time = time
-                    .checked_add(MediaDuration::new(duration_ms * 90))
+                    .checked_add(MediaDuration::new(duration_ticks))
                     .unwrap_or(time);
             }
         }

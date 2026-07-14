@@ -101,7 +101,11 @@ impl TsPacket {
 
     /// Return the slice of payload bytes within `data` (after adaptation field).
     pub fn payload<'a>(&self, data: &'a [u8]) -> &'a [u8] {
-        let adapt_len = if matches!(self.adaptation_field_control, 2 | 3) {
+        if self.adaptation_field_control == 2 {
+            // Adaptation field only; no payload.
+            return &[];
+        }
+        let adapt_len = if self.adaptation_field_control == 3 {
             // byte 4 is adaptation field length; payload starts after it.
             let len = data.get(4).copied().unwrap_or(0) as usize;
             // The length byte itself and the field it counts are present.
