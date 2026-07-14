@@ -448,3 +448,64 @@ fn demuxer_multi_program() {
     }
     assert_eq!(tracks, 2);
 }
+
+#[test]
+fn demuxer_fifo_track_before_packet() {
+    let mut stream = Vec::new();
+    let mut pat_payload = vec![0x00];
+    pat_payload.extend_from_slice(&pat_section(&[(1, 0x100)]));
+    stream.extend_from_slice(&ts_packet(0x000, true, &pat_payload, 0));
+    let mut pmt_payload = vec![0x00];
+    pmt_payload.extend_from_slice(&pmt_section(1, 0x102, &[(0x1b, 0x101)]));
+    stream.extend_from_slice(&ts_packet(0x100, true, &pmt_payload, 0));
+
+    let es = build_h264_pes_payload();
+    let pes = pes_packet(0xe0, &es, Some(90000), None);
+    stream.extend_from_slice(&ts_packet(0x101, true, &pes, 0));
+
+    let mut demux = TsDemuxer::new();
+    demux.push(&stream);
+
+    let mut saw_track = false;
+    while let Some(event) = demux.next_event().unwrap() {
+        match event {
+            TsEvent::Track(_) => saw_track = true,
+            TsEvent::Packet(_) => {
+                assert!(saw_track, "Track event must precede Packet event");
+                return;
+            }
+            TsEvent::Clock(_) => {}
+        }
+    }
+    panic!("expected at least one Packet event");
+}
+
+#[test]
+fn demuxer_buffer_compaction_does_not_panic() {
+    let mut stream = Vec::new();
+    let mut pat_payload = vec![0x00];
+    pat_payload.extend_from_slice(&pat_section(&[(1, 0x100)]));
+    stream.extend_from_slice(&ts_packet(0x000, true, &pat_payload, 0));
+    let mut pmt_payload = vec![0x00];
+    pmt_payload.extend_from_slice(&pmt_section(1, 0x102, &[(0x1b, 0x101)]));
+    stream.extend_from_slice(&ts_packet(0x100, true, &pmt_payload, 0));
+
+    let es = build_h264_pes_payload();
+    let mut cc = 0u8;
+    for _ in 0..30 {
+        let pes = pes_packet(0xe0, &es, Some(90000 + u64::from(cc) * 1800), None);
+        stream.extend_from_slice(&ts_packet(0x101, true, &pes, cc));
+        cc = (cc + 1) & 0x0f;
+    }
+
+    let mut demux = TsDemuxer::new();
+    demux.push(&stream);
+
+    let mut packets = 0usize;
+    while let Some(event) = demux.next_event().unwrap() {
+        if matches!(event, TsEvent::Packet(_)) {
+            packets += 1;
+        }
+    }
+    assert!(packets >= 30, "expected at least 30 packets after buffer compaction");
+}

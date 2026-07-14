@@ -1,7 +1,7 @@
 //! Incremental MPEG-TS demuxer.
 
 use alloc::borrow::ToOwned;
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, VecDeque};
 use alloc::vec::Vec;
 
 use cheetah_media_bitstream::aac::{AdtsHeader, AudioSpecificConfig};
@@ -92,7 +92,7 @@ pub struct TsDemuxer {
     track_id_counter: u32,
     sequence: u64,
     stream_epoch: StreamEpoch,
-    pending_events: Vec<TsEvent>,
+    pending_events: VecDeque<TsEvent>,
     clock: PcrClock,
     diagnostics: TsDiagnostics,
 }
@@ -124,7 +124,7 @@ impl TsDemuxer {
             track_id_counter: 0,
             sequence: 0,
             stream_epoch: StreamEpoch::new(0),
-            pending_events: Vec::new(),
+            pending_events: VecDeque::new(),
             clock: PcrClock::new(),
             diagnostics: TsDiagnostics::default(),
         }
@@ -142,40 +142,34 @@ impl TsDemuxer {
 
     /// Return the next parsed event, or `None` if more data is needed.
     pub fn next_event(&mut self) -> Result<Option<TsEvent>, TsError> {
-        if let Some(event) = self.pending_events.pop() {
+        if let Some(event) = self.pending_events.pop_front() {
             return Ok(Some(event));
         }
 
-        loop {
-            let packet_start = self.read_pos;
-            let packet = match self.parse_packet()? {
-                Some(p) => p,
-                None => return Ok(None),
-            };
-            let packet_end = self.read_pos;
-            let payload = packet
-                .payload(&self.buffer[packet_start..packet_end])
-                .to_vec();
+        while let Some((packet, payload)) = self.parse_packet()? {
             self.process_packet(packet, &payload)?;
-
-            if let Some(event) = self.pending_events.pop() {
+            if let Some(event) = self.pending_events.pop_front() {
                 return Ok(Some(event));
             }
         }
+        Ok(None)
     }
 
-    fn parse_packet(&mut self) -> Result<Option<TsPacket>, TsError> {
+    fn parse_packet(&mut self) -> Result<Option<(TsPacket, Vec<u8>)>, TsError> {
         loop {
             if self.read_pos + 188 > self.buffer.len() {
                 return Ok(None);
             }
 
-            match TsPacket::parse(&self.buffer[self.read_pos..]) {
+            let start = self.read_pos;
+            match TsPacket::parse(&self.buffer[start..]) {
                 Ok(pkt) => {
-                    self.read_pos += 188;
+                    let packet_end = start + 188;
+                    let payload = pkt.payload(&self.buffer[start..packet_end]).to_vec();
+                    self.read_pos = packet_end;
                     self.diagnostics.packets_processed += 1;
                     self.shrink();
-                    return Ok(Some(pkt));
+                    return Ok(Some((pkt, payload)));
                 }
                 Err(TsError::LostSync) | Err(TsError::PacketTooShort) => {
                     if !self.resync()? {
@@ -227,7 +221,7 @@ impl TsDemuxer {
             && let Some(pcr) = packet.pcr
         {
             let state = self.clock.feed(pcr, None);
-            self.pending_events.push(TsEvent::Clock(state));
+            self.pending_events.push_back(TsEvent::Clock(state));
         }
 
         if packet.pid == 0x0000 {
@@ -300,7 +294,7 @@ impl TsDemuxer {
         }
 
         self.tracks.insert(pid, TrackState::new(info.clone()));
-        self.pending_events.push(TsEvent::Track(info));
+        self.pending_events.push_back(TsEvent::Track(info));
         Ok(())
     }
 
@@ -404,12 +398,14 @@ impl TsDemuxer {
             return Ok(());
         }
 
-        // Accumulate parameter sets and update the codec config.
+        // Use the parameter sets present in this access unit.
         {
             let state = self
                 .tracks
                 .get_mut(&pid)
                 .ok_or_else(|| TsError::invalid_input(2203, Some("missing track state")))?;
+            state.h264_sps_nals.clear();
+            state.h264_pps_nals.clear();
             let mut parsed = None;
             for nal in &nals {
                 if nal.nal_type == 7 && !nal.data.is_empty() {
@@ -485,7 +481,8 @@ impl TsDemuxer {
                 color_space: ColorSpace::Unspecified,
             };
             state.info.set_video_format(format).ok();
-            self.pending_events.push(TsEvent::Track(state.info.clone()));
+            self.pending_events
+                .push_back(TsEvent::Track(state.info.clone()));
         }
         Ok(())
     }
@@ -502,6 +499,9 @@ impl TsDemuxer {
                 .tracks
                 .get_mut(&pid)
                 .ok_or_else(|| TsError::invalid_input(2203, Some("missing track state")))?;
+            state.h265_vps.clear();
+            state.h265_sps.clear();
+            state.h265_pps.clear();
             for nal in &nals {
                 let t = nal.nal_unit_type;
                 if t == 32 && nal.data.len() > 2 {
@@ -549,7 +549,8 @@ impl TsDemuxer {
         let new_config = CodecConfig::HevcC(cfg.build());
         if state.info.codec_config != new_config {
             state.info.set_codec_config(new_config);
-            self.pending_events.push(TsEvent::Track(state.info.clone()));
+            self.pending_events
+                .push_back(TsEvent::Track(state.info.clone()));
         }
         Ok(())
     }
@@ -589,7 +590,8 @@ impl TsDemuxer {
                 state
                     .info
                     .set_codec_config(CodecConfig::AacAudioSpecificConfig(asc.build()));
-                self.pending_events.push(TsEvent::Track(state.info.clone()));
+                self.pending_events
+                    .push_back(TsEvent::Track(state.info.clone()));
             }
         }
 
@@ -643,7 +645,7 @@ impl TsDemuxer {
             time,
         );
         packet.flags.is_keyframe = is_key;
-        self.pending_events.push(TsEvent::Packet(packet));
+        self.pending_events.push_back(TsEvent::Packet(packet));
     }
 }
 
