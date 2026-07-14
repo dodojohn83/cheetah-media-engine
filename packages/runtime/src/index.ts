@@ -20,7 +20,7 @@ export {
   type Protocol,
   type Renderer,
   type TrackProfile,
-  type Transport,
+  type TransportMode,
 } from './planner';
 export {
   FallbackController,

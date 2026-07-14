@@ -12,7 +12,7 @@ import type { CapabilityReport, ProbedCapabilityReport, ProbeDetails } from './c
 export type Protocol = 'http-flv' | 'ws-flv' | 'http-fmp4' | 'ws-fmp4' | 'hls' | 'll-hls';
 export type Backend = 'webcodecs' | 'mse' | 'wasm-threads-simd' | 'wasm-simd' | 'wasm-baseline';
 export type Renderer = 'webgpu' | 'webgl2' | 'canvas2d';
-export type Transport = 'fetch' | 'websocket';
+export type TransportMode = 'fetch' | 'websocket';
 export type LatencyTarget = 'realtime' | 'low' | 'normal';
 
 export interface TrackProfile {
@@ -44,7 +44,7 @@ export interface PlanCandidate {
   readonly videoBackend: Backend | undefined;
   readonly audioBackend: Backend | undefined;
   readonly renderer: Renderer | undefined;
-  readonly transport: Transport;
+  readonly transport: TransportMode;
   readonly reason: string;
 }
 
@@ -251,7 +251,7 @@ function chooseRenderer(caps: CapabilityReport): Renderer | undefined {
   return undefined;
 }
 
-function chooseTransport(request: PlanRequest): Transport {
+function chooseTransport(request: PlanRequest): TransportMode {
   switch (request.protocol) {
     case 'ws-flv':
     case 'ws-fmp4':
@@ -266,7 +266,7 @@ function chooseTransport(request: PlanRequest): Transport {
   }
 }
 
-function latencyPenalty(transport: Transport, latency: LatencyTarget, backend: Backend): number {
+function latencyPenalty(transport: TransportMode, latency: LatencyTarget, backend: Backend): number {
   let penalty = 0;
   if (transport === 'fetch' && latency === 'realtime') penalty += 1;
   if (backend === 'wasm-baseline' && (latency === 'realtime' || latency === 'low')) penalty += 1;
