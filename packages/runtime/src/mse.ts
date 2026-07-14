@@ -507,11 +507,9 @@ export class MseBackend implements MediaBackend {
 
     // Resume playback if paused and we have a useful buffer.
     if (video.paused && bufferAheadMs > this.liveDriftSmallMs) {
-      try {
-        video.play?.();
-      } catch {
-        // ignore
-      }
+      // play() is async; a synchronous try/catch cannot catch a rejected
+      // promise caused by autoplay policy, so attach a no-op rejection handler.
+      video.play?.()?.catch(() => undefined);
     }
   }
 
