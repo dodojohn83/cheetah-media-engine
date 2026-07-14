@@ -55,7 +55,7 @@ impl Gop {
                 self.start_ms = Some(ms);
             }
             if let Some(start) = self.start_ms {
-                let dur = ms.saturating_sub(start) as u64;
+                let dur = ms.saturating_sub(start).max(0) as u64;
                 self.duration_ms = self.duration_ms.max(dur);
             }
         }

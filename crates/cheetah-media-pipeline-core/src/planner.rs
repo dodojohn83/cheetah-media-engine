@@ -352,7 +352,10 @@ mod tests {
 
     #[test]
     fn unsupported_codec_fails() {
-        let caps = CapabilitySnapshot::default();
+        let caps = CapabilitySnapshot {
+            confidence: 100,
+            ..Default::default()
+        };
         let request = PipelineRequest {
             transport: TransportKind::Flv,
             tracks: vec![track(TrackKind::Video, CodecId::H265)],

@@ -38,8 +38,6 @@ pub struct AvSync {
     max_drift_ms: i64,
     /// Video late threshold in milliseconds.
     late_threshold_ms: i64,
-    /// Whether a frame under the late threshold is still rendered if not a keyframe.
-    drop_non_reference: bool,
     /// Running maximum observed |drift| in milliseconds.
     max_observed_drift_ms: i64,
 }
@@ -54,7 +52,6 @@ impl AvSync {
             last_video_ms: None,
             max_drift_ms,
             late_threshold_ms,
-            drop_non_reference: false,
             max_observed_drift_ms: 0,
         }
     }
@@ -75,9 +72,11 @@ impl AvSync {
     /// Feed a video frame and return the sync decision.
     ///
     /// `is_keyframe` is true for independent frames (IDR/CRA/all-intra). When the
-    /// video is behind the audio clock by more than `late_threshold_ms`, only
-    /// keyframes are dropped to preserve the reference chain unless
-    /// `drop_non_reference` has been enabled by a higher-level policy.
+    /// video is behind the audio clock by more than `late_threshold_ms`, dependent
+    /// (non-keyframe) frames are dropped first; keyframes are rendered so the
+    /// decoder can rebuild a valid reference chain. When video is far ahead of
+    /// audio, dependent frames are dropped and keyframes are held until the audio
+    /// clock reaches them.
     pub fn feed_video(
         &mut self,
         time: MediaTime,
@@ -97,48 +96,40 @@ impl AvSync {
             self.max_observed_drift_ms = drift_ms.abs();
         }
 
-        // Large forward jump: create a discontinuity and re-base audio clock.
+        // Large forward jump: drop non-reference frames and hold keyframes until
+        // the audio clock catches up.
         if self.audio_available && drift_ms > self.max_drift_ms {
             self.clock.add_dropped(drift_ms);
             self.clock.set_state(ClockState::CatchUp);
             if is_keyframe {
-                return Ok(SyncDecision::Drop {
-                    reason: "video too far ahead, resync at keyframe",
+                return Ok(SyncDecision::Hold {
+                    until: ClockTime::new(audio_ms * 1000),
                 });
             }
-            return Ok(SyncDecision::Hold {
-                until: ClockTime::new((audio_ms + self.max_drift_ms) * 1000),
+            return Ok(SyncDecision::Drop {
+                reason: "video too far ahead, dropping non-reference frame",
             });
         }
 
-        // Late video: drop keyframes outright; for non-keyframes either hold or
-        // drop only when explicitly allowed.
+        // Late video: drop non-reference frames to catch up, but render keyframes
+        // so the decoder still has a valid reference point.
         if self.audio_available && drift_ms < -self.late_threshold_ms {
             self.clock
                 .add_dropped((-drift_ms).min(self.late_threshold_ms));
+            self.clock.set_state(ClockState::CatchUp);
             if is_keyframe {
-                return Ok(SyncDecision::Drop {
-                    reason: "video late, drop keyframe to catch up",
+                return Ok(SyncDecision::Render {
+                    target: render_time,
                 });
             }
-            if self.drop_non_reference {
-                return Ok(SyncDecision::Drop {
-                    reason: "video late, drop non-reference frame",
-                });
-            }
-            return Ok(SyncDecision::Hold {
-                until: ClockTime::new(audio_ms * 1000),
+            return Ok(SyncDecision::Drop {
+                reason: "video late, dropping non-reference frame",
             });
         }
 
         Ok(SyncDecision::Render {
             target: render_time,
         })
-    }
-
-    /// Enable dropping of non-reference frames when catching up.
-    pub fn set_drop_non_reference(&mut self, enabled: bool) {
-        self.drop_non_reference = enabled;
     }
 
     /// Return the maximum observed |drift| in milliseconds.
@@ -182,22 +173,37 @@ mod tests {
     }
 
     #[test]
-    fn late_keyframe_dropped() {
+    fn late_keyframe_rendered_for_reference_chain() {
         let mut sync = AvSync::new(50, 100);
         sync.feed_audio(time_ms(1000), 40, StreamEpoch::new(0));
         let decision = sync
             .feed_video(time_ms(0), true, StreamEpoch::new(0))
             .unwrap();
-        assert!(matches!(decision, SyncDecision::Drop { .. }));
+        assert!(matches!(decision, SyncDecision::Render { .. }));
     }
 
     #[test]
-    fn non_reference_held_by_default() {
+    fn late_non_reference_dropped() {
         let mut sync = AvSync::new(50, 100);
         sync.feed_audio(time_ms(1000), 40, StreamEpoch::new(0));
         let decision = sync
             .feed_video(time_ms(0), false, StreamEpoch::new(0))
             .unwrap();
-        assert!(matches!(decision, SyncDecision::Hold { .. }));
+        assert!(matches!(decision, SyncDecision::Drop { .. }));
+    }
+
+    #[test]
+    fn forward_jump_keeps_keyframe_holds_non_reference_dropped() {
+        let mut sync = AvSync::new(50, 100);
+        sync.feed_audio(time_ms(1000), 40, StreamEpoch::new(0));
+        // Video far ahead of audio: non-reference frames are dropped, keyframe held.
+        let ahead_key = sync
+            .feed_video(time_ms(2000), true, StreamEpoch::new(0))
+            .unwrap();
+        let ahead_non_ref = sync
+            .feed_video(time_ms(2050), false, StreamEpoch::new(0))
+            .unwrap();
+        assert!(matches!(ahead_key, SyncDecision::Hold { .. }));
+        assert!(matches!(ahead_non_ref, SyncDecision::Drop { .. }));
     }
 }
