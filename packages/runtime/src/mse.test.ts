@@ -371,11 +371,13 @@ describe('MseBackend', () => {
     await backend.configure();
     const sb = getSourceBuffer();
     video.currentTime = 10;
+    video.playbackRate = 1.2;
     sb.setBuffered([[0, 20]]);
     // buffer ahead = (20-10)*1000 = 10000ms > target+large -> seek
     await vi.advanceTimersByTimeAsync(20);
     expect(backend.metrics.seekCount).toBe(1);
     expect(video.currentTime).toBeLessThan(20);
+    expect(video.playbackRate).toBe(1);
 
     // small drift -> speed up (buffer ahead ~900ms, between small and large drift)
     video.currentTime = 19.1;

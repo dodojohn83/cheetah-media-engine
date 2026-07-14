@@ -491,6 +491,9 @@ export class MseBackend implements MediaBackend {
     if (bufferAheadMs > this.liveLatencyTargetMs + this.liveDriftLargeMs) {
       const target = bufferedEnd - this.liveLatencyTargetMs / 1000;
       video.currentTime = Math.max(bufferedStart, target);
+      // Reset playback rate immediately after a catch-up seek to avoid a
+      // brief fast-forward while the nudge logic slowly returns to 1.0.
+      video.playbackRate = 1.0;
       this._metrics.seekCount += 1;
     } else if (bufferAheadMs > this.liveLatencyTargetMs + this.liveDriftSmallMs) {
       video.playbackRate = Math.min(video.playbackRate + 0.05, this.maxPlaybackRate);
