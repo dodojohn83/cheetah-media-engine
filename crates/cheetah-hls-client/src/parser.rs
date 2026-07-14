@@ -375,6 +375,7 @@ pub fn parse_media(input: &str, base_uri: &str) -> Result<MediaPlaylist, HlsErro
                 skipped_segments: skipped,
                 recently_removed_dateranges: removed,
             });
+            msn = msn.saturating_add(skipped as u64);
             continue;
         }
 
