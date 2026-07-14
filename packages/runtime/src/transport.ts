@@ -269,8 +269,11 @@ export class WebSocketTransport implements Transport {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined;
   private started = false;
+  private ended = false;
   private bytesRead = 0;
   private maxBytes: number;
+  private onError?: (error: TransportError) => void;
+  private onEnd?: () => void;
 
   constructor(config: WebSocketConfig) {
     this.config = config;
@@ -280,26 +283,31 @@ export class WebSocketTransport implements Transport {
   start(onChunk: (chunk: Chunk) => void, onError: (error: TransportError) => void, onEnd: () => void): void {
     if (this.started) return;
     this.started = true;
+    this.onError = onError;
+    this.onEnd = onEnd;
 
     const urlError = validateUrl(this.config.url);
     if (urlError) {
-      onError(urlError);
-      onEnd();
+      this.finish(urlError);
       return;
     }
 
     this.controller = new AbortController();
-    this.connect(onChunk, onError, onEnd).catch((err) => {
-      onError(this.toError(err));
-      onEnd();
+    this.connect(onChunk).catch((err) => {
+      this.finish(this.toError(err));
     });
   }
 
-  private async connect(
-    onChunk: (chunk: Chunk) => void,
-    onError: (error: TransportError) => void,
-    onEnd: () => void,
-  ): Promise<void> {
+  private finish(error?: TransportError): void {
+    if (this.ended) return;
+    this.ended = true;
+    if (error) {
+      this.onError?.(error);
+    }
+    this.onEnd?.();
+  }
+
+  private async connect(onChunk: (chunk: Chunk) => void): Promise<void> {
     const socket = new WebSocket(this.config.url);
     socket.binaryType = this.config.binaryType ?? 'arraybuffer';
 
@@ -311,8 +319,7 @@ export class WebSocketTransport implements Transport {
       const deliver = (bytes: Uint8Array): void => {
         if (this.bytesRead + bytes.length > this.maxBytes) {
           socket.close();
-          onError(makeError(TransportErrorCode.MaxBytesExceeded, 'Max response size exceeded', false));
-          onEnd();
+          this.finish(makeError(TransportErrorCode.MaxBytesExceeded, 'Max response size exceeded', false));
           reject(new Error('Max bytes exceeded'));
           return;
         }
@@ -338,14 +345,13 @@ export class WebSocketTransport implements Transport {
 
       const onClose = (event: CloseEvent) => {
         if (this.controller?.signal.aborted) {
-          onError(makeError(TransportErrorCode.Canceled, 'Transport stopped', false));
-          onEnd();
+          this.finish(makeError(TransportErrorCode.Canceled, 'Transport stopped', false));
           resolve();
           return;
         }
         if (event.code === 1000) {
           // Normal server-side end of stream.
-          onEnd();
+          this.finish();
           resolve();
           return;
         }
@@ -355,11 +361,11 @@ export class WebSocketTransport implements Transport {
           const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000) + Math.random() * 1000;
           this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = undefined;
-            this.connect(onChunk, onError, onEnd).catch(reject);
+            this.connect(onChunk).catch(() => {});
           }, delay);
+          resolve();
         } else {
-          onError(makeError(TransportErrorCode.WebSocketClosed, `Closed ${event.code}: ${event.reason}`, false));
-          onEnd();
+          this.finish(makeError(TransportErrorCode.WebSocketClosed, `Closed ${event.code}: ${event.reason}`, false));
           resolve();
         }
       };
@@ -389,6 +395,7 @@ export class WebSocketTransport implements Transport {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
+      this.finish(makeError(TransportErrorCode.Canceled, 'Transport stopped', false));
     }
     this.controller?.abort();
     this.socket?.close();

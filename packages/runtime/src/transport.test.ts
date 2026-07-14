@@ -324,7 +324,7 @@ describe('WebSocketTransport', () => {
     expect(err.code).toBe(TransportErrorCode.InsecureContent);
   });
 
-  it('cancels pending reconnect on stop', async () => {
+  it('cancels pending reconnect on stop and signals end', async () => {
     let socketCount = 0;
     class ReconnectMockSocket extends EventTarget {
       public url: string;
@@ -347,10 +347,12 @@ describe('WebSocketTransport', () => {
     globalThis.WebSocket = ReconnectMockSocket as unknown as typeof WebSocket;
 
     const transport = new WebSocketTransport({ url: 'wss://example.com/stream', maxRetries: 1 });
+    const errors: { code: number }[] = [];
+    let endCount = 0;
     transport.start(
       () => { /* no-op */ },
-      () => { /* no-op */ },
-      () => { /* no-op */ },
+      (error) => errors.push(error),
+      () => { endCount += 1; },
     );
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -358,6 +360,9 @@ describe('WebSocketTransport', () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(socketCount).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.code).toBe(TransportErrorCode.Canceled);
+    expect(endCount).toBe(1);
   });
 });
 
