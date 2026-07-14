@@ -78,6 +78,11 @@ pub struct ClockStats {
 #[derive(Debug, Clone, Copy)]
 struct EpochState {
     base_us: i64,
+    /// Last raw source ticks in the original timebase.
+    last_source_ticks: i64,
+    /// Original timebase for `last_source_ticks`.
+    last_source_base: TimeBase,
+    /// Last rescaled timestamp in microseconds.
     last_raw_us: i64,
     last_clock_us: i64,
     last_delta_us: i64,
@@ -122,30 +127,34 @@ impl MediaClock {
         time: MediaTime,
         epoch: StreamEpoch,
     ) -> Result<ClockTime, TimelineError> {
-        let raw_us = time_to_us(&time).ok_or(TimelineError::MissingTimestamp)?;
+        let (source_ticks, source_base) =
+            raw_ticks_and_timebase(&time).ok_or(TimelineError::MissingTimestamp)?;
 
         let existing = self.epochs.get(&epoch).copied();
         let mut is_discontinuity = false;
         let mut is_wrap = false;
 
-        let (mut current_raw_us, last_delta) = match existing {
-            Some(state) => (state.last_raw_us, state.last_delta_us),
-            None => (0, 0),
+        // Unwrap in the original timebase so the wrap boundary matches the
+        // transport-layer specification (e.g. 2^33 ticks at 90 kHz for MPEG-TS).
+        let (current_source_ticks, last_delta) = if let Some(state) = existing {
+            let ticks = if let Some(bits) = self.wrap_bits {
+                let prev = Timestamp::new(state.last_source_ticks);
+                let new = Timestamp::new(source_ticks).unwrapped_around(prev, bits);
+                if new.ticks() != source_ticks {
+                    is_wrap = true;
+                }
+                new.ticks()
+            } else {
+                source_ticks
+            };
+            (ticks, state.last_delta_us)
+        } else {
+            (source_ticks, 0)
         };
 
-        // Apply MPEG-style unwrapping if requested.
-        if let Some(bits) = self.wrap_bits {
-            let prev_raw = Timestamp::new(current_raw_us);
-            let new_raw = Timestamp::new(raw_us).unwrapped_around(prev_raw, bits);
-            if new_raw.ticks() != raw_us {
-                is_wrap = true;
-                current_raw_us = new_raw.ticks();
-            } else {
-                current_raw_us = raw_us;
-            }
-        } else {
-            current_raw_us = raw_us;
-        }
+        let current_raw_us = source_base
+            .rescale_i64(current_source_ticks, INTERNAL_TIMEBASE)
+            .map_err(|_| TimelineError::Overflow)?;
 
         let mut base_us = if let Some(state) = existing {
             let backward_us = state.last_raw_us.saturating_sub(current_raw_us);
@@ -173,11 +182,7 @@ impl MediaClock {
             .checked_add(current_raw_us)
             .ok_or(TimelineError::Overflow)?;
 
-        let previous_clock = if let Some(state) = existing {
-            state.last_clock_us
-        } else {
-            0
-        };
+        let previous_clock = existing.map_or(0, |s| s.last_clock_us);
 
         if clock_us < previous_clock {
             base_us = previous_clock
@@ -198,11 +203,8 @@ impl MediaClock {
                 .ok_or(TimelineError::Overflow)?;
         }
 
-        let delta = current_raw_us.saturating_sub(if let Some(state) = existing {
-            state.last_raw_us
-        } else {
-            current_raw_us
-        });
+        let delta =
+            current_raw_us.saturating_sub(existing.map_or(current_raw_us, |s| s.last_raw_us));
 
         if is_discontinuity {
             self.stats.discontinuities += 1;
@@ -219,8 +221,18 @@ impl MediaClock {
             self.stats.jitter_ms = jitter_deviation / 1000;
         }
 
+        let (last_source_ticks, last_source_base) = if is_discontinuity || is_wrap {
+            (current_source_ticks, source_base)
+        } else if let Some(state) = existing {
+            (state.last_source_ticks, state.last_source_base)
+        } else {
+            (current_source_ticks, source_base)
+        };
+
         let new_state = EpochState {
             base_us,
+            last_source_ticks,
+            last_source_base,
             last_raw_us: current_raw_us,
             last_clock_us: clock_us,
             last_delta_us: if is_discontinuity || is_wrap {
@@ -271,9 +283,7 @@ impl MediaClock {
     }
 }
 
-fn time_to_us(time: &MediaTime) -> Option<i64> {
+fn raw_ticks_and_timebase(time: &MediaTime) -> Option<(i64, TimeBase)> {
     let ts = time.pts.or(time.dts)?;
-    time.timebase
-        .rescale_i64(ts.ticks(), INTERNAL_TIMEBASE)
-        .ok()
+    Some((ts.ticks(), time.timebase))
 }

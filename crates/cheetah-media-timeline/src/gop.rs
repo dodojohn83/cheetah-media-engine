@@ -50,7 +50,7 @@ impl Gop {
     fn push(&mut self, packet: MediaPacket<'static>) {
         let timestamp_ms = packet.time.pts_ms().or_else(|| packet.time.dts_ms());
         if let Some(ms) = timestamp_ms {
-            self.end_ms = Some(ms);
+            self.end_ms = Some(self.end_ms.map_or(ms, |prev| prev.max(ms)));
             if self.start_ms.is_none() {
                 self.start_ms = Some(ms);
             }
