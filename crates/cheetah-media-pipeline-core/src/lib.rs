@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use cheetah_media_abi::{Decoder, Error, Input, Output, Renderer};
+use cheetah_media_abi::{AbiError, Decoder, Input, Output, Renderer};
 
 /// A simple pipeline that pairs a decoder with an optional renderer.
 #[derive(Default)]
@@ -33,8 +33,8 @@ impl Pipeline {
     }
 
     /// Feed a compressed sample through the decoder.
-    pub fn feed<'a>(&mut self, input: &Input<'a>) -> Result<Output<'a>, Error> {
-        let decoder = self.decoder.as_mut().ok_or(Error::NotSupported)?;
+    pub fn feed<'a>(&mut self, input: &Input<'a>) -> Result<Output<'a>, AbiError> {
+        let decoder = self.decoder.as_mut().ok_or(AbiError::NotSupported)?;
         let output = decoder.decode(input)?;
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.render(&output)?;
@@ -43,7 +43,7 @@ impl Pipeline {
     }
 
     /// Flush the pipeline.
-    pub fn flush(&mut self) -> Result<(), Error> {
+    pub fn flush(&mut self) -> Result<(), AbiError> {
         if let Some(decoder) = self.decoder.as_mut() {
             decoder.flush()?;
         }
@@ -54,7 +54,7 @@ impl Pipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cheetah_media_abi::{DecoderProbe, Error, Input, Output, Renderer};
+    use cheetah_media_abi::{AbiError, DecoderProbe, Input, Output, Renderer};
     use cheetah_media_types::{CodecId, MediaTime, TimeBase, Timestamp, TrackId};
 
     struct DummyDecoder;
@@ -64,7 +64,7 @@ mod tests {
         }
     }
     impl Decoder for DummyDecoder {
-        fn decode<'a>(&mut self, input: &Input<'a>) -> Result<Output<'a>, Error> {
+        fn decode<'a>(&mut self, input: &Input<'a>) -> Result<Output<'a>, AbiError> {
             Ok(Output {
                 data: input.data,
                 time: input.time,
@@ -72,17 +72,17 @@ mod tests {
                 track_id: input.track_id,
             })
         }
-        fn flush(&mut self) -> Result<(), Error> {
+        fn flush(&mut self) -> Result<(), AbiError> {
             Ok(())
         }
     }
 
     struct DummyRenderer;
     impl Renderer for DummyRenderer {
-        fn render(&mut self, _output: &Output) -> Result<(), Error> {
+        fn render(&mut self, _output: &Output) -> Result<(), AbiError> {
             Ok(())
         }
-        fn set_viewport(&mut self, _width: u32, _height: u32) -> Result<(), Error> {
+        fn set_viewport(&mut self, _width: u32, _height: u32) -> Result<(), AbiError> {
             Ok(())
         }
     }
@@ -104,7 +104,7 @@ mod tests {
             codec: CodecId::H264,
             track_id: dummy_track(),
         };
-        assert_eq!(pipeline.feed(&input).unwrap_err(), Error::NotSupported);
+        assert_eq!(pipeline.feed(&input).unwrap_err(), AbiError::NotSupported);
     }
 
     #[test]

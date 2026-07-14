@@ -12,7 +12,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
 cheetah-media-engine = { path = "../cheetah-media-engine" }
+cheetah-media-abi = { path = "../cheetah-media-abi" }
 cheetah-media-types = { path = "../cheetah-media-types" }
 console_error_panic_hook = { workspace = true, optional = true }
 

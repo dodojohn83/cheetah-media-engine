@@ -15,4 +15,4 @@ std = ["cheetah-media-types/std"]
 cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
 
 [lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
