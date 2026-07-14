@@ -127,6 +127,75 @@ describe('FetchTransport', () => {
 
     expect(err.code).toBe(TransportErrorCode.InsecureContent);
   });
+
+  it('reports timeout and does not retry by default', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      return new Promise<never>((_, reject) => {
+        const signal = init.signal!;
+        signal.addEventListener('abort', () => {
+          reject(new DOMException('AbortError', 'AbortError'));
+        });
+      });
+    });
+
+    const transport = new FetchTransport({ url: 'https://example.com/stream', timeoutMs: 10 });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+
+    expect(err.code).toBe(TransportErrorCode.Timeout);
+  });
+
+  it('retries on timeout when configured', async () => {
+    let calls = 0;
+    globalThis.fetch = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      calls += 1;
+      return new Promise<never>((_, reject) => {
+        const signal = init.signal!;
+        signal.addEventListener('abort', () => {
+          reject(new DOMException('AbortError', 'AbortError'));
+        });
+      });
+    });
+
+    const transport = new FetchTransport({ url: 'https://example.com/stream', timeoutMs: 10, maxRetries: 1 });
+    await new Promise<void>((resolve) => {
+      transport.start(
+        () => { /* no-op */ },
+        () => resolve(),
+        () => resolve(),
+      );
+    });
+
+    expect(calls).toBeGreaterThan(1);
+  });
+
+  it('reports user stop as canceled', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      return new Promise<never>((_, reject) => {
+        const signal = init.signal!;
+        signal.addEventListener('abort', () => {
+          reject(new DOMException('AbortError', 'AbortError'));
+        });
+      });
+    });
+
+    const transport = new FetchTransport({ url: 'https://example.com/stream', timeoutMs: 60000 });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+      setTimeout(() => transport.stop(), 10);
+    });
+
+    expect(err.code).toBe(TransportErrorCode.Canceled);
+  });
 });
 
 describe('WebSocketTransport', () => {

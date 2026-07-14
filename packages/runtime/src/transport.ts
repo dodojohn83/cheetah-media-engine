@@ -123,6 +123,7 @@ export class FetchTransport implements Transport {
   private started = false;
   private bytesRead = 0;
   private retries = 0;
+  private timedOut = false;
 
   constructor(config: TransportConfig) {
     this.config = config;
@@ -157,8 +158,12 @@ export class FetchTransport implements Transport {
     const headers = sanitizeHeaders(this.config.headers ?? {});
 
     while (this.retries <= maxRetries) {
+      this.timedOut = false;
       this.controller = new AbortController();
-      const timer = setTimeout(() => this.controller?.abort(), timeoutMs);
+      const timer = setTimeout(() => {
+        this.timedOut = true;
+        this.controller?.abort();
+      }, timeoutMs);
 
       try {
         const init: RequestInit = {
@@ -194,7 +199,7 @@ export class FetchTransport implements Transport {
           if (value) {
             if (this.bytesRead + value.byteLength > maxBytes) {
               clearTimeout(timer);
-              reader.releaseLock();
+              this.controller?.abort();
               onError(makeError(TransportErrorCode.MaxBytesExceeded, 'Max response size exceeded', false));
               onEnd();
               return;
@@ -230,6 +235,9 @@ export class FetchTransport implements Transport {
 
   private toError(err: unknown): TransportError {
     if (err instanceof DOMException && err.name === 'AbortError') {
+      if (this.timedOut) {
+        return makeError(TransportErrorCode.Timeout, 'Request timed out', true);
+      }
       return makeError(TransportErrorCode.Canceled, 'Transport stopped', false);
     }
     const message = err instanceof Error ? err.message : String(err);
@@ -237,6 +245,7 @@ export class FetchTransport implements Transport {
   }
 
   stop(): void {
+    this.timedOut = false;
     this.controller?.abort();
   }
 }
