@@ -397,7 +397,10 @@ pub(crate) fn write_audio_sample_entry(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4
     write_u16(&mut body, 16); // samplesize
     write_u16(&mut body, 0); // pre_defined
     write_u16(&mut body, 0); // reserved
-    write_u32(&mut body, cfg.sample_rate << 16);
+    write_u32(
+        &mut body,
+        cfg.sample_rate.checked_shl(16).unwrap_or(cfg.sample_rate),
+    );
 
     body.extend(write_esds(cfg)?);
     Ok(write_box(types::MP4A, &body))
