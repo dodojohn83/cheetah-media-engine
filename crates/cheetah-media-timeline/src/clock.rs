@@ -272,6 +272,8 @@ impl MediaClock {
 }
 
 fn time_to_us(time: &MediaTime) -> Option<i64> {
-    let ms = time.pts_ms().or_else(|| time.dts_ms())?;
-    ms.checked_mul(1000)
+    let ts = time.pts.or(time.dts)?;
+    time.timebase
+        .rescale_i64(ts.ticks(), INTERNAL_TIMEBASE)
+        .ok()
 }
