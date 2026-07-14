@@ -179,6 +179,7 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
     async stop(): Promise<void> {
       if (destroyed) return;
       epoch += 1;
+      rejectAll(new Error('Stream stopped'));
       await post('stop', undefined, 10000);
     },
 
