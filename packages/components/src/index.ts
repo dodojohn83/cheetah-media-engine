@@ -22,6 +22,9 @@ export function createPlayerComponent(options: PlayerComponentOptions = {}): Pla
   return {
     player,
     mount(parent: HTMLElement): void {
+      if (video && video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
       container = parent;
       video = document.createElement('video');
       video.autoplay = false;
