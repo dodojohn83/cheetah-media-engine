@@ -76,7 +76,7 @@ class MockSourceBuffer extends MockEventTarget {
   removed: [number, number][] = [];
   changeTypeCalls: string[] = [];
   private throwOnce: Error | undefined = undefined;
-  private throwQuotaOnce = false;
+  private throwQuotaCount = 0;
 
   setBuffered(ranges: [number, number][]): void {
     this.buffered = new MockTimeRanges(ranges);
@@ -86,8 +86,8 @@ class MockSourceBuffer extends MockEventTarget {
     this.throwOnce = error;
   }
 
-  setThrowQuotaOnce(): void {
-    this.throwQuotaOnce = true;
+  setThrowQuotaOnce(count = 1): void {
+    this.throwQuotaCount = count;
   }
 
   appendBuffer(data: ArrayBufferView): void {
@@ -96,8 +96,8 @@ class MockSourceBuffer extends MockEventTarget {
       this.throwOnce = undefined;
       throw err;
     }
-    if (this.throwQuotaOnce) {
-      this.throwQuotaOnce = false;
+    if (this.throwQuotaCount > 0) {
+      this.throwQuotaCount -= 1;
       const err = new Error('QuotaExceededError');
       err.name = 'QuotaExceededError';
       throw err;
@@ -294,6 +294,27 @@ describe('MseBackend', () => {
     expect(sb.removed.length).toBeGreaterThanOrEqual(1);
     expect(backend.metrics.quotaCleanupCount).toBe(1);
     expect(sb.appended.length).toBe(1);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('resets quota retry budget after a successful append', async () => {
+    const onError = vi.fn((err: MseError) => err);
+    const backend = new MseBackend(ctx, makeOptions({ callbacks: { onError }, maxQuotaRetries: 1 }));
+    await backend.configure();
+    const sb = getSourceBuffer();
+    sb.setBuffered([[0, 10]]);
+
+    sb.setThrowQuotaOnce();
+    backend.pushSegment(new Uint8Array([1, 2, 3]));
+    await flushMicrotasks(10);
+    expect(sb.appended.length).toBe(1);
+    expect(backend.metrics.quotaCleanupCount).toBe(1);
+
+    sb.setThrowQuotaOnce();
+    backend.pushSegment(new Uint8Array([4, 5, 6]));
+    await flushMicrotasks(10);
+    expect(sb.appended.length).toBe(2);
+    expect(backend.metrics.quotaCleanupCount).toBe(2);
     expect(onError).not.toHaveBeenCalled();
   });
 

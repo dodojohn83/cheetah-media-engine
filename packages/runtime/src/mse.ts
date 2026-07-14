@@ -617,6 +617,9 @@ export class MseBackend implements MediaBackend {
     }
     if (this.appendQueue.length > 0) {
       this.appendQueue.shift();
+      // A successful (non-cleanup) SourceBuffer operation completed; reset the
+      // per-append quota retry budget so future appends can recover again.
+      this.quotaRetryCount = 0;
     }
     this.processQueue();
   };
