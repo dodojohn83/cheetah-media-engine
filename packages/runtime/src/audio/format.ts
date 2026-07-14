@@ -52,9 +52,9 @@ const FORMAT_TO_CATEGORY: Record<string, FormatCategory> = {
   'f32-interleaved': { signed: true, bytes: 4, planar: false },
   's16-planar': { signed: true, bytes: 2, planar: true },
   's16-interleaved': { signed: true, bytes: 2, planar: false },
-  f32: { signed: true, bytes: 4, planar: true },
-  s16: { signed: true, bytes: 2, planar: true },
-  u8: { signed: false, bytes: 1, planar: true },
+  f32: { signed: true, bytes: 4, planar: false },
+  s16: { signed: true, bytes: 2, planar: false },
+  u8: { signed: false, bytes: 1, planar: false },
 };
 
 function parseFormat(format: string): FormatCategory | undefined {

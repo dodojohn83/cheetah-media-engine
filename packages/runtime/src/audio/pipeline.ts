@@ -219,8 +219,9 @@ export class AudioPipeline {
       const planar = extractPlanarF32(frame, this.outputChannels);
       const resampled = resampler.push(planar);
 
-      // If no resampling happened, push the original planar data directly.
-      const toWrite = (resampled.at(0)?.length ?? 0) > 0 ? resampled : planar;
+      // Always write resampler output; if it buffered the input for later
+      // interpolation it must not be duplicated by writing the raw input.
+      const toWrite = resampled;
 
       if (this.transferPort && !this.isIsolated()) {
         this.writeTransferable(toWrite);
