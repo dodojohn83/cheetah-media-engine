@@ -56,11 +56,6 @@ export interface FallbackOptions {
   readonly plan: PlaybackPlan;
   readonly factory: MediaBackendFactory;
   readonly onEvent?: (event: FallbackEvent) => void;
-  /**
-   * Maximum number of times a single backend identity may be attempted per
-   * stream epoch.  Prevents reconstruction storms.
-   */
-  readonly maxAttemptsPerBackend?: number;
 }
 
 export class FallbackController {
@@ -171,8 +166,11 @@ export class FallbackController {
 
   private async activate(candidate: PlanCandidate, reason: string): Promise<MediaBackend | undefined> {
     const ctx: BackendContext = { candidate, reason };
-    const backend = this.factory(ctx);
+    const from = this.current?.identity;
+    await this.stopCurrent();
     this.recoveryStartMs = performance.now();
+
+    const backend = this.factory(ctx);
     try {
       await backend.configure();
     } catch (err) {
@@ -182,7 +180,6 @@ export class FallbackController {
       return undefined;
     }
 
-    const from = this.current?.identity;
     const to = backend.identity;
     this.current = backend;
     this.currentCandidate = candidate;

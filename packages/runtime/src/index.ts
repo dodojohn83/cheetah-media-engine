@@ -7,6 +7,7 @@ export {
   type ProbeDetails,
   CapabilityCache,
   probeCapabilities,
+  computeFingerprint,
 } from './capabilities';
 export {
   plan,

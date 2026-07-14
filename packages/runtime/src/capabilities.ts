@@ -100,7 +100,7 @@ function hasWasmSupport(): boolean {
   }
 }
 
-function computeFingerprint(): string {
+export function computeFingerprint(): string {
   const parts: (string | number | boolean | undefined)[] = [];
   parts.push(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   parts.push(typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 0);
@@ -403,13 +403,14 @@ export class CapabilityCache {
   }
 
   /**
-   * Refresh the cache by calling `probeCapabilities()` when no valid entry
+   * Refresh the cache by calling `probeCapabilities()` only when no valid entry
    * exists for the current environment fingerprint and versions.
    */
   async probe(): Promise<ProbedCapabilityReport> {
-    const fresh = await probeCapabilities();
-    const cached = this.get(fresh.fingerprint);
+    const fingerprint = computeFingerprint();
+    const cached = this.get(fingerprint);
     if (cached) return cached;
+    const fresh = await probeCapabilities();
     this.put(fresh);
     return fresh;
   }
