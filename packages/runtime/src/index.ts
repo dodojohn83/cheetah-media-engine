@@ -80,3 +80,17 @@ export {
   type SourceBufferLike,
   type MediaSourceLike,
 } from './mse';
+export {
+  FfmpegPackImpl,
+  FfmpegPackError,
+  PackReturnCode,
+  PackFeatureFlags,
+  PackCodecId,
+  type FfmpegPack,
+  type FfmpegPackModule,
+  type FfmpegPackOptions,
+  type FfmpegPacket,
+  type MemoryDescriptor as FfmpegMemoryDescriptor,
+  type PacketDescriptor as FfmpegPacketDescriptor,
+  type FrameDescriptor as FfmpegFrameDescriptor,
+} from './ffmpeg-pack';

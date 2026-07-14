@@ -3,6 +3,8 @@
 **/dist/
 /.pnpm-store
 /.cargo
+**/.cache
+/codec-packs/ffmpeg-wasm/dist
 *.log
 .DS_Store
 test-results/
