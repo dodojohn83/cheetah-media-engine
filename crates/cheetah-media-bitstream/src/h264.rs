@@ -87,7 +87,7 @@ impl<'a> NalUnit<'a> {
             return Err(H264Error::InvalidNalLength);
         }
         let len = self.data.len();
-        if len >= (1usize << (length_size * 8)) {
+        if (len as u64) >= (1u64 << (length_size * 8)) {
             return Err(H264Error::InvalidNalLength);
         }
         let mut out = Vec::with_capacity(usize::from(length_size) + self.data.len());
