@@ -365,8 +365,9 @@ impl HlsClient {
             while self.next_part_index < seg.parts.len() {
                 let part = &seg.parts[self.next_part_index];
                 self.next_part_index += 1;
-                if !part.independent && !part.gap {
+                if !part.independent || part.gap {
                     // For LL-HLS only preload independent parts as usable decode points.
+                    // GAP parts are placeholders for unavailable content and must be skipped.
                     continue;
                 }
                 let uri = part.uri.clone();
