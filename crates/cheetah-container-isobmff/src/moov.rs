@@ -60,13 +60,13 @@ fn parse_mvhd(data: &[u8]) -> Result<u32, Mp4Error> {
         if body.len() < 28 {
             return Err(Mp4Error::NeedMoreData);
         }
-        let timescale = u32::from_be_bytes([body[20], body[21], body[22], body[23]]);
+        let timescale = u32::from_be_bytes([body[16], body[17], body[18], body[19]]);
         Ok(timescale)
     } else {
-        if body.len() < 24 {
+        if body.len() < 16 {
             return Err(Mp4Error::NeedMoreData);
         }
-        let timescale = u32::from_be_bytes([body[12], body[13], body[14], body[15]]);
+        let timescale = u32::from_be_bytes([body[8], body[9], body[10], body[11]]);
         Ok(timescale)
     }
 }
