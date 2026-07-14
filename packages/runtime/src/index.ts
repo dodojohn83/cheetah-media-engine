@@ -17,3 +17,14 @@ export {
 } from './messages';
 export { MemoryArenaView } from './memory';
 export { createRuntime, type EngineRuntime, type RuntimeOptions } from './runtime';
+export {
+  createTransport,
+  FetchTransport,
+  WebSocketTransport,
+  TransportErrorCode,
+  type Transport,
+  type TransportConfig,
+  type TransportError,
+  type TransportStats,
+  type Chunk,
+} from './transport';
