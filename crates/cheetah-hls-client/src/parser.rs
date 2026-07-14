@@ -404,7 +404,10 @@ pub fn parse_media(input: &str, base_uri: &str) -> Result<MediaPlaylist, HlsErro
         if segment_count > MAX_SEGMENTS {
             return Err(HlsError::LimitExceeded { limit: "segments" });
         }
-        pl.segments.push(core::mem::take(&mut current_segment));
+        let finished = core::mem::take(&mut current_segment);
+        current_segment.map = finished.map.clone();
+        current_segment.key = finished.key.clone();
+        pl.segments.push(finished);
     }
 
     if pl.target_duration == 0.0 && !pl.segments.is_empty() {
