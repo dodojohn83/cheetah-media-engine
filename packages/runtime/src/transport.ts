@@ -361,7 +361,9 @@ export class WebSocketTransport implements Transport {
           const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000) + Math.random() * 1000;
           this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = undefined;
-            this.connect(onChunk).catch(() => {});
+            this.connect(onChunk).catch((err) => {
+              this.finish(this.toError(err));
+            });
           }, delay);
           resolve();
         } else {
