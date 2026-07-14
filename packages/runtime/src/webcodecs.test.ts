@@ -358,4 +358,18 @@ describe('WebCodecsBackend', () => {
     await backend.configure();
     await expect(backend.stop()).resolves.toBeUndefined();
   });
+
+  it('resets pendingDecodes when reconfiguring on a keyframe', async () => {
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {}, maxPendingDecodes: 5 });
+    await backend.configure();
+
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x41]), 1000);
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x41]), 2000);
+    expect(backend.metrics.pendingDecodes).toBe(2);
+
+    backend.markVideoConfigChanged();
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x65]), 3000);
+    // reset() discarded the two earlier deltas; only the keyframe remains pending.
+    expect(backend.metrics.pendingDecodes).toBe(1);
+  });
 });

@@ -397,6 +397,9 @@ export class WebCodecsBackend implements MediaBackend {
   private reconfigureVideo(): void {
     if (!this.videoDecoder || !this.videoConfig) return;
     this.pendingReconfigure = false;
+    // `reset()` discards all pending decode operations and their output
+    // callbacks will never fire, so we must zero the counter.
+    this._metrics.pendingDecodes = 0;
     // `reset()` keeps the decoder object but clears internal state; reconfigure
     // with the current (presumably updated) description.
     this.videoDecoder.reset();
