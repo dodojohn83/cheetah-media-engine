@@ -203,13 +203,9 @@ fn payload_is_keyframe(payload: &[u8], codec_id: VideoCodecId) -> bool {
         VideoCodecId::H265 => {
             if let Ok(nals) = h265::split_hvcc(payload, 4) {
                 for nal in nals {
-                    if nal.data.len() >= 2 {
-                        let header = u16::from_be_bytes([nal.data[0], nal.data[1]]);
-                        let nal_type = ((header >> 1) & 0x3f) as u8;
-                        let t = H265NalUnitType::from_u8(nal_type);
-                        if t.is_irap() {
-                            return true;
-                        }
+                    let t = H265NalUnitType::from_u8(nal.nal_unit_type);
+                    if t.is_irap() {
+                        return true;
                     }
                 }
             }

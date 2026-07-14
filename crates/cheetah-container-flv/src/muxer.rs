@@ -152,11 +152,7 @@ impl FlvMuxer {
         while self.queue.peek().is_some() {
             self.flush_oldest()?;
         }
-        // Final previous tag size.
-        if self.file_mode && self.previous_tag_size != 0 {
-            self.output
-                .extend_from_slice(&self.previous_tag_size.to_be_bytes());
-        }
+        // The last tag already wrote its trailing PreviousTagSize in write_tag.
         Ok(self.output)
     }
 
