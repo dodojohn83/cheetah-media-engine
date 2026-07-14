@@ -160,6 +160,31 @@ describe('FallbackController', () => {
     expect(retry?.identity).toBe('mse');
   });
 
+  it('does not recurse infinitely on a candidate with no backends', async () => {
+    const plan = makePlan([
+      {
+        rank: 1,
+        videoBackend: undefined,
+        audioBackend: undefined,
+        renderer: undefined,
+        transport: 'fetch',
+        reason: 'empty',
+      },
+    ]);
+    const factory = vi.fn(() => fakeBackend({ candidate: plan.candidates[0], reason: 'test' }, true));
+    const events: FallbackEvent[] = [];
+    const controller = new FallbackController({
+      plan,
+      factory,
+      onEvent: (e) => events.push(e),
+    });
+
+    const backend = await controller.configureNext('initial');
+    expect(backend).toBeUndefined();
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(events.some((e) => e.type === 'unsupported')).toBe(true);
+  });
+
   it('setPlan replaces the candidate list and resets tried state', async () => {
     const plan = makePlan([candidate('webcodecs', 'webcodecs')]);
     const controller = new FallbackController({

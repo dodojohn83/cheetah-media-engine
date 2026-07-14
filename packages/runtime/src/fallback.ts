@@ -66,6 +66,7 @@ export class FallbackController {
   private currentCandidate: PlanCandidate | undefined = undefined;
   private tried = new Map<Backend, number>();
   private attemptReasons = new Map<Backend, string>();
+  private triedCandidates = new Set<number>();
   private epoch = 0;
   private recoveryStartMs = 0;
   private stopped = false;
@@ -85,6 +86,7 @@ export class FallbackController {
     this.epoch += 1;
     this.tried.clear();
     this.attemptReasons.clear();
+    this.triedCandidates.clear();
     this.recoveryStartMs = performance.now();
   }
 
@@ -95,7 +97,8 @@ export class FallbackController {
   async configureNext(reason = 'initial'): Promise<MediaBackend | undefined> {
     if (this.stopped) return undefined;
 
-    const candidate = this.plan.candidates.find((c) => {
+    const candidateIndex = this.plan.candidates.findIndex((c, index) => {
+      if (this.triedCandidates.has(index)) return false;
       const video = c.videoBackend;
       const audio = c.audioBackend;
       if (video && this.tried.get(video) !== undefined) return false;
@@ -103,7 +106,7 @@ export class FallbackController {
       return true;
     });
 
-    if (!candidate) {
+    if (candidateIndex === -1) {
       this.emit({
         type: 'unsupported',
         payload: {
@@ -114,6 +117,7 @@ export class FallbackController {
       return undefined;
     }
 
+    const candidate = this.plan.candidates[candidateIndex];
     const backend = await this.activate(candidate, reason);
     if (backend) {
       this.current = backend;
@@ -121,6 +125,9 @@ export class FallbackController {
       return backend;
     }
 
+    // Mark this candidate as tried even if it has no backend identities, so a
+    // failing candidate cannot be selected again and cause infinite recursion.
+    this.triedCandidates.add(candidateIndex);
     return this.configureNext(`${reason} -> ${this.describe(candidate)} failed`);
   }
 
@@ -155,13 +162,15 @@ export class FallbackController {
     this.plan = plan;
     this.tried.clear();
     this.attemptReasons.clear();
+    this.triedCandidates.clear();
   }
 
   getState(): FallbackState {
     return {
       currentCandidate: this.currentCandidate,
       triedThisEpoch: new Set(this.tried.keys()),
-      exhausted: this.plan.candidates.every((c) => {
+      exhausted: this.plan.candidates.every((c, index) => {
+        if (this.triedCandidates.has(index)) return true;
         return (c.videoBackend !== undefined && this.tried.has(c.videoBackend)) ||
           (c.audioBackend !== undefined && this.tried.has(c.audioBackend));
       }),
