@@ -237,3 +237,23 @@ seg0.m4s
             .any(|a| matches!(a.kind, ActionKind::LoadPlaylist { .. }))
     );
 }
+
+#[test]
+fn variant_selection_fallback_to_lowest_when_all_exceed_cap() {
+    let master = r#"#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,CODECS="avc1.42e00a,mp4a.40.2"
+low.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,CODECS="avc1.42e00a,mp4a.40.2"
+mid.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=10000000,CODECS="avc1.42e00a,mp4a.40.2"
+high.m3u8
+"#;
+    let m = parse_master(master, "http://x/").unwrap();
+    let caps = VariantCapabilities {
+        max_bandwidth: Some(500_000),
+        required_codecs: alloc::vec!["avc1".into()],
+        ..VariantCapabilities::default()
+    };
+    let v = select_initial_variant(&m.variants, &caps).unwrap();
+    assert_eq!(v.bandwidth, 1_000_000);
+}

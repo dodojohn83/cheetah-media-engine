@@ -89,7 +89,9 @@ pub fn select_initial_variant<'a>(
             match (a_fit, b_fit) {
                 (true, false) => core::cmp::Ordering::Greater,
                 (false, true) => core::cmp::Ordering::Less,
-                _ => a_bw.cmp(&b_bw),
+                (true, true) => a_bw.cmp(&b_bw),
+                // Neither fits: prefer lower bandwidth (closer to cap).
+                (false, false) => b_bw.cmp(&a_bw),
             }
         } else {
             a_bw.cmp(&b_bw)
