@@ -102,7 +102,7 @@ impl AvSync {
             self.clock.set_state(ClockState::CatchUp);
             if is_keyframe {
                 return Ok(SyncDecision::Hold {
-                    until: ClockTime::new(audio_ms * 1000),
+                    until: ClockTime::new(audio_ms.saturating_mul(1000)),
                 });
             }
             self.clock.add_dropped(drift_ms);

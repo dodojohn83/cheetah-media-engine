@@ -263,6 +263,7 @@ pub fn plan(
     let mut candidates = alloc::vec![plan];
     let mut fallback = fallback_plan(request, caps);
     fallback.score = candidates[0].score - 1;
+    fallback.estimated_copy_bytes_per_frame = bytes_per_frame;
     candidates.push(fallback);
 
     // Stable, deterministic ordering by score then by reason string.
