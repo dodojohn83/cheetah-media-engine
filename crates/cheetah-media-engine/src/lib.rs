@@ -1,27 +1,26 @@
 //! Cheetah media engine orchestration.
 //!
-//! This crate contains the platform-neutral state machine and pipeline planner.
-//! Platform specifics live in `cheetah-media-web-bindings` and future native bindings.
+//! This crate contains the platform-neutral state machine, scheduler and
+//! pipeline planner. Platform specifics live in `cheetah-media-web-bindings`
+//! and future native bindings.
+
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+extern crate alloc;
+
+pub mod scheduler;
+pub mod state;
+
+pub use scheduler::{BoundedQueue, Priority, QueueConfig, QueueName, Scheduler, SchedulerEvent};
+pub use state::{
+    BackendEvent, Engine, EngineCommand, EngineError, EngineEvent, EngineOutput, LoadRequest,
+    NetworkEvent, PlayerState,
+};
 
 use cheetah_media_backend_api::CapabilityProbe;
 use cheetah_media_types::CodecId;
 
 /// Engine version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Player lifecycle states.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlayerState {
-    Idle,
-    Loading,
-    Probing,
-    Buffering,
-    Playing,
-    Paused,
-    Stopping,
-    Failed,
-    Destroyed,
-}
 
 /// Resource budget for a single player instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,7 +33,7 @@ pub struct PlayerBudget {
 
 impl PlayerBudget {
     /// Default budget for desktop playback.
-    pub fn desktop() -> Self {
+    pub const fn desktop() -> Self {
         Self {
             max_video_decoders: 1,
             max_buffer_ms: 3000,

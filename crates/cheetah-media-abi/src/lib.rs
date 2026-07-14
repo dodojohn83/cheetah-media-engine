@@ -1,6 +1,7 @@
 //! Stable ABI and platform-neutral ports for media operations.
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
+#[macro_use]
 extern crate alloc;
 
 use cheetah_media_types::{CodecId, MediaTime, TrackId};

@@ -4,6 +4,13 @@
 //! only defines the trait surface so the engine can be compiled without linking
 //! to DOM, Qt, JNI, or other platform APIs.
 
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+extern crate alloc;
+
+pub use port::*;
+
+pub mod port;
+
 use cheetah_media_types::CodecId;
 
 /// A platform media backend capability probe.
