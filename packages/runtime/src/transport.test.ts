@@ -24,13 +24,21 @@ function buildChunks(values: number[][]): ReadableStream<Uint8Array> {
 
 describe('FetchTransport', () => {
   let originalFetch: typeof fetch;
+  let originalIsSecureContext: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
+    originalIsSecureContext = Object.getOwnPropertyDescriptor(globalThis, 'isSecureContext');
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    if (originalIsSecureContext) {
+      Object.defineProperty(globalThis, 'isSecureContext', originalIsSecureContext);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (globalThis as any).isSecureContext;
+    }
   });
 
   it('delivers chunks for a 200 response', async () => {
@@ -105,20 +113,42 @@ describe('FetchTransport', () => {
 
     expect(err.code).toBe(TransportErrorCode.InvalidUrl);
   });
+
+  it('rejects plain HTTP from secure context', async () => {
+    Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+    const transport = new FetchTransport({ url: 'http://example.com/stream' });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+
+    expect(err.code).toBe(TransportErrorCode.InsecureContent);
+  });
 });
 
 describe('WebSocketTransport', () => {
   let originalWebSocket: typeof WebSocket;
+  let originalIsSecureContext: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     originalWebSocket = globalThis.WebSocket as typeof WebSocket;
+    originalIsSecureContext = Object.getOwnPropertyDescriptor(globalThis, 'isSecureContext');
   });
 
   afterEach(() => {
     globalThis.WebSocket = originalWebSocket;
+    if (originalIsSecureContext) {
+      Object.defineProperty(globalThis, 'isSecureContext', originalIsSecureContext);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (globalThis as any).isSecureContext;
+    }
   });
 
-  it('delivers binary messages as chunks', async () => {
+  function createMockSocket(messages: unknown[], closeCode = 1000, closeReason = 'done'): typeof WebSocket {
     class MockSocket extends EventTarget {
       public url: string;
       public binaryType: BinaryType = 'arraybuffer';
@@ -126,65 +156,103 @@ describe('WebSocketTransport', () => {
       constructor(url: string | URL) {
         super();
         this.url = String(url);
-        setTimeout(() => {
+        setTimeout(async () => {
           this.readyState = WebSocket.OPEN;
           this.dispatchEvent(new Event('open'));
-          this.dispatchEvent(new MessageEvent('message', { data: new Uint8Array([0x01, 0x02]).buffer }));
-          this.dispatchEvent(new CloseEvent('close', { code: 1000, reason: 'done' }));
+          for (const message of messages) {
+            this.dispatchEvent(new MessageEvent('message', { data: message }));
+          }
+          // Yield so async Blob.arrayBuffer() microtasks can run before close.
+          await Promise.resolve();
+          this.dispatchEvent(new CloseEvent('close', { code: closeCode, reason: closeReason }));
         }, 0);
       }
       public close(): void {
         this.readyState = WebSocket.CLOSED;
       }
     }
-    globalThis.WebSocket = MockSocket as unknown as typeof WebSocket;
+    return MockSocket as unknown as typeof WebSocket;
+  }
+
+  it('delivers binary messages as chunks', async () => {
+    globalThis.WebSocket = createMockSocket([new Uint8Array([0x01, 0x02]).buffer]);
 
     const transport = new WebSocketTransport({ url: 'wss://example.com/stream' });
     const chunks: Uint8Array[] = [];
+    const errors: { code: number }[] = [];
     await new Promise<void>((resolve) => {
       transport.start(
         (chunk) => chunks.push(chunk.bytes),
-        () => { /* no-op */ },
+        (error) => errors.push(error),
         () => resolve(),
       );
     });
 
     expect(chunks).toHaveLength(1);
     expect(chunks[0]).toEqual(new Uint8Array([0x01, 0x02]));
+    expect(errors).toHaveLength(0);
   });
 
-  it('ignores text messages', async () => {
-    class MockSocket extends EventTarget {
-      public url: string;
-      public binaryType: BinaryType = 'arraybuffer';
-      public readyState: number = WebSocket.CONNECTING;
-      constructor(url: string | URL) {
-        super();
-        this.url = String(url);
-        setTimeout(() => {
-          this.readyState = WebSocket.OPEN;
-          this.dispatchEvent(new Event('open'));
-          this.dispatchEvent(new MessageEvent('message', { data: 'control' }));
-          this.dispatchEvent(new CloseEvent('close', { code: 1000, reason: 'done' }));
-        }, 0);
-      }
-      public close(): void {
-        this.readyState = WebSocket.CLOSED;
-      }
-    }
-    globalThis.WebSocket = MockSocket as unknown as typeof WebSocket;
+  it('delivers Blob messages as chunks', async () => {
+    globalThis.WebSocket = createMockSocket([new Blob([new Uint8Array([0x03, 0x04])])]);
 
     const transport = new WebSocketTransport({ url: 'wss://example.com/stream' });
     const chunks: Uint8Array[] = [];
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       transport.start(
         (chunk) => chunks.push(chunk.bytes),
-        () => { /* no-op */ },
+        (error) => reject(new Error(error.message)),
+        () => resolve(),
+      );
+    });
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toEqual(new Uint8Array([0x03, 0x04]));
+  });
+
+  it('ignores text messages', async () => {
+    globalThis.WebSocket = createMockSocket(['control']);
+
+    const transport = new WebSocketTransport({ url: 'wss://example.com/stream' });
+    const chunks: Uint8Array[] = [];
+    await new Promise<void>((resolve, reject) => {
+      transport.start(
+        (chunk) => chunks.push(chunk.bytes),
+        (error) => reject(new Error(error.message)),
         () => resolve(),
       );
     });
 
     expect(chunks).toHaveLength(0);
+  });
+
+  it('reports abnormal close as error', async () => {
+    globalThis.WebSocket = createMockSocket([], 1006, 'abnormal');
+
+    const transport = new WebSocketTransport({ url: 'wss://example.com/stream' });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+
+    expect(err.code).toBe(TransportErrorCode.WebSocketClosed);
+  });
+
+  it('rejects plain ws: from secure context', async () => {
+    Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+    const transport = new WebSocketTransport({ url: 'ws://example.com/stream' });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+
+    expect(err.code).toBe(TransportErrorCode.InsecureContent);
   });
 });
 

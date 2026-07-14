@@ -72,10 +72,14 @@ function validateUrl(url: string): TransportError | undefined {
       false,
     );
   }
-  if (parsed.protocol === 'http:' && typeof globalThis !== 'undefined' && (globalThis as unknown as { isSecureContext?: boolean }).isSecureContext) {
+  if (
+    (parsed.protocol === 'http:' || parsed.protocol === 'ws:') &&
+    typeof globalThis !== 'undefined' &&
+    (globalThis as unknown as { isSecureContext?: boolean }).isSecureContext
+  ) {
     return makeError(
       TransportErrorCode.InsecureContent,
-      'Plain HTTP media is not allowed from a secure context',
+      'Plain-text transport is not allowed from a secure context',
       false,
     );
   }
@@ -294,22 +298,7 @@ export class WebSocketTransport implements Transport {
         this.reconnectAttempts = 0;
       };
 
-      const onMessage = (event: MessageEvent) => {
-        if (typeof event.data === 'string') {
-          // Text messages are not media byte chunks. Discard silently.
-          return;
-        }
-        const data = event.data as ArrayBuffer | Blob;
-        let bytes: Uint8Array;
-        if (data instanceof Blob) {
-          // Blobs are converted synchronously in the message event path; for
-          // a real implementation this should be moved to a separate reader.
-          // Synchronous conversion is acceptable for small control messages.
-          bytes = new Uint8Array();
-          return;
-        } else {
-          bytes = new Uint8Array(data as ArrayBuffer);
-        }
+      const deliver = (bytes: Uint8Array): void => {
         if (this.bytesRead + bytes.length > this.maxBytes) {
           socket.close();
           onError(makeError(TransportErrorCode.MaxBytesExceeded, 'Max response size exceeded', false));
@@ -321,9 +310,28 @@ export class WebSocketTransport implements Transport {
         onChunk({ bytes, timestamp: performance.now() });
       };
 
+      const onMessage = (event: MessageEvent) => {
+        if (typeof event.data === 'string') {
+          // Text messages are not media byte chunks. Discard silently.
+          return;
+        }
+        const data = event.data as ArrayBuffer | Blob;
+        if (data instanceof Blob) {
+          data.arrayBuffer().then((buffer) => deliver(new Uint8Array(buffer))).catch(reject);
+          return;
+        }
+        deliver(new Uint8Array(data as ArrayBuffer));
+      };
+
       const onClose = (event: CloseEvent) => {
         if (this.controller?.signal.aborted) {
           onError(makeError(TransportErrorCode.Canceled, 'Transport stopped', false));
+          onEnd();
+          resolve();
+          return;
+        }
+        if (event.code === 1000) {
+          // Normal server-side end of stream.
           onEnd();
           resolve();
           return;
