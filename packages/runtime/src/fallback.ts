@@ -117,7 +117,7 @@ export class FallbackController {
       return undefined;
     }
 
-    const candidate = this.plan.candidates[candidateIndex];
+    const candidate = this.plan.candidates[candidateIndex]!;
     const backend = await this.activate(candidate, reason);
     if (backend) {
       this.current = backend;

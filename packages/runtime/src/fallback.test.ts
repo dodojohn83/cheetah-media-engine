@@ -171,7 +171,7 @@ describe('FallbackController', () => {
         reason: 'empty',
       },
     ]);
-    const factory = vi.fn(() => fakeBackend({ candidate: plan.candidates[0], reason: 'test' }, true));
+    const factory = vi.fn(() => fakeBackend({ candidate: plan.candidates[0]!, reason: 'test' }, true));
     const events: FallbackEvent[] = [];
     const controller = new FallbackController({
       plan,
