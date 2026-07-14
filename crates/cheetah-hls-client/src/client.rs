@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use crate::error::HlsError;
 use crate::model::*;
 use crate::parser::parse;
-use crate::variant::{VariantCapabilities, VariantSelector, select_initial_variant};
+use crate::variant::{VariantCapabilities, VariantSelector};
 
 /// Request issued by the client.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,7 +191,7 @@ impl HlsClient {
         match parse(text, base) {
             Ok(Playlist::Master(master)) => {
                 self.master = Some(master);
-                let selected_uri = match select_initial_variant(
+                let selected_uri = match self.config.selector.select(
                     &self.master.as_ref().unwrap().variants,
                     &self.config.capabilities,
                 ) {
