@@ -135,9 +135,11 @@ fn parse_traf(
         }
 
         let data_offset = if let Some(d) = trun.data_offset {
-            data_offset_base + d as u64 + cumulative_size
+            data_offset_base
+                .wrapping_add(d as i64 as u64)
+                .wrapping_add(cumulative_size)
         } else {
-            data_offset_base + cumulative_size
+            data_offset_base.wrapping_add(cumulative_size)
         };
 
         samples.push(FragmentSample {

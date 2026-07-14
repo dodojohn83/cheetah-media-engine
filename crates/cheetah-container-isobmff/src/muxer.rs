@@ -328,7 +328,8 @@ pub(crate) fn write_dinf() -> Vec<u8> {
     write_u32(&mut dref_body, 1); // entry_count
     let url_body = write_fullbox(0, 0x0000_0001); // self-contained
     dref_body.extend(write_box(types::URL, &url_body));
-    write_box(types::DREF, &dref_body)
+    let dref = write_box(types::DREF, &dref_body);
+    write_box(types::DINF, &dref)
 }
 
 pub(crate) fn write_stbl(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {

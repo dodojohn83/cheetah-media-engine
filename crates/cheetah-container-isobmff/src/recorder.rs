@@ -104,9 +104,23 @@ impl Mp4Muxer {
 
         let ftyp = write_ftyp();
         let (moov_body, stco_patch_position) = self.write_moov_body(cfg)?;
-        let moov = write_box(types::MOOV, &moov_body);
 
-        let chunk_offset = ftyp.len() + moov.len() + 8;
+        let total_payload: u64 = self.samples.iter().map(|s| s.payload.len() as u64).sum();
+        let needs_extended = total_payload.saturating_add(8) > u32::MAX as u64;
+        let mdat_header_size: u64 = if needs_extended { 16 } else { 8 };
+        let mdat_total_size = total_payload
+            .checked_add(mdat_header_size)
+            .ok_or_else(|| Mp4Error::limit_exceeded("mdat size overflow"))?;
+
+        let moov_len = moov_body
+            .len()
+            .checked_add(8)
+            .ok_or_else(|| Mp4Error::limit_exceeded("moov box size overflow"))?;
+        let chunk_offset = ftyp
+            .len()
+            .checked_add(moov_len)
+            .and_then(|n| n.checked_add(mdat_header_size as usize))
+            .ok_or_else(|| Mp4Error::limit_exceeded("chunk offset overflow"))?;
         let mut moov_body = moov_body;
         if let Some(pos) = stco_patch_position {
             let offset = u32::try_from(chunk_offset)
@@ -115,17 +129,13 @@ impl Mp4Muxer {
         }
         let moov = write_box(types::MOOV, &moov_body);
 
-        let total_payload: u64 = self.samples.iter().map(|s| s.payload.len() as u64).sum();
-        let mdat_size = total_payload
-            .checked_add(8)
-            .ok_or_else(|| Mp4Error::limit_exceeded("mdat size overflow"))?;
-        let mut mdat = Vec::with_capacity((mdat_size + 8) as usize);
-        if mdat_size > u32::MAX as u64 {
+        let mut mdat = Vec::with_capacity(mdat_total_size as usize);
+        if needs_extended {
             mdat.extend_from_slice(&[0, 0, 0, 1]);
             mdat.extend_from_slice(&types::MDAT.to_be_bytes());
-            mdat.extend_from_slice(&mdat_size.to_be_bytes());
+            mdat.extend_from_slice(&mdat_total_size.to_be_bytes());
         } else {
-            mdat.extend_from_slice(&(mdat_size as u32).to_be_bytes());
+            mdat.extend_from_slice(&(mdat_total_size as u32).to_be_bytes());
             mdat.extend_from_slice(&types::MDAT.to_be_bytes());
         }
         for s in &self.samples {
