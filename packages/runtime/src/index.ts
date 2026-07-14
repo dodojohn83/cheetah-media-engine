@@ -94,3 +94,4 @@ export {
   type PacketDescriptor as FfmpegPacketDescriptor,
   type FrameDescriptor as FfmpegFrameDescriptor,
 } from './ffmpeg-pack';
+export * from './audio';
