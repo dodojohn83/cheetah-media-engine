@@ -163,7 +163,11 @@ impl FlvDemuxer {
             return Ok(None);
         }
         let header = parse_file_header(&self.buffer[self.read_pos..self.read_pos + 9])?;
-        self.read_pos += 9;
+        let skip = header.header_size as usize;
+        if self.available() < skip {
+            return Ok(None);
+        }
+        self.read_pos += skip;
         self.header = Some(header);
         self.shrink();
         Ok(Some(FlvEvent::Header(header)))
