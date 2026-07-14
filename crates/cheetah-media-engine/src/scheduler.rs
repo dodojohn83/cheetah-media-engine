@@ -85,20 +85,24 @@ impl<T> BoundedQueue<T> {
     }
 
     /// Push an item with `priority`. If the queue is full, the lowest-priority
-    /// item is evicted. Returns the number of items dropped.
+    /// (highest numeric) item is evicted to make room for a strictly higher-priority
+    /// newcomer. Returns `0` if the item was accepted and `1` if the item itself
+    /// was dropped.
     pub fn push(&mut self, priority: Priority, item: T) -> u64 {
         if self.items.len() >= self.config.capacity {
-            // Evict the lowest-priority oldest item only if the newcomer has
-            // strictly higher priority. Equal or lower priority newcomers are
-            // dropped to preserve FIFO order.
-            if let Some(&(old_priority, _)) = self.items.back() {
-                if priority < old_priority {
-                    self.items.pop_back();
-                    self.dropped += 1;
-                } else {
-                    self.dropped += 1;
-                    return 1;
-                }
+            let (victim_idx, victim_priority) = self
+                .items
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, (p, _))| *p)
+                .map(|(i, (p, _))| (i, *p))
+                .expect("non-empty when at capacity");
+            if priority < victim_priority {
+                self.items.remove(victim_idx);
+                self.dropped += 1;
+            } else {
+                self.dropped += 1;
+                return 1;
             }
         }
         self.items.push_back((priority, item));
@@ -215,8 +219,8 @@ impl<T> Scheduler<T> {
         self.names.iter().position(|n| *n == name)
     }
 
-    /// Push `item` into `queue` with `priority`. Returns the number dropped and
-    /// any watermark events.
+    /// Push `item` into `queue` with `priority`. Returns the number of items
+    /// dropped to make room and any watermark events.
     pub fn push(
         &mut self,
         queue: QueueName,
@@ -224,7 +228,9 @@ impl<T> Scheduler<T> {
         item: T,
     ) -> (u64, Vec<SchedulerEvent>) {
         let idx = self.index_of(queue).expect("valid queue");
-        let dropped = self.queues[idx].push(priority, item);
+        let prev_dropped = self.queues[idx].dropped();
+        self.queues[idx].push(priority, item);
+        let dropped = self.queues[idx].dropped() - prev_dropped;
         let events = self.queues[idx].poll_watermarks();
         if dropped > 0 {
             let mut events = events;
@@ -303,6 +309,18 @@ mod tests {
         q.push(Priority::Control, 0);
         assert_eq!(q.push(Priority::Data, 1), 1);
         assert_eq!(q.pop(), Some(0));
+    }
+
+    #[test]
+    fn evict_lowest_priority_not_newest() {
+        let mut q = BoundedQueue::new("test", QueueConfig::with_watermarks(2));
+        q.push(Priority::Data, 1);
+        q.push(Priority::Control, 0);
+        // Keyframe has higher priority than Data but lower than Control, so the
+        // oldest Data item should be evicted, not the newest Control item.
+        assert_eq!(q.push(Priority::Keyframe, 2), 0);
+        assert_eq!(q.pop(), Some(0));
+        assert_eq!(q.pop(), Some(2));
     }
 
     #[test]
