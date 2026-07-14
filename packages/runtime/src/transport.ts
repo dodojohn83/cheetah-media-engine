@@ -267,6 +267,7 @@ export class WebSocketTransport implements Transport {
   private socket?: WebSocket;
   private controller?: AbortController;
   private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined;
   private started = false;
   private bytesRead = 0;
   private maxBytes: number;
@@ -320,6 +321,9 @@ export class WebSocketTransport implements Transport {
       };
 
       const onMessage = (event: MessageEvent) => {
+        if (this.controller?.signal.aborted) {
+          return;
+        }
         if (typeof event.data === 'string') {
           // Text messages are not media byte chunks. Discard silently.
           return;
@@ -349,7 +353,8 @@ export class WebSocketTransport implements Transport {
         if (this.reconnectAttempts < maxRetries) {
           this.reconnectAttempts += 1;
           const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000) + Math.random() * 1000;
-          setTimeout(() => {
+          this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = undefined;
             this.connect(onChunk, onError, onEnd).catch(reject);
           }, delay);
         } else {
@@ -381,6 +386,10 @@ export class WebSocketTransport implements Transport {
   }
 
   stop(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
     this.controller?.abort();
     this.socket?.close();
   }
@@ -390,7 +399,13 @@ export class WebSocketTransport implements Transport {
  * Create a transport based on URL scheme.
  */
 export function createTransport(config: TransportConfig): Transport {
-  const url = new URL(config.url);
+  let url: URL;
+  try {
+    url = new URL(config.url);
+  } catch {
+    // Defer validation to start() so errors are reported via onError.
+    return new FetchTransport(config);
+  }
   if (url.protocol === 'ws:' || url.protocol === 'wss:') {
     return new WebSocketTransport(config as WebSocketConfig);
   }

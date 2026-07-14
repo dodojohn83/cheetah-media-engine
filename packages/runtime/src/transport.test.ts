@@ -323,6 +323,42 @@ describe('WebSocketTransport', () => {
 
     expect(err.code).toBe(TransportErrorCode.InsecureContent);
   });
+
+  it('cancels pending reconnect on stop', async () => {
+    let socketCount = 0;
+    class ReconnectMockSocket extends EventTarget {
+      public url: string;
+      public binaryType: BinaryType = 'arraybuffer';
+      public readyState: number = WebSocket.CONNECTING;
+      constructor(url: string | URL) {
+        super();
+        socketCount += 1;
+        this.url = String(url);
+        setTimeout(async () => {
+          this.readyState = WebSocket.OPEN;
+          this.dispatchEvent(new Event('open'));
+          this.dispatchEvent(new CloseEvent('close', { code: 1006, reason: 'abnormal' }));
+        }, 0);
+      }
+      public close(): void {
+        this.readyState = WebSocket.CLOSED;
+      }
+    }
+    globalThis.WebSocket = ReconnectMockSocket as unknown as typeof WebSocket;
+
+    const transport = new WebSocketTransport({ url: 'wss://example.com/stream', maxRetries: 1 });
+    transport.start(
+      () => { /* no-op */ },
+      () => { /* no-op */ },
+      () => { /* no-op */ },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    transport.stop();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(socketCount).toBe(1);
+  });
 });
 
 describe('createTransport', () => {
@@ -334,5 +370,18 @@ describe('createTransport', () => {
   it('selects FetchTransport for https://', () => {
     const transport = createTransport({ url: 'https://example.com/stream' });
     expect(transport).toBeInstanceOf(FetchTransport);
+  });
+
+  it('returns FetchTransport for invalid URL and defers validation to start', async () => {
+    const transport = createTransport({ url: 'not a valid url' });
+    expect(transport).toBeInstanceOf(FetchTransport);
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+    expect(err.code).toBe(TransportErrorCode.InvalidUrl);
   });
 });
