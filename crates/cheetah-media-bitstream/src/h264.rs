@@ -405,7 +405,7 @@ impl H264CodecConfig {
         let mut sps_list = Vec::new();
         for _ in 0..sps_count_byte {
             let len = cursor.read_u16_be()? as usize;
-            if len > cursor.remaining() {
+            if len == 0 || len > cursor.remaining() {
                 return Err(H264Error::InvalidNalLength);
             }
             let nal = cursor.read_bytes(len)?;
@@ -416,7 +416,7 @@ impl H264CodecConfig {
         let mut pps_list = Vec::new();
         for _ in 0..pps_count {
             let len = cursor.read_u16_be()? as usize;
-            if len > cursor.remaining() {
+            if len == 0 || len > cursor.remaining() {
                 return Err(H264Error::InvalidNalLength);
             }
             let nal = cursor.read_bytes(len)?;
@@ -426,7 +426,7 @@ impl H264CodecConfig {
         let mut width = 0u32;
         let mut height = 0u32;
         let mut codec_string = alloc::string::String::new();
-        if let Some(first_sps) = sps_list.first() {
+        if let Some(first_sps) = sps_list.first().filter(|s| !s.is_empty()) {
             let header = first_sps[0];
             let nal_type = header & 0x1f;
             if nal_type == 7 {
@@ -625,5 +625,17 @@ mod tests {
         assert_eq!(sps.chroma_format_idc, 1);
         assert_eq!(sps.width, 256);
         assert_eq!(sps.height, 256);
+    }
+
+    #[test]
+    fn avcc_rejects_zero_length_sps() {
+        // Malformed AVCDecoderConfigurationRecord with one SPS entry whose
+        // 16-bit length is zero. Before the fix this panicked at first_sps[0];
+        // now it returns InvalidNalLength.
+        let bad = [0x01, 0x42, 0x00, 0x1e, 0xff, 0xe1, 0x00, 0x00, 0x00];
+        assert!(matches!(
+            H264CodecConfig::parse(&bad),
+            Err(H264Error::InvalidNalLength)
+        ));
     }
 }
