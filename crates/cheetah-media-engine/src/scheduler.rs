@@ -266,7 +266,7 @@ impl<T> Scheduler<T> {
             .queues
             .iter()
             .enumerate()
-            .filter_map(|(i, q)| q.items.front().map(|(p, _)| (i, *p)))
+            .filter_map(|(i, q)| q.items.iter().map(|(p, _)| *p).min().map(|p| (i, p)))
             .min_by_key(|(_, p)| *p)?;
         self.queues[i].pop().map(|item| (self.names[i], item))
     }
@@ -336,6 +336,18 @@ mod tests {
         assert_eq!(q.push(Priority::Keyframe, 2), 0);
         assert_eq!(q.pop(), Some(0));
         assert_eq!(q.pop(), Some(2));
+    }
+
+    #[test]
+    fn scheduler_prefers_deeper_higher_priority() {
+        let mut s = Scheduler::new();
+        s.push(QueueName::Input, Priority::Data, 1);
+        s.push(QueueName::Input, Priority::Control, 2);
+        s.push(QueueName::Audio, Priority::AudioClock, 3);
+        // Input's Control (0) is deeper than its front Data (3) but still
+        // higher priority than Audio's AudioClock (1).
+        let (_, item) = s.pop().unwrap();
+        assert_eq!(item, 2);
     }
 
     #[test]
