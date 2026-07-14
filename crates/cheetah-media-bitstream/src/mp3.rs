@@ -231,8 +231,7 @@ impl Mp3Header {
         let samples_per_frame = version.samples_per_frame(layer);
         let slot_size = if matches!(layer, Layer::I) { 4 } else { 1 };
         let mut frame_length =
-            (samples_per_frame as u32 * u32::from(bitrate_kbps) * 1000 / 8 / sample_rate)
-                * slot_size as u32;
+            samples_per_frame as u32 * u32::from(bitrate_kbps) * 1000 / 8 / sample_rate;
         if padding {
             frame_length += slot_size as u32;
         }
@@ -321,5 +320,16 @@ mod tests {
         assert_eq!(header.layer, Layer::III);
         assert_eq!(header.samples_per_frame, 576);
         assert_eq!(header.frame_length, 261);
+    }
+
+    #[test]
+    fn mp3_layer_i_frame_length() {
+        // 0xffff 4040 -> MPEG-1 Layer I, 128kbps, 44.1kHz, no padding, joint stereo.
+        let data = [0xff, 0xff, 0x40, 0x40];
+        let header = Mp3Header::parse(&data).unwrap();
+        assert_eq!(header.version, MpegVersion::V1);
+        assert_eq!(header.layer, Layer::I);
+        assert_eq!(header.samples_per_frame, 384);
+        assert_eq!(header.frame_length, 139);
     }
 }

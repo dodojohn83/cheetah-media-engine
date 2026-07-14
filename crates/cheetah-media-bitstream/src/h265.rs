@@ -319,9 +319,12 @@ pub struct H265CodecConfig {
     pub num_temporal_layers: u8,
     pub temporal_id_nested: bool,
     pub length_size_minus_one: u8,
-    pub vps: Vec<u8>,
-    pub sps: Vec<u8>,
-    pub pps: Vec<u8>,
+    /// Each VPS NAL unit, including its 2-byte header.
+    pub vps_list: Vec<Vec<u8>>,
+    /// Each SPS NAL unit, including its 2-byte header.
+    pub sps_list: Vec<Vec<u8>>,
+    /// Each PPS NAL unit, including its 2-byte header.
+    pub pps_list: Vec<Vec<u8>>,
     pub codec_string: alloc::string::String,
 }
 
@@ -386,12 +389,12 @@ impl H265CodecConfig {
                 }
                 let nal = cursor.read_bytes(len)?;
                 let target = match nal_type {
-                    32 => &mut cfg.vps,
-                    33 => &mut cfg.sps,
-                    34 => &mut cfg.pps,
+                    32 => &mut cfg.vps_list,
+                    33 => &mut cfg.sps_list,
+                    34 => &mut cfg.pps_list,
                     _ => continue,
                 };
-                target.extend_from_slice(nal);
+                target.push(nal.to_vec());
             }
         }
 
@@ -457,23 +460,25 @@ impl H265CodecConfig {
             | (self.length_size_minus_one & 0x03);
         out.push(b);
 
-        let mut nal_arrays = Vec::new();
-        if !self.vps.is_empty() {
-            nal_arrays.push((32u8, &self.vps[..]));
+        let mut nal_arrays: Vec<(u8, &[Vec<u8>])> = Vec::new();
+        if !self.vps_list.is_empty() {
+            nal_arrays.push((32u8, &self.vps_list));
         }
-        if !self.sps.is_empty() {
-            nal_arrays.push((33u8, &self.sps[..]));
+        if !self.sps_list.is_empty() {
+            nal_arrays.push((33u8, &self.sps_list));
         }
-        if !self.pps.is_empty() {
-            nal_arrays.push((34u8, &self.pps[..]));
+        if !self.pps_list.is_empty() {
+            nal_arrays.push((34u8, &self.pps_list));
         }
 
         out.push(nal_arrays.len() as u8);
-        for (nal_type, data) in nal_arrays {
+        for (nal_type, nals) in nal_arrays {
             out.push(nal_type & 0x3f);
-            out.extend_from_slice(&1u16.to_be_bytes());
-            out.extend_from_slice(&(data.len() as u16).to_be_bytes());
-            out.extend_from_slice(data);
+            out.extend_from_slice(&(nals.len() as u16).to_be_bytes());
+            for nal in nals {
+                out.extend_from_slice(&(nal.len() as u16).to_be_bytes());
+                out.extend_from_slice(nal);
+            }
         }
 
         out
@@ -537,18 +542,24 @@ mod tests {
             num_temporal_layers: 1,
             temporal_id_nested: true,
             length_size_minus_one: 3,
-            vps: vps.to_vec(),
-            sps: sps.to_vec(),
-            pps: pps.to_vec(),
+            vps_list: vec![vps.to_vec()],
+            sps_list: vec![sps.to_vec()],
+            pps_list: vec![pps.to_vec()],
             codec_string: String::new(),
         };
         let bytes = cfg.build();
         let parsed = H265CodecConfig::parse(&bytes).unwrap();
-        assert_eq!(parsed.vps, vps.to_vec());
-        assert_eq!(parsed.sps, sps.to_vec());
-        assert_eq!(parsed.pps, pps.to_vec());
+        assert_eq!(parsed.vps_list, vec![vps.to_vec()]);
+        assert_eq!(parsed.sps_list, vec![sps.to_vec()]);
+        assert_eq!(parsed.pps_list, vec![pps.to_vec()]);
         assert_eq!(parsed.general_profile_idc, 1);
         assert_eq!(parsed.general_level_idc, 93);
+
+        // Parse/build round-trip preserves VPS/SPS/PPS boundaries.
+        let rebuilt = H265CodecConfig::parse(&parsed.build()).unwrap();
+        assert_eq!(rebuilt.vps_list, parsed.vps_list);
+        assert_eq!(rebuilt.sps_list, parsed.sps_list);
+        assert_eq!(rebuilt.pps_list, parsed.pps_list);
     }
 
     #[test]

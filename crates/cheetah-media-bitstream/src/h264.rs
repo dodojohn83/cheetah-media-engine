@@ -376,8 +376,10 @@ pub struct H264CodecConfig {
     pub profile_compatibility: u8,
     pub avc_level_indication: u8,
     pub length_size_minus_one: u8,
-    pub sps: Vec<u8>,
-    pub pps: Vec<u8>,
+    /// Each SPS NAL unit, including its NAL header byte.
+    pub sps_list: Vec<Vec<u8>>,
+    /// Each PPS NAL unit, including its NAL header byte.
+    pub pps_list: Vec<Vec<u8>>,
     pub width: u32,
     pub height: u32,
     pub codec_string: alloc::string::String,
@@ -400,36 +402,36 @@ impl H264CodecConfig {
         let length_size_minus_one = cursor.read_u8()? & 0x03;
         let sps_count_byte = cursor.read_u8()? & 0x1f;
 
-        let mut sps = Vec::new();
+        let mut sps_list = Vec::new();
         for _ in 0..sps_count_byte {
             let len = cursor.read_u16_be()? as usize;
             if len > cursor.remaining() {
                 return Err(H264Error::InvalidNalLength);
             }
             let nal = cursor.read_bytes(len)?;
-            sps.extend_from_slice(nal);
+            sps_list.push(nal.to_vec());
         }
 
         let pps_count = cursor.read_u8()?;
-        let mut pps = Vec::new();
+        let mut pps_list = Vec::new();
         for _ in 0..pps_count {
             let len = cursor.read_u16_be()? as usize;
             if len > cursor.remaining() {
                 return Err(H264Error::InvalidNalLength);
             }
             let nal = cursor.read_bytes(len)?;
-            pps.extend_from_slice(nal);
+            pps_list.push(nal.to_vec());
         }
 
         let mut width = 0u32;
         let mut height = 0u32;
         let mut codec_string = alloc::string::String::new();
-        if !sps.is_empty() {
-            let header = sps[0];
+        if let Some(first_sps) = sps_list.first() {
+            let header = first_sps[0];
             let nal_type = header & 0x1f;
             if nal_type == 7 {
                 // Strip NAL header byte and de-escalate emulation prevention bytes.
-                let raw = &sps[1..];
+                let raw = &first_sps[1..];
                 let rbsp = unescape_rbsp(raw);
                 if let Ok(parsed) = Sps::parse(&rbsp) {
                     width = parsed.width;
@@ -452,8 +454,8 @@ impl H264CodecConfig {
             profile_compatibility,
             avc_level_indication,
             length_size_minus_one,
-            sps,
-            pps,
+            sps_list,
+            pps_list,
             width,
             height,
             codec_string,
@@ -468,13 +470,17 @@ impl H264CodecConfig {
             self.profile_compatibility,
             self.avc_level_indication,
             self.length_size_minus_one | 0xfc,
-            0xe0 | 1u8,
+            0xe0 | (self.sps_list.len() as u8),
         ];
-        out.extend_from_slice(&(self.sps.len() as u16).to_be_bytes());
-        out.extend_from_slice(&self.sps);
-        out.push(1u8);
-        out.extend_from_slice(&(self.pps.len() as u16).to_be_bytes());
-        out.extend_from_slice(&self.pps);
+        for sps in &self.sps_list {
+            out.extend_from_slice(&(sps.len() as u16).to_be_bytes());
+            out.extend_from_slice(sps);
+        }
+        out.push(self.pps_list.len() as u8);
+        for pps in &self.pps_list {
+            out.extend_from_slice(&(pps.len() as u16).to_be_bytes());
+            out.extend_from_slice(pps);
+        }
         out
     }
 }
@@ -571,7 +577,13 @@ mod tests {
 
         let config = H264CodecConfig::parse(&avcc).unwrap();
         assert_eq!(config.avc_profile_indication, 0x42);
-        assert!(config.sps.starts_with(&[0x67, 0x42, 0x00, 0x1e]));
+        assert_eq!(config.sps_list.len(), 1);
+        assert!(config.sps_list[0].starts_with(&[0x67, 0x42, 0x00, 0x1e]));
+
+        // Parse/build round-trip preserves SPS/PPS boundaries.
+        let rebuilt = H264CodecConfig::parse(&config.build()).unwrap();
+        assert_eq!(rebuilt.sps_list, config.sps_list);
+        assert_eq!(rebuilt.pps_list, config.pps_list);
     }
 
     #[test]

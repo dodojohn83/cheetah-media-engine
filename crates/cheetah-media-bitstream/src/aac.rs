@@ -20,6 +20,7 @@ pub enum AacError {
     InvalidSync,
     InvalidSampleRateIndex,
     InvalidChannelConfig,
+    InvalidFrameLength,
 }
 
 impl core::fmt::Display for AacError {
@@ -29,6 +30,7 @@ impl core::fmt::Display for AacError {
             Self::InvalidSync => write!(f, "AAC invalid syncword"),
             Self::InvalidSampleRateIndex => write!(f, "AAC invalid sample rate index"),
             Self::InvalidChannelConfig => write!(f, "AAC invalid channel config"),
+            Self::InvalidFrameLength => write!(f, "AAC invalid ADTS frame length"),
         }
     }
 }
@@ -209,7 +211,12 @@ pub fn split_adts(data: &[u8]) -> Result<Vec<&[u8]>, AacError> {
     let mut pos = 0usize;
     while pos + 7 <= data.len() {
         let header = AdtsHeader::parse(&data[pos..])?;
-        let end = pos + header.frame_length as usize;
+        let header_size = header.header_size();
+        let frame_length = header.frame_length as usize;
+        if frame_length < header_size {
+            return Err(AacError::InvalidFrameLength);
+        }
+        let end = pos + frame_length;
         if end > data.len() {
             return Err(AacError::TooShort);
         }
@@ -286,5 +293,37 @@ mod tests {
         let parsed = AdtsHeader::parse(&bytes).unwrap();
         assert!(!parsed.protection_absent);
         assert!(parsed.crc_present);
+    }
+
+    #[test]
+    fn split_adts_rejects_zero_frame_length() {
+        // Valid 7-byte ADTS header except the 13-bit frame_length field is zero.
+        let mut header = AdtsHeader {
+            id: 0,
+            layer: 0,
+            protection_absent: true,
+            profile: 1,
+            sampling_frequency_index: 4,
+            sampling_frequency: 44100,
+            private_bit: 0,
+            channel_configuration: 2,
+            channel_count: 2,
+            frame_length: 0,
+            buffer_fullness: 0,
+            number_of_raw_data_blocks_in_frame: 0,
+            crc_present: false,
+            samples_per_frame: 1024,
+            duration_ms: 23,
+        };
+        let bytes = header.build();
+        assert!(split_adts(&bytes).is_err());
+
+        // Also reject a frame length smaller than the header size.
+        header.frame_length = 6;
+        let bytes = header.build();
+        assert!(matches!(
+            split_adts(&bytes),
+            Err(AacError::InvalidFrameLength)
+        ));
     }
 }
