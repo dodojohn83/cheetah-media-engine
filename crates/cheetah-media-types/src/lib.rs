@@ -17,8 +17,8 @@ pub mod time;
 pub mod track;
 
 pub use buffer::{
-    BufferLifecycle, BufferPool, BufferPoolConfig, BufferRef, CopyBudget, CopyReason,
-    LinearMemoryRef, PoolStats, SimpleBufferPool,
+    BufferLifecycle, BufferPool, BufferPoolConfig, BufferRef, CopyBudget, CopyReason, DropPolicy,
+    LinearMemoryRef, PoolStats, SimpleBufferPool, StageBudget,
 };
 pub use error::{MediaError, Recoverability};
 pub use format::{AudioFormat, ChannelLayout, ColorSpace, PixelFormat, SampleFormat, VideoFormat};

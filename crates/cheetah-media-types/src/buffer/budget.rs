@@ -167,16 +167,24 @@ impl StageBudget {
         if current < self.max_in_flight {
             return true;
         }
-        if self.drop_policy == DropPolicy::DropNonKeyframe && is_live && is_video && !is_keyframe {
-            return false;
+        match self.drop_policy {
+            DropPolicy::Never => false,
+            // Always admit up to the hard limit; the caller evicts the oldest
+            // in-flight item to make room.
+            DropPolicy::DropOldest => current <= self.max_in_flight,
+            DropPolicy::DropNonKeyframe => {
+                if is_live && is_video && !is_keyframe {
+                    // Drop the stale non-key video frame itself.
+                    false
+                } else if is_live && (!is_video || is_keyframe) {
+                    // Audio and keyframes are never dropped; admit one over the
+                    // limit so the caller can evict stale non-key video frames.
+                    current <= self.max_in_flight
+                } else {
+                    false
+                }
+            }
         }
-        // In live mode, audio and keyframes are never dropped when the policy
-        // allows any dropping, so one more item may be admitted; the caller is
-        // responsible for freeing capacity by evicting stale non-key video frames.
-        if self.drop_policy != DropPolicy::Never && is_live && (!is_video || is_keyframe) {
-            return current <= self.max_in_flight;
-        }
-        false
     }
 
     /// Return a `ResourceLimit` error when the hard limit is exceeded and the
@@ -237,6 +245,16 @@ mod tests {
         // Non-live always admits until the hard limit.
         assert!(budget.should_admit(15, false, true, false));
         assert!(!budget.should_admit(16, false, true, false));
+
+        // DropOldest admits at the limit so the caller can evict the oldest item.
+        let oldest = StageBudget::new(16, 12, 8, DropPolicy::DropOldest);
+        assert!(oldest.should_admit(16, false, true, false));
+        assert!(oldest.should_admit(16, true, true, false));
+        assert!(!oldest.should_admit(17, true, true, false));
+
+        // Never drops: backpressure at the limit.
+        let never = StageBudget::new(16, 12, 8, DropPolicy::Never);
+        assert!(!never.should_admit(16, true, false, false));
     }
 
     #[test]
