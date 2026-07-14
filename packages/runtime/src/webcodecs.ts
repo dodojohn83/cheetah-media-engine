@@ -457,7 +457,14 @@ export class WebCodecsBackend implements MediaBackend {
       return;
     }
     this._metrics.decodedVideoFrames += 1;
-    this.callbacks.onVideoFrame?.(frame);
+    try {
+      this.callbacks.onVideoFrame?.(frame);
+    } catch (err) {
+      // The callback failed to take ownership of the frame; close it so the
+      // GPU-backed resource is not leaked.
+      frame.close();
+      this.handleError(err instanceof Error ? err : new Error(String(err)));
+    }
   }
 
   private handleAudioOutput(data: CloseableAudioData, gen: number): void {
@@ -467,7 +474,12 @@ export class WebCodecsBackend implements MediaBackend {
       return;
     }
     this._metrics.decodedAudioFrames += 1;
-    this.callbacks.onAudioData?.(data);
+    try {
+      this.callbacks.onAudioData?.(data);
+    } catch (err) {
+      data.close();
+      this.handleError(err instanceof Error ? err : new Error(String(err)));
+    }
   }
 
   private handleError(error: Error): void {

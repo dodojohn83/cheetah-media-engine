@@ -372,4 +372,46 @@ describe('WebCodecsBackend', () => {
     // reset() discarded the two earlier deltas; only the keyframe remains pending.
     expect(backend.metrics.pendingDecodes).toBe(1);
   });
+
+  it('closes frame and reports error when onVideoFrame callback throws', async () => {
+    let frame: CloseableVideoFrame | undefined;
+    const onError = vi.fn();
+    const backend = new WebCodecsBackend(ctx, {
+      tracks: [videoTrack],
+      callbacks: {
+        onVideoFrame: (f) => {
+          frame = f;
+          throw new Error('callback boom');
+        },
+        onError,
+      },
+    });
+    await backend.configure();
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x65]), 1000, { isKeyFrame: true });
+    await Promise.resolve();
+    expect(frame).toBeDefined();
+    expect(frame?.close).toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'callback boom' }));
+  });
+
+  it('closes audio data and reports error when onAudioData callback throws', async () => {
+    let audio: CloseableAudioData | undefined;
+    const onError = vi.fn();
+    const backend = new WebCodecsBackend(ctx, {
+      tracks: [audioTrack],
+      callbacks: {
+        onAudioData: (d) => {
+          audio = d;
+          throw new Error('audio callback boom');
+        },
+        onError,
+      },
+    });
+    await backend.configure();
+    backend.pushAudio(new Uint8Array([1, 2, 3]), 1000);
+    await Promise.resolve();
+    expect(audio).toBeDefined();
+    expect(audio?.close).toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'audio callback boom' }));
+  });
 });
