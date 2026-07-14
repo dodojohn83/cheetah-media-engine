@@ -1,9 +1,8 @@
 //! Compressed media packets.
 
-use alloc::borrow::Cow;
-
 use crate::{
-    MediaDuration, MediaError, MediaLimits, MediaTime, SequenceNumber, StreamEpoch, TrackId,
+    BufferLifecycle, BufferRef, MediaDuration, MediaError, MediaLimits, MediaTime, SequenceNumber,
+    StreamEpoch, TrackId,
 };
 
 /// Flags describing a compressed media packet.
@@ -16,11 +15,12 @@ pub struct PacketFlags {
 
 /// A compressed media packet.
 ///
-/// The payload is borrowed or owned via `Cow` so core code can avoid copies while
-/// still supporting owned data for network/parser adapters.
+/// The payload uses a `BufferRef` so that transport data can be shared between
+/// parser, demuxer, and decoder without copying. Borrowed payloads keep the
+/// original lifetime; shared payloads use reference-counted storage.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaPacket<'a> {
-    pub payload: Cow<'a, [u8]>,
+    pub payload: BufferRef<'a>,
     pub track_id: TrackId,
     pub stream_epoch: StreamEpoch,
     pub sequence: SequenceNumber,
@@ -31,7 +31,7 @@ pub struct MediaPacket<'a> {
 impl<'a> MediaPacket<'a> {
     /// Create a new packet with the given payload and metadata.
     pub fn new(
-        payload: impl Into<Cow<'a, [u8]>>,
+        payload: impl Into<BufferRef<'a>>,
         track_id: TrackId,
         stream_epoch: StreamEpoch,
         sequence: SequenceNumber,
@@ -64,6 +64,16 @@ impl<'a> MediaPacket<'a> {
         self.flags.is_keyframe = true;
         self
     }
+
+    /// Slice the payload without copying.
+    pub fn slice_payload(&self, range: core::ops::Range<usize>) -> BufferRef<'a> {
+        self.payload.slice(range)
+    }
+
+    /// Lifetime classification of the payload.
+    pub fn lifecycle(&self) -> BufferLifecycle {
+        self.payload.lifecycle()
+    }
 }
 
 #[cfg(test)]
@@ -83,6 +93,22 @@ mod tests {
             time,
         );
         assert_eq!(packet.payload.as_ref(), &data);
+        assert!(packet.payload.is_borrowed());
+    }
+
+    #[test]
+    fn packet_payload_can_be_owned_and_shared() {
+        let data = alloc::vec![0u8, 1, 2, 3];
+        let time = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let packet = MediaPacket::new(
+            data,
+            TrackId::new(1).unwrap(),
+            StreamEpoch::new(0),
+            SequenceNumber::new(0),
+            time,
+        );
+        assert_eq!(packet.payload.as_ref(), &[0, 1, 2, 3]);
+        assert!(packet.payload.is_shared());
     }
 
     #[test]

@@ -13,6 +13,8 @@ std = []
 alloc = []
 
 [dependencies]
+bytes = { version = "1.12.1", default-features = false }
+spin = { version = "0.9.9", default-features = false, features = ["mutex", "spin_mutex"] }
 
 [lints.rust]
 unsafe_code = "forbid"
