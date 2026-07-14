@@ -93,7 +93,7 @@ class CheetahAudioTransferProcessor extends AudioWorkletProcessor {
       const channels = msg.channels || this.channels;
       for (let i = 0; i < frames; i += 1) {
         if ((this.writeIndex + 1) % this.capacity === this.readIndex) {
-          this.overrun += 1;
+          this.overrun += frames - i;
           break;
         }
         const base = this.writeIndex * this.channels;
