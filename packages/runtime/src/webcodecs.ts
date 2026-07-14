@@ -299,24 +299,38 @@ export class WebCodecsBackend implements MediaBackend {
     this.generation += 1;
     this.stopped = false;
 
-    if (this.videoConfig) {
-      if (!VideoDecoder) throw new Error('VideoDecoder disappeared during configure');
-      const gen = this.generation;
-      this.videoDecoder = new VideoDecoder({
-        output: (frame) => this.handleVideoOutput(frame, gen),
-        error: (err) => this.handleError(err),
-      });
-      this.videoDecoder.configure(this.videoConfig);
-    }
+    try {
+      if (this.videoConfig) {
+        if (!VideoDecoder) throw new Error('VideoDecoder disappeared during configure');
+        const gen = this.generation;
+        this.videoDecoder = new VideoDecoder({
+          output: (frame) => this.handleVideoOutput(frame, gen),
+          error: (err) => this.handleError(err),
+        });
+        this.videoDecoder.configure(this.videoConfig);
+      }
 
-    if (this.audioConfig) {
-      if (!AudioDecoder) throw new Error('AudioDecoder disappeared during configure');
-      const gen = this.generation;
-      this.audioDecoder = new AudioDecoder({
-        output: (data) => this.handleAudioOutput(data, gen),
-        error: (err) => this.handleError(err),
-      });
-      this.audioDecoder.configure(this.audioConfig);
+      if (this.audioConfig) {
+        if (!AudioDecoder) throw new Error('AudioDecoder disappeared during configure');
+        const gen = this.generation;
+        this.audioDecoder = new AudioDecoder({
+          output: (data) => this.handleAudioOutput(data, gen),
+          error: (err) => this.handleError(err),
+        });
+        this.audioDecoder.configure(this.audioConfig);
+      }
+    } catch (err) {
+      // Close any decoder that was created before the failure so hardware
+      // resources are not leaked.
+      await this.closeDecoder(this.videoDecoder);
+      this.videoDecoder = undefined;
+      await this.closeDecoder(this.audioDecoder);
+      this.audioDecoder = undefined;
+      this.stopped = true;
+      this.configured = false;
+      this.generation += 1;
+      this.pendingReconfigure = false;
+      throw err;
     }
 
     this.configured = true;

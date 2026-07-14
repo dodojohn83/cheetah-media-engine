@@ -321,4 +321,29 @@ describe('WebCodecsBackend', () => {
     expect(typeof backend.configure).toBe('function');
     expect(typeof backend.stop).toBe('function');
   });
+
+  it('closes video decoder when audio decoder creation fails', async () => {
+    const videoInstances: MockVideoDecoder[] = [];
+    class ThrowingAudioDecoder extends MockAudioDecoder {
+      constructor(init: { output: () => void; error: (err: Error) => void }) {
+        super(init);
+        throw new Error('audio decoder boom');
+      }
+    }
+
+    vi.stubGlobal('VideoDecoder', class extends MockVideoDecoder {
+      constructor(init: { output: () => void; error: (err: Error) => void }) {
+        super(init);
+        videoInstances.push(this);
+      }
+    });
+    vi.stubGlobal('AudioDecoder', ThrowingAudioDecoder);
+
+    const backend = new WebCodecsBackend(ctx, {
+      tracks: [videoTrack, audioTrack],
+      callbacks: {},
+    });
+    await expect(backend.configure()).rejects.toThrow('audio decoder boom');
+    expect(videoInstances[0]?.closed).toBe(true);
+  });
 });
