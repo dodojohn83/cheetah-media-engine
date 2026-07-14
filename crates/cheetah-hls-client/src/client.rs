@@ -277,6 +277,10 @@ impl HlsClient {
 
     fn on_request_failed(&mut self, uri: String, retryable: bool, epoch: u64) -> Vec<HlsAction> {
         let kind = self.inflight.remove(&epoch);
+        if kind.is_none() {
+            // Stale failure for a request we no longer track.
+            return Vec::new();
+        }
         if !retryable {
             return self.stop_with_error(HlsError::Unsupported {
                 feature: alloc::format!("non-retryable request failed: {}", uri),
