@@ -58,3 +58,12 @@ export {
   type TransportStats,
   type Chunk,
 } from './transport';
+export {
+  WebCodecsBackend,
+  webcodecsBackendFactory,
+  type CloseableVideoFrame,
+  type CloseableAudioData,
+  type WebCodecsCallbacks,
+  type WebCodecsBackendOptions,
+  type WebCodecsMetrics,
+} from './webcodecs';
