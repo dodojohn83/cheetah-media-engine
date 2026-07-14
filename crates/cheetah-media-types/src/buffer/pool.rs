@@ -155,20 +155,27 @@ impl BufferPool for SimpleBufferPool {
             });
         }
 
-        let in_use_count = self.inner.in_use_count.load(Ordering::Relaxed);
-        if in_use_count + 1 > cfg.max_count {
+        // Reserve the slot atomically to avoid TOCTOU races under concurrent
+        // acquire calls.
+        let new_count = self.inner.in_use_count.fetch_add(1, Ordering::Relaxed) + 1;
+        if new_count > cfg.max_count {
+            self.inner.in_use_count.fetch_sub(1, Ordering::Relaxed);
             return Err(MediaError::ResourceLimit {
                 name: "buffer_pool_count",
-                current: (in_use_count + 1) as u64,
+                current: new_count as u64,
                 limit: cfg.max_count as u64,
             });
         }
 
-        let in_use_bytes = self.inner.in_use_bytes.load(Ordering::Relaxed);
-        if in_use_bytes + size > cfg.max_total_bytes {
+        let prev_bytes = self.inner.in_use_bytes.fetch_add(size, Ordering::Relaxed);
+        let new_bytes = prev_bytes + size;
+        if new_bytes > cfg.max_total_bytes || new_bytes < prev_bytes {
+            // Overflow or over total-byte limit: release the reservation.
+            self.inner.in_use_count.fetch_sub(1, Ordering::Relaxed);
+            self.inner.in_use_bytes.fetch_sub(size, Ordering::Relaxed);
             return Err(MediaError::ResourceLimit {
                 name: "buffer_pool_total_bytes",
-                current: (in_use_bytes + size) as u64,
+                current: new_bytes as u64,
                 limit: cfg.max_total_bytes as u64,
             });
         }
@@ -197,8 +204,6 @@ impl BufferPool for SimpleBufferPool {
         };
         let bytes = Bytes::from_owner(token);
 
-        self.inner.in_use_count.fetch_add(1, Ordering::Relaxed);
-        self.inner.in_use_bytes.fetch_add(size, Ordering::Relaxed);
         self.inner.total_acquired.fetch_add(1, Ordering::Relaxed);
 
         Ok(BufferRef::Shared(bytes))

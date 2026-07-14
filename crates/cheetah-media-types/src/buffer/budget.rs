@@ -170,10 +170,10 @@ impl StageBudget {
         if self.drop_policy == DropPolicy::DropNonKeyframe && is_live && is_video && !is_keyframe {
             return false;
         }
-        // In live mode, audio and keyframes are never dropped, so one more
-        // item may be admitted; the caller is responsible for freeing capacity
-        // by evicting stale non-key video frames.
-        if is_live && (!is_video || is_keyframe) {
+        // In live mode, audio and keyframes are never dropped when the policy
+        // allows any dropping, so one more item may be admitted; the caller is
+        // responsible for freeing capacity by evicting stale non-key video frames.
+        if self.drop_policy != DropPolicy::Never && is_live && (!is_video || is_keyframe) {
             return current <= self.max_in_flight;
         }
         false
