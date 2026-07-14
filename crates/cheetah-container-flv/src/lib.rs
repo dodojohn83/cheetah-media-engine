@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use cheetah_media_bitstream::ByteCursor;
-use cheetah_media_types::{MediaTime, TrackKind};
+use cheetah_media_types::{MediaTime, TimeBase, TrackKind};
 
 /// Error returned by the FLV parser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,7 +104,12 @@ pub fn parse_tag_header(input: &[u8]) -> Result<FlvTagHeader, FlvError> {
         tag_type,
         filter,
         data_size,
-        timestamp: MediaTime::new(i64::from(timestamp_ms), i64::from(timestamp_ms), 1000),
+        timestamp: MediaTime::from_ticks(
+            Some(i64::from(timestamp_ms)),
+            Some(i64::from(timestamp_ms)),
+            None,
+            TimeBase::DEFAULT,
+        ),
         stream_id,
     })
 }
@@ -150,7 +155,7 @@ mod tests {
         assert_eq!(tag.tag_type, TagType::Video);
         assert!(!tag.filter);
         assert_eq!(tag.data_size, 10);
-        assert_eq!(tag.timestamp.pts_ms(), 32);
+        assert_eq!(tag.timestamp.pts_ms(), Some(32));
     }
 
     #[test]

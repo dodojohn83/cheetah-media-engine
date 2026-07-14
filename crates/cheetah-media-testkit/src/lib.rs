@@ -1,7 +1,7 @@
 //! Test fixtures and contract harness for the Cheetah media engine.
 
 use alloc::vec::Vec;
-use cheetah_media_types::{CodecId, MediaTime, TrackKind};
+use cheetah_media_types::{CodecId, MediaTime, TimeBase, TrackKind};
 use serde::Deserialize;
 
 extern crate alloc;
@@ -61,7 +61,7 @@ impl Fixture {
 pub fn timestamp_sequence(start: i64, count: usize, step: i64) -> impl Iterator<Item = MediaTime> {
     (0..count).map(move |i| {
         let t = start + i as i64 * step;
-        MediaTime::new(t, t, 1000)
+        MediaTime::from_ticks(Some(t), Some(t), None, TimeBase::DEFAULT)
     })
 }
 
@@ -150,8 +150,8 @@ mod tests {
     #[test]
     fn timestamp_sequence_is_deterministic() {
         let times: Vec<_> = timestamp_sequence(0, 3, 33).collect();
-        assert_eq!(times[0].pts, 0);
-        assert_eq!(times[1].pts, 33);
+        assert_eq!(times[0].pts.map(|p| p.ticks()), Some(0));
+        assert_eq!(times[1].pts.map(|p| p.ticks()), Some(33));
     }
 
     #[test]
