@@ -150,7 +150,7 @@ impl Timestamp {
     /// a possible wrap or discontinuity when `self` is the new value and `other` is
     /// the previous unwrapped value.
     pub const fn looks_wrapped_before(self, other: Self, threshold: i64) -> bool {
-        self.0 < other.0 && other.0 - self.0 > threshold
+        self.0 < other.0 && (other.0 as i128 - self.0 as i128) > threshold as i128
     }
 }
 
