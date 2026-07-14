@@ -13,6 +13,15 @@ use crate::{
     video::{build_video_config, build_video_frame},
 };
 
+/// Convert a signed DTS in milliseconds to an FLV 32-bit timestamp.
+/// Negative values are rejected; values beyond `u32::MAX` wrap modulo 2^32.
+fn dts_to_timestamp(dts_ms: i64) -> Result<u32, FlvError> {
+    if dts_ms < 0 {
+        return Err(FlvError::InvalidTimestamp);
+    }
+    Ok(dts_ms as u32)
+}
+
 /// A packet waiting in the muxer's reorder queue.
 #[derive(Debug)]
 struct QueuedPacket {
@@ -274,7 +283,8 @@ impl FlvMuxer {
             CodecId::G711U => build_audio_raw_frame(CodecId::G711U, 8000, channels, payload),
             _ => return Err(FlvError::UnsupportedCodec),
         };
-        self.write_tag(TagType::Audio, dts_ms as u32, &body)
+        let timestamp = dts_to_timestamp(dts_ms)?;
+        self.write_tag(TagType::Audio, timestamp, &body)
     }
 
     fn write_video_packet(
@@ -286,7 +296,7 @@ impl FlvMuxer {
     ) -> Result<(), FlvError> {
         let payload = packet.payload.as_ref();
         let cts = i32::try_from(pts_ms - dts_ms).map_err(|_| FlvError::InvalidTimestamp)?;
-        let timestamp = dts_ms as u32;
+        let timestamp = dts_to_timestamp(dts_ms)?;
         let body = build_video_frame(track.codec, packet.flags.is_keyframe, 1, cts, payload)?;
         self.write_tag(TagType::Video, timestamp, &body)
     }

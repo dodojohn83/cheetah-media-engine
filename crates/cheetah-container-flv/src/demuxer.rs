@@ -136,10 +136,11 @@ impl FlvDemuxer {
                 None => return Ok(None),
             };
 
+            let start_pos = self.read_pos;
             let event = self.process_tag(tag)?;
 
-            // The tag body is not fully buffered yet.
-            if event.is_none() {
+            // If read_pos didn't advance, the tag body is not fully buffered.
+            if event.is_none() && self.read_pos == start_pos {
                 return Ok(None);
             }
 
@@ -151,6 +152,8 @@ impl FlvDemuxer {
             if let Some(event) = event {
                 return Ok(Some(event));
             }
+
+            // The tag was consumed but produced no event; keep parsing.
         }
     }
 
