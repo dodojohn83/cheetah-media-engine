@@ -100,11 +100,7 @@ export function createPlayer(options: PlayerOptions = {}): Player & EngineRuntim
     stop: runtime.stop.bind(runtime),
     destroy: runtime.destroy.bind(runtime),
   };
-  if (runtime.onEvent !== undefined) {
-    player.onEvent = runtime.onEvent;
-  }
-  if (runtime.onError !== undefined) {
-    player.onError = runtime.onError;
-  }
+  runtime.onEvent = (event, details) => player.onEvent?.(event, details);
+  runtime.onError = (error) => player.onError?.(error);
   return player;
 }

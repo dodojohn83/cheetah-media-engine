@@ -162,6 +162,7 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
       instance += 1;
       epoch += 1;
       sequence = 0;
+      rejectAll(new Error('New stream loaded'));
       pending = new Map();
       const payload: LoadPayload = { url, isLive: options.isLive ?? false };
       await post('load', payload, 30000);

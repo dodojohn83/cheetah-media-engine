@@ -97,7 +97,9 @@ self.onmessage = (event: MessageEvent<unknown>) => {
       wasmInit
         .then(() => {
           sendEvent(envelope.instance, 'loaded', { url: payload.url, isLive: payload.isLive });
-          reply({ ...envelope, type: 'event', payload: { event: 'loaded' } });
+          // Reply with the original command type so the main thread can resolve
+          // the pending load promise by sequence number.
+          reply({ ...envelope, payload: { event: 'loaded' } });
         })
         .catch((err) => sendError(envelope.instance, envelope.sequence, err));
       break;
@@ -105,12 +107,13 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     case 'play':
     case 'pause':
       sendEvent(envelope.instance, envelope.type);
-      reply({ ...envelope, type: 'event', payload: { event: envelope.type } });
       break;
     case 'stop':
       currentEpoch = envelope.epoch;
       sendEvent(envelope.instance, 'stopped');
-      reply({ ...envelope, type: 'event', payload: { event: 'stopped' } });
+      // Reply with the original command type so the main thread can resolve
+      // the pending stop promise.
+      reply({ ...envelope, payload: { event: 'stopped' } });
       break;
     case 'destroy':
       currentEpoch = 0;
@@ -122,7 +125,6 @@ self.onmessage = (event: MessageEvent<unknown>) => {
       // and call the Rust engine. Here we just acknowledge.
       reply({
         ...envelope,
-        type: 'event',
         payload: { event: 'packet-accepted', slot: payload.slot },
       });
       break;
