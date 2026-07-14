@@ -8,14 +8,20 @@ rust-version.workspace = true
 description = "Engine orchestration, state machine, and pipeline planner."
 
 [features]
-std = ["cheetah-media-pipeline-core/std", "cheetah-media-types/std"]
+std = [
+    "cheetah-media-abi/std",
+    "cheetah-media-backend-api/std",
+    "cheetah-media-pipeline-core/std",
+    "cheetah-media-timeline/std",
+    "cheetah-media-types/std",
+]
 
 [dependencies]
-cheetah-media-abi = { path = "../cheetah-media-abi" }
-cheetah-media-backend-api = { path = "../cheetah-media-backend-api" }
-cheetah-media-pipeline-core = { path = "../cheetah-media-pipeline-core" }
-cheetah-media-timeline = { path = "../cheetah-media-timeline" }
-cheetah-media-types = { path = "../cheetah-media-types" }
+cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false }
+cheetah-media-backend-api = { path = "../cheetah-media-backend-api", default-features = false }
+cheetah-media-pipeline-core = { path = "../cheetah-media-pipeline-core", default-features = false }
+cheetah-media-timeline = { path = "../cheetah-media-timeline", default-features = false }
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -1,7 +1,5 @@
 //! Bounded slot-based memory arena for descriptor-based data exchange.
 
-extern crate alloc;
-
 use alloc::vec::Vec;
 
 use crate::{AbiError, Handle, MemoryDescriptor};

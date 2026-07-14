@@ -102,11 +102,14 @@ impl<T> BoundedQueue<T> {
             return 1;
         }
         if self.items.len() >= self.config.capacity {
+            // Evict the oldest item with the lowest priority (highest numeric
+            // value). `Reverse` lets `min_by_key` pick the first maximum, which
+            // is the stalest item among ties.
             let (victim_idx, victim_priority) = self
                 .items
                 .iter()
                 .enumerate()
-                .max_by_key(|(_, (p, _))| *p)
+                .min_by_key(|(_, (p, _))| core::cmp::Reverse(*p))
                 .map(|(i, (p, _))| (i, *p))
                 .expect("non-empty when at capacity");
             if priority < victim_priority {
@@ -334,6 +337,17 @@ mod tests {
         // Keyframe has higher priority than Data but lower than Control, so the
         // oldest Data item should be evicted, not the newest Control item.
         assert_eq!(q.push(Priority::Keyframe, 2), 0);
+        assert_eq!(q.pop(), Some(0));
+        assert_eq!(q.pop(), Some(2));
+    }
+
+    #[test]
+    fn evict_oldest_same_priority() {
+        let mut q = BoundedQueue::new("test", QueueConfig::with_watermarks(2));
+        q.push(Priority::Data, 1);
+        q.push(Priority::Data, 2);
+        // Control evicts the oldest Data (1), leaving 2 and Control.
+        assert_eq!(q.push(Priority::Control, 0), 0);
         assert_eq!(q.pop(), Some(0));
         assert_eq!(q.pop(), Some(2));
     }
