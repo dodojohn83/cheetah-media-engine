@@ -3,6 +3,10 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 extern crate alloc;
 
+pub mod clock;
+pub mod gop;
+pub mod sync;
+
 use alloc::vec::Vec;
 use cheetah_media_types::MediaTime;
 
