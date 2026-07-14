@@ -347,7 +347,7 @@ export class WebCodecsBackend implements MediaBackend {
     const EncodedVideoChunk = getGlobal<unknown>('EncodedVideoChunk') as EncodedVideoChunkConstructor | undefined;
     if (!EncodedVideoChunk) return;
 
-    const type = opts?.isKeyFrame ?? guessKeyFrame(data, this.videoConfig.codec) ? 'key' : 'delta';
+    const type = (opts?.isKeyFrame ?? guessKeyFrame(data, this.videoConfig.codec)) ? 'key' : 'delta';
     if (type === 'key' && this.pendingReconfigure) {
       this.reconfigureVideo();
     }
