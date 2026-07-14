@@ -7,6 +7,7 @@ import {
 } from './ffmpeg-pack';
 
 const PACK_ABI_VERSION_0_1 = (0 << 16) | 1;
+const PACK_ABI_VERSION_0_0 = (0 << 16) | 0;
 const PACK_ABI_VERSION_1_0 = (1 << 16) | 0;
 
 function makeFakeHeap(size = 65536): Uint8Array {
@@ -60,6 +61,11 @@ describe('FfmpegPackImpl', () => {
 
   it('throws on ABI major mismatch', () => {
     const module = makeFakeModule({ abiVersion: PACK_ABI_VERSION_1_0 });
+    expect(() => new FfmpegPackImpl(module)).toThrow(FfmpegPackError);
+  });
+
+  it('throws on ABI minor older than loader', () => {
+    const module = makeFakeModule({ abiVersion: PACK_ABI_VERSION_0_0 });
     expect(() => new FfmpegPackImpl(module)).toThrow(FfmpegPackError);
   });
 

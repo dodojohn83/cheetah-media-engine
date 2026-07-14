@@ -18,6 +18,7 @@ SRC_DIR="${PACK_DIR}/src"
 VARIANT="baseline"
 OUTPUT_DIR="${PACK_DIR}/dist"
 MOCK=1
+MOCK_EXPLICIT=0
 FFMPEG_VERSION="8.1.2"
 FFMPEG_ENV="${FFMPEG:-0}"
 FFMPEG_TARBALL="ffmpeg-${FFMPEG_VERSION}.tar.xz"
@@ -36,10 +37,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --mock)
       MOCK=1
+      MOCK_EXPLICIT=1
       shift
       ;;
     --no-mock)
       MOCK=0
+      MOCK_EXPLICIT=1
       shift
       ;;
     *)
@@ -50,7 +53,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # If neither --mock nor --no-mock was supplied, honour the FFMPEG env variable.
-if [[ "${FFMPEG_ENV}" == "1" ]]; then
+if [[ "${MOCK_EXPLICIT}" -eq 0 && "${FFMPEG_ENV}" == "1" ]]; then
   MOCK=0
 fi
 

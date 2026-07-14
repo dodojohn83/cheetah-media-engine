@@ -253,7 +253,7 @@ export class FfmpegPackImpl implements FfmpegPack {
     const version = module._cheetah_pack_abi_version();
     this.abiMajor = (version >> 16) & 0xffff;
     this.abiMinor = version & 0xffff;
-    if (this.abiMajor !== ABI_VERSION_MAJOR || this.abiMinor > ABI_VERSION_MINOR) {
+    if (this.abiMajor !== ABI_VERSION_MAJOR || this.abiMinor < ABI_VERSION_MINOR) {
       throw new FfmpegPackError(
         'abi-mismatch',
         `pack ABI ${this.abiMajor}.${this.abiMinor} is not compatible with loader ${ABI_VERSION_MAJOR}.${ABI_VERSION_MINOR}`,
