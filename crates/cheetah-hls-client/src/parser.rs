@@ -39,9 +39,11 @@ pub fn parse(input: &str, base_uri: &str) -> Result<Playlist, HlsError> {
         if line.starts_with("#EXTINF:") || line.starts_with("#EXT-X-TARGETDURATION:") {
             saw_media_segment = true;
         }
-        tag_count = tag_count.saturating_add(1);
-        if tag_count as usize > MAX_TAGS {
-            return Err(HlsError::LimitExceeded { limit: "tag count" });
+        if line.starts_with("#EXT") {
+            tag_count = tag_count.saturating_add(1);
+            if tag_count as usize > MAX_TAGS {
+                return Err(HlsError::LimitExceeded { limit: "tag count" });
+            }
         }
     }
 
@@ -96,7 +98,7 @@ pub fn parse_master(input: &str, base_uri: &str) -> Result<MasterPlaylist, HlsEr
             v.video_group = attrs.get("VIDEO").cloned();
             v.subtitle_group = attrs.get("SUBTITLES").cloned();
             v.closed_captions_group = attrs.get("CLOSED-CAPTIONS").cloned();
-            v.associated_independent_segments = attrs.contains_key("ASSOC-LANGUAGE");
+            // #EXT-X-STREAM-INF has no independent-segments attribute; retain the default false.
             pending_variant = Some(v);
             continue;
         }

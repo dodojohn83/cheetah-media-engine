@@ -282,14 +282,14 @@ impl HlsClient {
                 feature: alloc::format!("non-retryable request failed: {}", uri),
             });
         }
-        let count = self.retry_counts.entry(uri.clone()).or_insert(0);
-        if *count >= self.config.max_retry_count {
-            return self.stop_with_error(HlsError::Unsupported {
-                feature: alloc::format!("retries exhausted for {}", uri),
-            });
-        }
-        *count += 1;
         if let Some(k) = kind {
+            let count = self.retry_counts.entry(uri.clone()).or_insert(0);
+            if *count >= self.config.max_retry_count {
+                return self.stop_with_error(HlsError::Unsupported {
+                    feature: alloc::format!("retries exhausted for {}", uri),
+                });
+            }
+            *count += 1;
             self.request_epoch(k)
         } else {
             // Stale failure for a request we no longer track.
