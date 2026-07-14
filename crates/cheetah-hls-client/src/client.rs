@@ -1,6 +1,6 @@
 //! Sans-I/O HLS/LL-HLS client state machine.
 
-use alloc::collections::BTreeSet;
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -36,6 +36,8 @@ pub enum ActionKind {
     CancelEpoch { epoch: u64 },
     /// Wait before the next poll.
     Wait { duration_ms: u64 },
+    /// Report a terminal error to the caller.
+    ReportError { error: HlsError },
 }
 
 /// Incoming event into the client.
@@ -44,9 +46,17 @@ pub enum HlsEvent {
     /// Bytes of a playlist were received.
     PlaylistLoaded { url: String, body: Vec<u8> },
     /// A segment or part download succeeded.
-    ResourceLoaded { uri: String, body: Vec<u8> },
+    ResourceLoaded {
+        uri: String,
+        body: Vec<u8>,
+        epoch: u64,
+    },
     /// A request failed and may be retried.
-    RequestFailed { uri: String, retryable: bool },
+    RequestFailed {
+        uri: String,
+        retryable: bool,
+        epoch: u64,
+    },
     /// Drive the live reload clock forward.
     Tick { now_ms: u64 },
     /// Stop the client.
@@ -86,13 +96,17 @@ pub struct HlsClient {
     media_url: Option<String>,
     media: Option<MediaPlaylist>,
     epoch: u64,
-    pending: BTreeSet<u64>,
+    /// In-flight requests keyed by epoch.
+    inflight: BTreeMap<u64, ActionKind>,
     selected_variant: Option<String>,
     next_segment_index: usize,
     next_part_index: usize,
     stopped: bool,
     last_reload_ms: Option<u64>,
-    retry_counts: alloc::collections::BTreeMap<String, u32>,
+    retry_counts: BTreeMap<String, u32>,
+    last_msn: Option<u64>,
+    last_part_msn: Option<u64>,
+    last_part_index: Option<usize>,
 }
 
 impl HlsClient {
@@ -103,14 +117,17 @@ impl HlsClient {
             master: None,
             media_url: None,
             media: None,
-            epoch: 1,
-            pending: BTreeSet::new(),
+            epoch: 0,
+            inflight: BTreeMap::new(),
             selected_variant: None,
             next_segment_index: 0,
             next_part_index: 0,
             stopped: false,
             last_reload_ms: None,
-            retry_counts: alloc::collections::BTreeMap::new(),
+            retry_counts: BTreeMap::new(),
+            last_msn: None,
+            last_part_msn: None,
+            last_part_index: None,
         }
     }
 
@@ -145,122 +162,189 @@ impl HlsClient {
         }
         match event {
             HlsEvent::PlaylistLoaded { url, body } => self.on_playlist_loaded(url, body),
-            HlsEvent::ResourceLoaded { uri, .. } => self.on_resource_loaded(uri),
-            HlsEvent::RequestFailed { uri, retryable } => self.on_request_failed(uri, retryable),
+            HlsEvent::ResourceLoaded { uri, epoch, .. } => self.on_resource_loaded(uri, epoch),
+            HlsEvent::RequestFailed {
+                uri,
+                retryable,
+                epoch,
+                ..
+            } => self.on_request_failed(uri, retryable, epoch),
             HlsEvent::Tick { now_ms } => self.on_tick(now_ms),
             HlsEvent::Stop => {
                 self.stopped = true;
-                self.pending.clear();
+                self.inflight.clear();
                 Vec::new()
             }
         }
     }
 
     fn on_playlist_loaded(&mut self, url: String, body: Vec<u8>) -> Vec<HlsAction> {
+        let is_master = self.master_url == url;
+        self.remove_inflight_playlist(&url, is_master);
         let text = match core::str::from_utf8(&body) {
             Ok(t) => t,
             Err(_) => {
-                return vec![error_action(HlsError::Utf8Error)];
+                return self.stop_with_error(HlsError::Utf8Error);
             }
         };
         let base = &url;
         match parse(text, base) {
             Ok(Playlist::Master(master)) => {
                 self.master = Some(master);
-                self.bump_epoch();
-                let selected = match select_initial_variant(
+                let selected_uri = match select_initial_variant(
                     &self.master.as_ref().unwrap().variants,
                     &self.config.capabilities,
                 ) {
-                    Ok(v) => v,
-                    Err(e) => return vec![error_action(e)],
+                    Ok(v) => v.uri.clone(),
+                    Err(e) => return self.stop_with_error(e),
                 };
-                self.selected_variant = Some(selected.uri.clone());
-                self.request_epoch(ActionKind::LoadPlaylist {
-                    url: selected.uri.clone(),
+                self.selected_variant = Some(selected_uri.clone());
+                let mut actions = self.bump_epoch();
+                actions.extend(self.request_epoch(ActionKind::LoadPlaylist {
+                    url: selected_uri,
                     is_master: false,
                     blocking: false,
-                })
+                }));
+                actions
             }
             Ok(Playlist::Media(media)) => {
+                let reload = self.media_url.as_ref() == Some(&url);
+                if !reload {
+                    self.next_segment_index = 0;
+                    self.next_part_index = 0;
+                    self.last_msn = None;
+                    self.last_part_msn = None;
+                    self.last_part_index = None;
+                } else {
+                    let (seg, part) = resume_position(
+                        &media,
+                        self.last_msn,
+                        self.last_part_msn,
+                        self.last_part_index,
+                    );
+                    self.next_segment_index = seg;
+                    self.next_part_index = part;
+                }
                 self.media = Some(media);
                 self.media_url = Some(url);
-                self.next_segment_index = 0;
-                self.next_part_index = 0;
-                self.bump_epoch();
-                self.schedule_downloads()
+                let mut actions = if reload {
+                    Vec::new()
+                } else {
+                    self.bump_epoch()
+                };
+                actions.extend(self.schedule_downloads());
+                actions
             }
-            Err(e) => vec![error_action(e)],
+            Err(e) => self.stop_with_error(e),
         }
     }
 
-    fn on_resource_loaded(&mut self, uri: String) -> Vec<HlsAction> {
-        self.retry_counts.remove(&uri);
-        // In a real implementation the payload would be delivered to the caller.
-        // For the state machine we simply schedule the next items.
+    fn on_resource_loaded(&mut self, uri: String, epoch: u64) -> Vec<HlsAction> {
+        let kind = self.inflight.remove(&epoch);
+        if let Some(ref k) = kind {
+            match k {
+                ActionKind::LoadSegment { uri: u, .. } => {
+                    if let Some((idx, seg)) = find_segment(&self.media, u) {
+                        if Some(seg.media_sequence) >= self.last_msn {
+                            self.last_msn = Some(seg.media_sequence);
+                        }
+                        self.last_part_msn = None;
+                        self.last_part_index = None;
+                        // If this segment is the one currently being walked, advance past it.
+                        if idx == self.next_segment_index {
+                            self.next_segment_index = idx.saturating_add(1);
+                            self.next_part_index = 0;
+                        }
+                    }
+                }
+                ActionKind::LoadPart { uri: u, .. } => {
+                    if let Some((seg_idx, part_idx, _part, seg)) = find_part(&self.media, u) {
+                        self.last_part_msn = Some(seg.media_sequence);
+                        self.last_part_index = Some(part_idx);
+                        if seg_idx == self.next_segment_index && part_idx >= self.next_part_index {
+                            self.next_part_index = part_idx.saturating_add(1);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if kind.is_some() {
+            self.retry_counts.remove(&uri);
+        }
         self.schedule_downloads()
     }
 
-    fn on_request_failed(&mut self, uri: String, retryable: bool) -> Vec<HlsAction> {
+    fn on_request_failed(&mut self, uri: String, retryable: bool, epoch: u64) -> Vec<HlsAction> {
+        let kind = self.inflight.remove(&epoch);
         if !retryable {
-            self.stopped = true;
-            return vec![error_action(HlsError::Unsupported {
+            return self.stop_with_error(HlsError::Unsupported {
                 feature: alloc::format!("non-retryable request failed: {}", uri),
-            })];
+            });
         }
         let count = self.retry_counts.entry(uri.clone()).or_insert(0);
         if *count >= self.config.max_retry_count {
-            self.stopped = true;
-            return vec![error_action(HlsError::Unsupported {
+            return self.stop_with_error(HlsError::Unsupported {
                 feature: alloc::format!("retries exhausted for {}", uri),
-            })];
+            });
         }
         *count += 1;
-        // Re-issue the same request in the next tick.
-        self.request_epoch(ActionKind::LoadSegment {
-            uri,
-            byte_range: None,
-            discontinuity: false,
-        })
+        if let Some(k) = kind {
+            self.request_epoch(k)
+        } else {
+            // Stale failure for a request we no longer track.
+            Vec::new()
+        }
     }
 
     fn on_tick(&mut self, now_ms: u64) -> Vec<HlsAction> {
         let mut actions = Vec::new();
         if self.media.is_some() && !self.media.as_ref().unwrap().end_list {
-            let interval = if let Some(part_target) = self
-                .media
-                .as_ref()
-                .unwrap()
-                .part_inf
-                .as_ref()
-                .map(|p| p.part_target)
-            {
-                // LL-HLS: poll at part-target cadence.
-                (part_target * 1000.0).max(1.0) as u64
-            } else {
-                self.config.reload_interval_ms
-            };
-            if self
-                .last_reload_ms
-                .map(|t| now_ms >= t + interval)
-                .unwrap_or(true)
-            {
-                self.last_reload_ms = Some(now_ms);
-                if let Some(url) = self.media_url.clone() {
-                    let blocking = self.config.block_reload
-                        && self
-                            .media
-                            .as_ref()
-                            .unwrap()
-                            .server_control
-                            .as_ref()
-                            .map(|s| s.can_block_reload)
-                            .unwrap_or(false);
-                    actions.extend(self.request_epoch(ActionKind::LoadPlaylist {
-                        url,
+            // Do not pile up multiple playlist reloads.
+            if !self.inflight.values().any(|k| {
+                matches!(
+                    k,
+                    ActionKind::LoadPlaylist {
                         is_master: false,
-                        blocking,
-                    }));
+                        ..
+                    }
+                )
+            }) {
+                let interval = if let Some(part_target) = self
+                    .media
+                    .as_ref()
+                    .unwrap()
+                    .part_inf
+                    .as_ref()
+                    .map(|p| p.part_target)
+                {
+                    // LL-HLS: poll at part-target cadence.
+                    (part_target * 1000.0).max(1.0) as u64
+                } else {
+                    self.config.reload_interval_ms
+                };
+                if self
+                    .last_reload_ms
+                    .map(|t| now_ms >= t + interval)
+                    .unwrap_or(true)
+                {
+                    self.last_reload_ms = Some(now_ms);
+                    if let Some(url) = self.media_url.clone() {
+                        let blocking = self.config.block_reload
+                            && self
+                                .media
+                                .as_ref()
+                                .unwrap()
+                                .server_control
+                                .as_ref()
+                                .map(|s| s.can_block_reload)
+                                .unwrap_or(false);
+                        actions.extend(self.request_epoch(ActionKind::LoadPlaylist {
+                            url,
+                            is_master: false,
+                            blocking,
+                        }));
+                    }
                 }
             }
         }
@@ -274,10 +358,10 @@ impl HlsClient {
             None => return actions,
         };
 
-        if self.next_segment_index < media.segments.len() {
+        while self.next_segment_index < media.segments.len() {
             let seg = &media.segments[self.next_segment_index];
 
-            // Download any independent parts first.
+            // Download any independent parts first, one at a time.
             while self.next_part_index < seg.parts.len() {
                 let part = &seg.parts[self.next_part_index];
                 self.next_part_index += 1;
@@ -286,12 +370,21 @@ impl HlsClient {
                     continue;
                 }
                 let uri = part.uri.clone();
+                if self.is_inflight(&uri) {
+                    continue;
+                }
                 let byte_range = part.byte_range;
                 actions.extend(self.request_epoch(ActionKind::LoadPart { uri, byte_range }));
                 return actions; // one at a time
             }
 
             let uri = seg.uri.clone();
+            if self.is_inflight(&uri) {
+                // Already downloading this segment; advance and continue checking.
+                self.next_segment_index += 1;
+                self.next_part_index = 0;
+                continue;
+            }
             let byte_range = seg.byte_range;
             let discontinuity = seg.discontinuity;
             self.next_segment_index += 1;
@@ -301,31 +394,129 @@ impl HlsClient {
                 byte_range,
                 discontinuity,
             }));
-            return actions; // one segment per scheduling call
+            return actions; // one request per scheduling call
         }
 
         actions
     }
 
+    fn is_inflight(&self, uri: &str) -> bool {
+        self.inflight.values().any(|k| action_uri(k) == Some(uri))
+    }
+
+    fn remove_inflight_playlist(&mut self, url: &str, is_master: bool) {
+        self.inflight.retain(|_, k| {
+            if let ActionKind::LoadPlaylist {
+                url: u,
+                is_master: m,
+                ..
+            } = k
+            {
+                u != url || *m != is_master
+            } else {
+                true
+            }
+        });
+    }
+
     fn request_epoch(&mut self, kind: ActionKind) -> Vec<HlsAction> {
+        self.epoch = self.epoch.saturating_add(1);
         let action = HlsAction {
             epoch: self.epoch,
-            kind,
+            kind: kind.clone(),
         };
-        self.pending.insert(self.epoch);
+        self.inflight.insert(self.epoch, kind);
         vec![action]
     }
 
-    fn bump_epoch(&mut self) {
+    fn bump_epoch(&mut self) -> Vec<HlsAction> {
         self.epoch = self.epoch.saturating_add(1);
-        self.pending.retain(|&e| e >= self.epoch);
+        let mut actions = Vec::new();
+        self.inflight.retain(|&e, _| {
+            if e < self.epoch {
+                actions.push(HlsAction {
+                    epoch: e,
+                    kind: ActionKind::CancelEpoch { epoch: e },
+                });
+                false
+            } else {
+                true
+            }
+        });
         self.retry_counts.clear();
+        actions
+    }
+
+    fn stop_with_error(&mut self, error: HlsError) -> Vec<HlsAction> {
+        self.stopped = true;
+        self.inflight.clear();
+        vec![HlsAction {
+            epoch: 0,
+            kind: ActionKind::ReportError { error },
+        }]
     }
 }
 
-fn error_action(_error: HlsError) -> HlsAction {
-    HlsAction {
-        epoch: 0,
-        kind: ActionKind::Wait { duration_ms: 0 },
+fn action_uri(kind: &ActionKind) -> Option<&str> {
+    match kind {
+        ActionKind::LoadPlaylist { url, .. } => Some(url.as_str()),
+        ActionKind::LoadSegment { uri, .. } => Some(uri.as_str()),
+        ActionKind::LoadPart { uri, .. } => Some(uri.as_str()),
+        _ => None,
     }
+}
+
+fn find_segment<'a>(media: &'a Option<MediaPlaylist>, uri: &str) -> Option<(usize, &'a Segment)> {
+    let media = media.as_ref()?;
+    media
+        .segments
+        .iter()
+        .enumerate()
+        .find(|(_, s)| s.uri == uri)
+}
+
+fn find_part<'a>(
+    media: &'a Option<MediaPlaylist>,
+    uri: &str,
+) -> Option<(usize, usize, &'a Part, &'a Segment)> {
+    let media = media.as_ref()?;
+    for (seg_idx, seg) in media.segments.iter().enumerate() {
+        for (part_idx, part) in seg.parts.iter().enumerate() {
+            if part.uri == uri {
+                return Some((seg_idx, part_idx, part, seg));
+            }
+        }
+    }
+    None
+}
+
+fn resume_position(
+    media: &MediaPlaylist,
+    last_msn: Option<u64>,
+    last_part_msn: Option<u64>,
+    last_part_index: Option<usize>,
+) -> (usize, usize) {
+    let part_seg_idx = last_part_msn.and_then(|part_msn| {
+        media
+            .segments
+            .iter()
+            .position(|s| s.media_sequence == part_msn)
+    });
+    if let Some(seg_idx) = part_seg_idx {
+        let next_part = last_part_index.map(|i| i + 1).unwrap_or(0);
+        if next_part < media.segments[seg_idx].parts.len() {
+            return (seg_idx, next_part);
+        } else if seg_idx + 1 < media.segments.len() {
+            return (seg_idx + 1, 0);
+        } else {
+            return (media.segments.len(), 0);
+        }
+    }
+    if let Some(msn) = last_msn {
+        if let Some(idx) = media.segments.iter().position(|s| s.media_sequence > msn) {
+            return (idx, 0);
+        }
+        return (media.segments.len(), 0);
+    }
+    (0, 0)
 }

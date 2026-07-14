@@ -106,24 +106,29 @@ fn client_loads_media_then_segments() {
         url: "http://x/master.m3u8".to_string(),
         body,
     });
-    assert!(!actions.is_empty());
-    let media_url = match &actions[0].kind {
-        ActionKind::LoadPlaylist { url, .. } => url.clone(),
-        _ => panic!("expected media playlist load"),
-    };
+    let media_url = actions
+        .iter()
+        .find_map(|a| match &a.kind {
+            ActionKind::LoadPlaylist { url, .. } => Some(url.clone()),
+            _ => None,
+        })
+        .expect("expected media playlist load");
 
     let media_body = MEDIA.as_bytes().to_vec();
     let actions = client.handle_event(HlsEvent::PlaylistLoaded {
         url: media_url,
         body: media_body,
     });
-    assert_eq!(actions.len(), 1);
-    match &actions[0].kind {
-        ActionKind::LoadSegment { uri, .. } => {
-            assert!(uri.contains("seg0.ts"));
-        }
-        _ => panic!("expected LoadSegment"),
-    }
+    let uri = actions
+        .iter()
+        .find_map(|a| match &a.kind {
+            ActionKind::LoadSegment { uri, .. } | ActionKind::LoadPart { uri, .. } => {
+                Some(uri.clone())
+            }
+            _ => None,
+        })
+        .expect("expected LoadSegment or LoadPart");
+    assert!(uri.contains("seg0.ts"));
 }
 
 #[test]
@@ -196,18 +201,25 @@ seg0.m4s
         url: "http://x/master.m3u8".to_string(),
         body: MASTER.as_bytes().to_vec(),
     });
-    let actions = client.handle_event(HlsEvent::PlaylistLoaded {
-        url: "http://example.com/playlist_1.m3u8".to_string(),
+    let media_url = "http://example.com/playlist_1.m3u8".to_string();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: media_url.clone(),
         body: media.as_bytes().to_vec(),
     });
-    assert!(!actions.is_empty());
 
     // First tick should always reload.
     let first = client.handle_event(HlsEvent::Tick { now_ms: 0 });
-    let reload1 = first
-        .iter()
-        .any(|a| matches!(a.kind, ActionKind::LoadPlaylist { .. }));
-    assert!(reload1);
+    assert!(
+        first
+            .iter()
+            .any(|a| matches!(a.kind, ActionKind::LoadPlaylist { .. }))
+    );
+
+    // Simulate playlist response so the client does not treat the reload as in-flight.
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: media_url.clone(),
+        body: media.as_bytes().to_vec(),
+    });
 
     // 200 ms is less than 0.5 s part target, so no reload.
     let second = client.handle_event(HlsEvent::Tick { now_ms: 200 });

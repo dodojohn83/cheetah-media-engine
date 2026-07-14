@@ -283,7 +283,6 @@ pub fn parse_media(input: &str, base_uri: &str) -> Result<MediaPlaylist, HlsErro
 
         if line == "#EXT-X-DISCONTINUITY" {
             current_segment.discontinuity = true;
-            pl.discontinuity_sequence = pl.discontinuity_sequence.saturating_add(1);
             continue;
         }
 

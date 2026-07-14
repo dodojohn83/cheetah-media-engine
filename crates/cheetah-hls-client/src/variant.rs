@@ -109,7 +109,7 @@ fn codec_compatible(variant: &Variant, caps: &VariantCapabilities) -> bool {
     }
     caps.required_codecs
         .iter()
-        .any(|req| variant.codecs.iter().any(|c| c.starts_with(req.as_str())))
+        .all(|req| variant.codecs.iter().any(|c| c.starts_with(req.as_str())))
 }
 
 fn within_limits(variant: &Variant, caps: &VariantCapabilities) -> bool {
