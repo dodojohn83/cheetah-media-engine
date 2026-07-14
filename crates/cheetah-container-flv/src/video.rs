@@ -186,44 +186,47 @@ pub fn parse_video_config(
 }
 
 /// Determine whether an H.264/H.265 AVCC/HVCC payload contains a keyframe.
-fn payload_is_keyframe(payload: &[u8], codec_id: VideoCodecId) -> bool {
+/// Returns `Some(true)` if an IDR/IRAP NAL is found, `Some(false)` if the
+/// payload parsed successfully but contained none, and `None` if parsing failed
+/// (so the caller can fall back to the FLV header frame type).
+fn payload_is_keyframe(payload: &[u8], codec_id: VideoCodecId) -> Option<bool> {
     match codec_id {
         VideoCodecId::H264 => {
-            if let Ok(nals) = h264::split_avcc(payload, 4) {
-                for nal in nals {
-                    if !nal.data.is_empty() {
-                        let nal_type = nal.data[0] & 0x1f;
-                        if nal_type == 5 {
-                            return true;
-                        }
+            let nals = h264::split_avcc(payload, 4).ok()?;
+            for nal in nals {
+                if !nal.data.is_empty() {
+                    let nal_type = nal.data[0] & 0x1f;
+                    if nal_type == 5 {
+                        return Some(true);
                     }
                 }
             }
+            Some(false)
         }
         VideoCodecId::H265 => {
-            if let Ok(nals) = h265::split_hvcc(payload, 4) {
-                for nal in nals {
-                    let t = H265NalUnitType::from_u8(nal.nal_unit_type);
-                    if t.is_irap() {
-                        return true;
-                    }
+            let nals = h265::split_hvcc(payload, 4).ok()?;
+            for nal in nals {
+                let t = H265NalUnitType::from_u8(nal.nal_unit_type);
+                if t.is_irap() {
+                    return Some(true);
                 }
             }
+            Some(false)
         }
-        _ => {}
+        _ => None,
     }
-    false
 }
 
 /// True if the payload should be treated as a keyframe given the tag header.
 pub fn is_keyframe(payload: &[u8], header: &VideoTagHeader) -> bool {
     match header.frame_type {
         FrameType::Keyframe => {
-            // Refine H.265 by inspecting NAL types; for H.264 trust the header
-            // because the frame type already signals an IDR frame.
+            // Refine by inspecting NAL types; if payload inspection is
+            // inconclusive (parse error), trust the FLV header frame type.
             match header.codec_id {
-                VideoCodecId::H265 => payload_is_keyframe(payload, header.codec_id),
-                VideoCodecId::H264 => payload_is_keyframe(payload, header.codec_id),
+                VideoCodecId::H264 | VideoCodecId::H265 => {
+                    payload_is_keyframe(payload, header.codec_id).unwrap_or(true)
+                }
                 _ => true,
             }
         }

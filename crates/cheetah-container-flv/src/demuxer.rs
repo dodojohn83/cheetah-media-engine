@@ -69,6 +69,7 @@ pub struct FlvDemuxer {
     last_raw_timestamp: i64,
     last_unwrapped_ms: i64,
     previous_tag_total_size: u32,
+    pending_previous_tag_size: bool,
     next_audio_id: u32,
     next_video_id: u32,
     amf_limits: AmfLimits,
@@ -96,6 +97,7 @@ impl FlvDemuxer {
             last_raw_timestamp: -1,
             last_unwrapped_ms: 0,
             previous_tag_total_size: 0,
+            pending_previous_tag_size: false,
             next_audio_id: 1,
             next_video_id: 2,
             amf_limits: AmfLimits::default(),
@@ -121,6 +123,23 @@ impl FlvDemuxer {
         loop {
             if self.header.is_none() {
                 return self.parse_header();
+            }
+
+            // Retry an unfinished trailing PreviousTagSize from the last call.
+            if self.pending_previous_tag_size {
+                if self.mode == FlvMode::Stream {
+                    self.pending_previous_tag_size = false;
+                } else if self.available() >= 4 {
+                    if let Some(total) = self.try_consume_previous_tag_size()? {
+                        self.previous_tag_total_size = total;
+                    }
+                    self.pending_previous_tag_size = false;
+                    continue;
+                } else if self.mode == FlvMode::File {
+                    return Err(FlvError::NeedMoreData);
+                } else {
+                    return Ok(None);
+                }
             }
 
             // First tag boundary: optional PreviousTagSize0 (must be 0).
@@ -213,6 +232,7 @@ impl FlvDemuxer {
             if self.mode == FlvMode::File {
                 return Err(FlvError::NeedMoreData);
             }
+            self.pending_previous_tag_size = true;
             return Ok(None);
         }
         let bytes = [
