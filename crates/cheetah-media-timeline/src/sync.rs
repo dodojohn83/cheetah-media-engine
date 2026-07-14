@@ -33,6 +33,7 @@ pub struct AvSync {
     clock: MediaClock,
     audio_available: bool,
     last_audio_ms: Option<i64>,
+    last_audio_clock: Option<ClockTime>,
     last_video_ms: Option<i64>,
     /// Maximum allowed A/V drift in milliseconds before corrective action.
     max_drift_ms: i64,
@@ -49,6 +50,7 @@ impl AvSync {
             clock: MediaClock::new(None, None),
             audio_available: false,
             last_audio_ms: None,
+            last_audio_clock: None,
             last_video_ms: None,
             max_drift_ms,
             late_threshold_ms,
@@ -66,6 +68,7 @@ impl AvSync {
                 .pts_ms()
                 .or_else(|| time.dts_ms())
                 .or(Some(render_time.ms()));
+            self.last_audio_clock = Some(render_time);
         }
     }
 
@@ -102,7 +105,7 @@ impl AvSync {
             self.clock.set_state(ClockState::CatchUp);
             if is_keyframe {
                 return Ok(SyncDecision::Hold {
-                    until: ClockTime::new(audio_ms.saturating_mul(1000)),
+                    until: self.last_audio_clock.unwrap_or(render_time),
                 });
             }
             self.clock.add_dropped(drift_ms);
