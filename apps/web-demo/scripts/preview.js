@@ -13,6 +13,7 @@ import { extname, join, resolve, sep } from 'node:path';
 const root = process.cwd();
 const distDir = join(root, 'dist');
 const publicDir = join(root, 'public');
+const fixturesDir = join(root, '..', '..', 'testing', 'fixtures');
 const port = Number(process.argv.find((arg) => arg.startsWith('--port='))?.slice(7) ?? '5173');
 
 const MIME_TYPES = {
@@ -23,6 +24,13 @@ const MIME_TYPES = {
   '.json': 'application/json',
   '.css': 'text/css',
   '.svg': 'image/svg+xml',
+  '.mp4': 'video/mp4',
+  '.m4s': 'video/iso.segment',
+  '.m3u8': 'application/vnd.apple.mpegurl',
+  '.flv': 'video/x-flv',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ts': 'video/mp2t',
 };
 
 const documentHeaders = {
@@ -111,6 +119,13 @@ const server = createServer(async (req, res) => {
   } else if (pathname.startsWith('/assets/')) {
     result = await tryReadFrom(distDir, pathname);
     setHeaders({ 'Cross-Origin-Resource-Policy': 'cross-origin' });
+  } else if (pathname.startsWith('/fixtures/')) {
+    // Serve acceptance fixtures from the workspace testing/fixtures directory.
+    result = await tryReadFrom(fixturesDir, pathname.slice('/fixtures/'.length));
+    setHeaders({
+      'Access-Control-Allow-Origin': '*',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    });
   } else {
     // Public files (e.g. favicon) fall back to dist.
     result = (await tryReadFrom(publicDir, pathname)) ?? (await tryReadFrom(distDir, pathname));
