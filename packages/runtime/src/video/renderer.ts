@@ -32,7 +32,14 @@ export class VideoRenderer implements Renderer {
     const candidates: RendererKind[] =
       preferred === 'canvas2d' ? ['canvas2d'] : preferred === 'webgl2' ? ['webgl2', 'canvas2d'] : ['webgpu', 'webgl2', 'canvas2d'];
 
+    const canvas = config.canvas;
+    const originalWidth = canvas.width;
+    const originalHeight = canvas.height;
     for (const kind of candidates) {
+      // Reset canvas CSS dimensions before each attempt so a failed renderer's
+      // DPR scaling does not compound across fallback candidates.
+      canvas.width = originalWidth;
+      canvas.height = originalHeight;
       try {
         await this.tryConfigure(kind, config);
         return;

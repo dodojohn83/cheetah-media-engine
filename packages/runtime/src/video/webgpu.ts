@@ -187,7 +187,7 @@ export class WebGpuRenderer implements Renderer {
     const device = this.device;
     if (!device || !this.frameTexture) return;
     device.queue.copyExternalImageToTexture(
-      { source, flipY: true },
+      { source, flipY: false },
       { texture: this.frameTexture },
       [Math.max(1, size.width), Math.max(1, size.height), 1],
     );
