@@ -64,10 +64,10 @@ jobs:
           version: 11.12.0
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Type check
-        run: pnpm typecheck
       - name: Build
         run: pnpm build
+      - name: Type check
+        run: pnpm typecheck
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
       - name: Unit tests

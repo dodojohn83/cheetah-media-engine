@@ -24,10 +24,12 @@ for pkg in packages/runtime packages/web packages/components; do
   node -e "
     const fs = require('node:fs');
     const p = process.argv[1];
+    const version = process.argv[2];
+    if (!version) { console.error('missing version'); process.exit(1); }
     const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-    j.version = '$VERSION';
+    j.version = version;
     fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\\n');
-  " "$pkg/package.json"
+  " "$pkg/package.json" "$VERSION"
 done
 
 echo "[release] installing and building"

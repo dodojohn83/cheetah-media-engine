@@ -346,10 +346,13 @@ interface FullPlayerConfig {
 }
 
 function resolveRuntimeUrls(runtime: Required<RuntimeConfig>): { workerUrl: string | undefined; wasmUrl: string | undefined } {
-  const base = runtime.assetBaseUrl?.replace(/\/$/, '');
-  const workerUrl = runtime.workerUrl ?? (base ? `${base}/worker.js` : undefined);
+  const base =
+    runtime.assetBaseUrl !== undefined ? runtime.assetBaseUrl.replace(/\/$/, '') : undefined;
+  const workerUrl =
+    runtime.workerUrl ?? (base !== undefined ? `${base}/worker.js` : undefined);
   const wasmUrl =
-    runtime.wasmUrl ?? (base ? `${base}/wasm/cheetah_media_web_bindings.js` : undefined);
+    runtime.wasmUrl ??
+    (base !== undefined ? `${base}/wasm/cheetah_media_web_bindings.js` : undefined);
   return { workerUrl, wasmUrl };
 }
 
