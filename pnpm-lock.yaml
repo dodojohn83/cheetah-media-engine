@@ -52,6 +52,9 @@ importers:
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+      vite:
+        specifier: 8.1.4
+        version: 8.1.4(@types/node@22.13.14)
       vitest:
         specifier: 4.1.10
         version: 4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14))
@@ -74,6 +77,9 @@ importers:
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+      vite:
+        specifier: 8.1.4
+        version: 8.1.4(@types/node@22.13.14)
       vitest:
         specifier: 4.1.10
         version: 4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14))
