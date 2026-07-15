@@ -1,9 +1,9 @@
 /**
  * Media worker entry point.
  *
- * The worker loads the wasm module, initializes the engine, and dispatches
- * commands received as envelopes from the main thread. It keeps no volatile
- * TypedArray views across await boundaries.
+ * The worker dynamically imports the wasm-bindgen module, initializes the
+ * engine, and dispatches commands received as envelopes from the main thread.
+ * It keeps no volatile TypedArray views across await boundaries.
  */
 
 import {
@@ -13,8 +13,9 @@ import {
   type EventPayload,
   type LoadPayload,
   type PacketPayload,
+  type BootstrapPayload,
   type WorkerErrorPayload,
-} from './messages';
+} from './messages.js';
 
 interface WorkerScope {
   postMessage(data: string): void;
@@ -24,8 +25,39 @@ interface WorkerScope {
 
 declare const self: WorkerScope;
 
-let wasmInit: Promise<unknown> | undefined;
+interface WasmModule {
+  default: (module_or_path?: string | URL | WebAssembly.Module | Response | Request) => Promise<unknown>;
+  WebEngine: new () => WebEngineInstance;
+}
+
+interface WebEngineInstance {
+  version: string;
+  load(url: string, isLive: boolean): void;
+  play(): void;
+  pause(): void;
+  stop(): void;
+  destroy(): void;
+  readonly is_playing: boolean;
+  request_write_region(size: number): unknown;
+  commit_region(slot: number, generation: bigint, len: number): void;
+  release_region(slot: number, generation: bigint): void;
+  push_packet(
+    slot: number,
+    generation: bigint,
+    trackId: number,
+    ptsMs: bigint,
+    dtsMs: bigint,
+    durationMs: bigint,
+    flags: number,
+  ): void;
+  poll_output(): unknown | null;
+  configure(json: string): void;
+}
+
+let wasmInit: Promise<WasmModule> | undefined;
+let engine: WebEngineInstance | undefined;
 let currentEpoch = 0;
+let wasmUrl: string | undefined;
 
 function reply(envelope: Envelope): void {
   self.postMessage(encodeEnvelope(envelope));
@@ -61,12 +93,37 @@ function sendEvent(instance: number, event: string, details?: Record<string, unk
   });
 }
 
-async function initWasm(): Promise<unknown> {
+async function initWasm(): Promise<WasmModule> {
   if (wasmInit) return wasmInit;
-  // The main runtime passes the wasm URL/import path via a dedicated
-  // 'bootstrap' message before the first command.
-  wasmInit = Promise.resolve();
+  if (!wasmUrl) {
+    throw new Error('No wasmUrl provided; send bootstrap before load');
+  }
+  wasmInit = (async (): Promise<WasmModule> => {
+    try {
+      const mod = (await import(/* @vite-ignore */ wasmUrl!)) as WasmModule;
+      await mod.default();
+      return mod;
+    } catch (err) {
+      wasmInit = undefined;
+      throw err;
+    }
+  })();
   return wasmInit;
+}
+
+function ensureEngine(): WebEngineInstance {
+  if (!engine) {
+    throw new Error('Wasm module not bootstrapped');
+  }
+  return engine;
+}
+
+function withEngine<T>(action: (engine: WebEngineInstance) => T, instance: number, sequence: number): void {
+  try {
+    action(ensureEngine());
+  } catch (err) {
+    sendError(instance, sequence, err);
+  }
 }
 
 self.onmessage = (event: MessageEvent<unknown>) => {
@@ -90,45 +147,95 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   }
 
   switch (envelope.type) {
+    case 'bootstrap': {
+      const payload = envelope.payload as BootstrapPayload;
+      wasmUrl = payload.wasmUrl;
+      reply({ ...envelope, payload: { event: 'bootstrapped' } });
+      break;
+    }
     case 'load': {
       const payload = envelope.payload as LoadPayload;
       currentEpoch = envelope.epoch;
-      wasmInit ??= initWasm();
-      wasmInit
-        .then(() => {
-          sendEvent(envelope.instance, 'loaded', { url: payload.url, isLive: payload.isLive });
-          // Reply with the original command type so the main thread can resolve
-          // the pending load promise by sequence number.
+      const instance = envelope.instance;
+      const sequence = envelope.sequence;
+      initWasm()
+        .then((mod) => {
+          if (!engine) {
+            engine = new mod.WebEngine();
+          }
+          engine.load(payload.url, payload.isLive);
+          sendEvent(instance, 'loaded', { url: payload.url, isLive: payload.isLive });
           reply({ ...envelope, payload: { event: 'loaded' } });
         })
-        .catch((err) => sendError(envelope.instance, envelope.sequence, err));
+        .catch((err) => sendError(instance, sequence, err));
       break;
     }
     case 'play':
+      withEngine((e) => {
+        e.play();
+        sendEvent(envelope.instance, 'playing');
+      }, envelope.instance, envelope.sequence);
+      break;
     case 'pause':
-      sendEvent(envelope.instance, envelope.type);
+      withEngine((e) => {
+        e.pause();
+        sendEvent(envelope.instance, 'paused');
+      }, envelope.instance, envelope.sequence);
       break;
     case 'stop':
       currentEpoch = envelope.epoch;
-      sendEvent(envelope.instance, 'stopped');
-      // Reply with the original command type so the main thread can resolve
-      // the pending stop promise.
-      reply({ ...envelope, payload: { event: 'stopped' } });
+      withEngine((e) => {
+        e.stop();
+        e.destroy();
+        engine = undefined;
+        sendEvent(envelope.instance, 'stopped');
+        reply({ ...envelope, payload: { event: 'stopped' } });
+      }, envelope.instance, envelope.sequence);
       break;
     case 'destroy':
       currentEpoch = 0;
+      if (engine) {
+        try {
+          engine.destroy();
+        } catch (err) {
+          // ignored during teardown
+        }
+        engine = undefined;
+      }
+      wasmInit = undefined;
       sendEvent(envelope.instance, 'destroyed');
       break;
-    case 'packet': {
-      const payload = envelope.payload as PacketPayload;
-      // Placeholder: real implementation would copy packet bytes into the arena
-      // and call the Rust engine. Here we just acknowledge.
-      reply({
-        ...envelope,
-        payload: { event: 'packet-accepted', slot: payload.slot },
-      });
+    case 'config': {
+      withEngine((e) => {
+        const json = typeof envelope.payload === 'string' ? envelope.payload : JSON.stringify(envelope.payload);
+        e.configure(json);
+        sendEvent(envelope.instance, 'configured');
+        reply({ ...envelope, payload: { event: 'configured' } });
+      }, envelope.instance, envelope.sequence);
       break;
     }
+    case 'packet': {
+      const payload = envelope.payload as PacketPayload;
+      withEngine((e) => {
+        e.push_packet(
+          payload.slot,
+          BigInt(payload.generation),
+          payload.trackIndex,
+          BigInt(payload.ptsMs),
+          BigInt(payload.dtsMs),
+          BigInt(payload.durationMs),
+          payload.flags,
+        );
+        reply({ ...envelope, payload: { event: 'packet-accepted', slot: payload.slot } });
+      }, envelope.instance, envelope.sequence);
+      break;
+    }
+    case 'output':
+      withEngine((e) => {
+        const desc = e.poll_output() as { slot?: number; generation?: bigint } | null;
+        reply({ ...envelope, payload: desc ?? null });
+      }, envelope.instance, envelope.sequence);
+      break;
     default:
       sendError(envelope.instance, envelope.sequence, `Unknown command type ${envelope.type}`);
   }

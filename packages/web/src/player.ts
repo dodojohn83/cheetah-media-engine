@@ -623,6 +623,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this.setState('loading');
     try {
       await this.runtime.load(url, { isLive: options.isLive ?? false });
+      if (this._state !== 'failed') {
+        this.setState('preroll');
+      }
     } catch (cause) {
       this.setState('failed');
       throw new CheetahMediaError(6100, 'load', 'Load failed', { cause, recoverable: true });
