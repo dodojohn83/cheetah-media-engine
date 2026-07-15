@@ -156,5 +156,32 @@ describe('components', () => {
       expect(el.src).toBe('https://example.com/c.flv');
       expect(el.getAttribute('data-state')).toBe('failed');
     });
+
+    it('does not freeze when the same src is requested while loading', async () => {
+      const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+      container.appendChild(el);
+      el.src = 'https://example.com/a.flv';
+      el.src = 'https://example.com/a.flv';
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(el.src).toBe('https://example.com/a.flv');
+      expect(el.getAttribute('data-state')).toBe('failed');
+
+      el.src = 'https://example.com/b.flv';
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(el.src).toBe('https://example.com/b.flv');
+      expect(el.getAttribute('data-state')).toBe('failed');
+    });
+
+    it('reloads when live flag changes during a load', async () => {
+      const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+      container.appendChild(el);
+      el.src = 'https://example.com/live.flv';
+      el.live = true;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      el.live = false;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(el.src).toBe('https://example.com/live.flv');
+      expect(el.getAttribute('data-state')).toBe('failed');
+    });
   });
 });

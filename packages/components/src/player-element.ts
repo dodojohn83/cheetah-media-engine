@@ -234,8 +234,11 @@ export class CheetahPlayerElement extends HTMLElement {
       return;
     }
 
-    if (name === 'live' && newValue !== oldValue && this._player && this.src) {
+    if (name === 'live' && newValue !== oldValue && this.src) {
       // Live flag changes require a reload to take effect on the transport.
+      // Reset loaded state so the same URL can be reloaded with the new transport config.
+      this._loadedSrc = undefined;
+      this._loading = false;
       void this._load(this.src);
       return;
     }
@@ -432,8 +435,6 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   private async _load(src: string | undefined): Promise<void> {
-    const generation = ++this._loadGeneration;
-
     if (this._loading && this._loadedSrc === src) {
       return;
     }
@@ -443,12 +444,16 @@ export class CheetahPlayerElement extends HTMLElement {
       if (this._player) {
         await this._cleanupPlayer();
       }
+      this._loading = false;
+      this._loadedSrc = undefined;
       return;
     }
 
     if (this._loadedSrc === src && this._player && this.getAttribute('data-state') !== 'failed') {
       return;
     }
+
+    const generation = ++this._loadGeneration;
 
     if (this._player) {
       await this._cleanupPlayer(true);
