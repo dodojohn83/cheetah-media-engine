@@ -8,12 +8,14 @@
 extern crate alloc;
 
 pub mod latency;
+pub mod metrics;
 pub mod recovery;
 pub mod resource;
 pub mod scheduler;
 pub mod state;
 
 pub use latency::{LatencyAction, LatencyBreakdown, LatencyController, LatencyTarget};
+pub use metrics::{AllocationMetric, CopyMetric, Metrics, MetricsSnapshot};
 pub use recovery::{
     ClassificationRule, RecoveryAction, RecoveryDecision, RecoveryPolicy, RecoveryTracker,
     RetryBudget,

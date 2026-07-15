@@ -41,8 +41,15 @@ impl CopyReason {
 /// grows its per-sample or per-second copy cost unexpectedly.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CopyBudget {
-    counters: BTreeMap<CopyReason, u64>,
+    counters: BTreeMap<CopyReason, CopyCounter>,
     total_limit: Option<u64>,
+}
+
+/// Bytes and count copied for a single `CopyReason`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CopyCounter {
+    pub bytes: u64,
+    pub count: u64,
 }
 
 impl CopyBudget {
@@ -56,17 +63,29 @@ impl CopyBudget {
 
     /// Record `bytes` copied for `reason`.
     pub fn record(&mut self, reason: CopyReason, bytes: u64) {
-        *self.counters.entry(reason).or_insert(0) += bytes;
+        let counter = self.counters.entry(reason).or_default();
+        counter.bytes += bytes;
+        counter.count += 1;
     }
 
     /// Total bytes copied across all reasons.
     pub fn total(&self) -> u64 {
-        self.counters.values().sum()
+        self.counters.values().map(|c| c.bytes).sum()
+    }
+
+    /// Total number of copy operations across all reasons.
+    pub fn total_count(&self) -> u64 {
+        self.counters.values().map(|c| c.count).sum()
     }
 
     /// Bytes copied for a specific reason.
     pub fn get(&self, reason: CopyReason) -> u64 {
-        self.counters.get(&reason).copied().unwrap_or(0)
+        self.counters.get(&reason).map(|c| c.bytes).unwrap_or(0)
+    }
+
+    /// Number of copy operations for a specific reason.
+    pub fn get_count(&self, reason: CopyReason) -> u64 {
+        self.counters.get(&reason).map(|c| c.count).unwrap_or(0)
     }
 
     /// Return an error if the total copy budget is exceeded.
@@ -82,6 +101,11 @@ impl CopyBudget {
             }
         }
         Ok(())
+    }
+
+    /// Iterate over the underlying reason counters.
+    pub fn counters(&self) -> &BTreeMap<CopyReason, CopyCounter> {
+        &self.counters
     }
 }
 

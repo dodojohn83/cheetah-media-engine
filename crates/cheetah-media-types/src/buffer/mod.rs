@@ -10,7 +10,7 @@ pub mod pool;
 pub mod r#ref;
 pub mod wasm;
 
-pub use budget::{CopyBudget, CopyReason, DropPolicy, StageBudget};
+pub use budget::{CopyBudget, CopyCounter, CopyReason, DropPolicy, StageBudget};
 pub use pool::{BufferPool, BufferPoolConfig, PoolStats, SimpleBufferPool};
 pub use r#ref::{BufferLifecycle, BufferRef};
 pub use wasm::LinearMemoryRef;
