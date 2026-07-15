@@ -23,7 +23,7 @@ export class CheetahWallCellElement extends HTMLElement {
   }
 
   private _playerEl: HTMLElement | undefined;
-  private _quality: 'main' | 'sub' | 'auto' = 'auto';
+  private _quality: 'main' | 'sub' | 'auto' | 'pause' = 'auto';
 
   get cellId(): string | undefined {
     return this.getAttribute('cell-id') ?? undefined;
@@ -52,13 +52,17 @@ export class CheetahWallCellElement extends HTMLElement {
     else this.setAttribute('sub-src', value);
   }
 
-  get quality(): 'main' | 'sub' | 'auto' {
+  get quality(): 'main' | 'sub' | 'auto' | 'pause' {
     return this._quality;
   }
 
-  set quality(value: 'main' | 'sub' | 'auto') {
+  set quality(value: 'main' | 'sub' | 'auto' | 'pause') {
     this._quality = value;
-    this.setAttribute('quality', value);
+    if (value === 'pause') {
+      this.setAttribute('quality', 'pause');
+    } else {
+      this.setAttribute('quality', value);
+    }
   }
 
   get player(): CheetahPlayer | undefined {
@@ -133,9 +137,10 @@ export class CheetahWallCellElement extends HTMLElement {
       this._syncLabel();
       return;
     }
-    if (name === 'quality' && newValue) {
-      const q = newValue as 'main' | 'sub' | 'auto';
-      this._quality = ['main', 'sub', 'auto'].includes(q) ? q : 'auto';
+    if (name === 'quality') {
+      const valid = ['main', 'sub', 'auto', 'pause'] as const;
+      const q = newValue as 'main' | 'sub' | 'auto' | 'pause' | null;
+      this._quality = valid.includes(q as typeof valid[number]) ? (q as typeof valid[number]) : 'auto';
       this._applyQuality();
       return;
     }
@@ -147,7 +152,7 @@ export class CheetahWallCellElement extends HTMLElement {
     this._syncPlayerAttributes();
   }
 
-  setQuality(quality: 'main' | 'sub' | 'auto'): void {
+  setQuality(quality: 'main' | 'sub' | 'auto' | 'pause'): void {
     this.quality = quality;
   }
 
@@ -183,10 +188,34 @@ export class CheetahWallCellElement extends HTMLElement {
 
   private _applyQuality(): void {
     if (!this._playerEl) return;
+    const player = this._playerEl as { src?: string | undefined };
+    const api = this.player;
+
+    if (this._quality === 'pause') {
+      if (api) {
+        try {
+          api.pause();
+        } catch {
+          // ignored
+        }
+      }
+      return;
+    }
+
     const quality = this._quality === 'auto' ? 'main' : this._quality;
     const src = quality === 'sub' ? this.subSrc : this.mainSrc;
-    const player = this._playerEl as { src?: string | undefined };
-    if (src !== undefined && player.src !== src) {
+    if (src === undefined) return;
+
+    if (player.src === src) {
+      // Already loaded on this source; ensure playback is resumed.
+      if (api) {
+        try {
+          api.play();
+        } catch {
+          // ignored
+        }
+      }
+    } else {
       player.src = src;
     }
   }

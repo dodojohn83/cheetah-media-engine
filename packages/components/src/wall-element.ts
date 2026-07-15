@@ -327,14 +327,7 @@ export class CheetahWallElement extends HTMLElement {
       if (!id) continue;
       const allocation = allocations.get(id);
       if (!allocation) continue;
-      if (allocation.quality === 'pause') {
-        // Pause: stop the cell without destroying it. The cell keeps the last frame.
-        if (cell.player) {
-          void cell.player.stop().catch(() => undefined);
-        }
-      } else {
-        cell.setQuality(allocation.quality);
-      }
+      cell.setQuality(allocation.quality);
     }
   }
 

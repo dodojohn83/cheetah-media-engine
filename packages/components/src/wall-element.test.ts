@@ -79,6 +79,27 @@ describe('CheetahWallElement', () => {
     newContainer.remove();
   });
 
+  it('pauses and resumes a wall cell without losing its source', async () => {
+    const wall = document.createElement('cheetah-wall') as CheetahWallElement;
+    const cell = document.createElement('cheetah-wall-cell') as CheetahWallCellElement;
+    cell.setAttribute('cell-id', 'p1');
+    cell.setAttribute('main-src', 'https://example.com/main.flv');
+    wall.appendChild(cell);
+    document.body.appendChild(wall);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    cell.setQuality('main');
+    expect(cell.getAttribute('quality')).toBe('main');
+
+    cell.setQuality('pause');
+    expect(cell.getAttribute('quality')).toBe('pause');
+
+    cell.setQuality('main');
+    expect(cell.getAttribute('quality')).toBe('main');
+
+    wall.remove();
+  });
+
   it('shows only the fullscreen cell and spans the full wall', async () => {
     const wall = document.createElement('cheetah-wall') as CheetahWallElement;
     wall.setAttribute('layout', '4');
