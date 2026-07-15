@@ -205,6 +205,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
         const json = typeof envelope.payload === 'string' ? envelope.payload : JSON.stringify(envelope.payload);
         e.configure(json);
         sendEvent(envelope.instance, 'configured');
+        reply({ ...envelope, payload: { event: 'configured' } });
       }, envelope.instance, envelope.sequence);
       break;
     }
