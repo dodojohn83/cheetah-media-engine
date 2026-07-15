@@ -201,21 +201,20 @@ export class CheetahPlayerElement extends HTMLElement {
     const player = this._player;
     if (!player) return;
     this._player = undefined;
+    this._loadedSrc = undefined;
     try {
       if (this.onDisconnect === 'destroy') {
         await player.destroy();
-        this._loadedSrc = undefined;
       } else {
-        await player.stop();
+        try {
+          await player.stop();
+        } catch {
+          // A player that never started a worker may reject stop; destroy it.
+          await player.destroy();
+        }
       }
     } catch {
-      // Cleanup may fail when no worker was ever started (e.g. load failed).
-      // Attempt final destroy to prevent leaks.
-      try {
-        await player.destroy();
-      } catch {
-        // ignored
-      }
+      // Final cleanup is best-effort.
     }
   }
 
@@ -437,16 +436,10 @@ export class CheetahPlayerElement extends HTMLElement {
     }
 
     if (!src) {
-      if (this._player) {
-        if (this.onDisconnect === 'destroy') {
-          await this._player.destroy();
-          this._player = undefined;
-          this._loadedSrc = undefined;
-        } else {
-          await this._player.stop();
-        }
-      }
       this._updateState('idle');
+      if (this._player) {
+        await this._cleanupPlayer();
+      }
       return;
     }
 
@@ -464,16 +457,19 @@ export class CheetahPlayerElement extends HTMLElement {
     this._updateState('loading');
 
     const config = this._buildConfig();
-    this._player = createPlayer(config);
+    const player = createPlayer(config);
+    this._player = player;
     this._bindPlayer();
 
     try {
-      await this._player.load(src, { isLive: this.live });
+      await player.load(src, { isLive: this.live });
+      if (this._player !== player) return; // superseded by a newer load
       this._loading = false;
       if (this._connected && this.autoplay) {
         this._tryAutoplay();
       }
     } catch (cause) {
+      if (this._player !== player) return; // superseded by a newer load
       this._loading = false;
       this._lastError = {
         code: 6999,
@@ -482,7 +478,7 @@ export class CheetahPlayerElement extends HTMLElement {
         recoverable: true,
       };
       try {
-        await this._player?.destroy();
+        await player.destroy();
       } catch {
         // ignored
       }

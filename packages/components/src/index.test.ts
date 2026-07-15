@@ -119,5 +119,31 @@ describe('components', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(el.getAttribute('data-state')).toBe('failed');
     });
+
+    it('reloads after src is removed and re-added', async () => {
+      const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+      container.appendChild(el);
+      el.src = 'https://example.com/missing.flv';
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(el.getAttribute('data-state')).toBe('failed');
+
+      el.src = undefined;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(el.getAttribute('data-state')).toBe('idle');
+
+      el.src = 'https://example.com/missing.flv';
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(el.getAttribute('data-state')).toBe('failed');
+    });
+
+    it('handles src change while a load is in progress', async () => {
+      const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+      container.appendChild(el);
+      el.src = 'https://example.com/a.flv';
+      el.src = 'https://example.com/b.flv';
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(el.src).toBe('https://example.com/b.flv');
+      expect(el.getAttribute('data-state')).toBe('failed');
+    });
   });
 });
