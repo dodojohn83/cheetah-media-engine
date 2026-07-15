@@ -99,9 +99,14 @@ async function initWasm(): Promise<WasmModule> {
     throw new Error('No wasmUrl provided; send bootstrap before load');
   }
   wasmInit = (async (): Promise<WasmModule> => {
-    const mod = (await import(/* @vite-ignore */ wasmUrl!)) as WasmModule;
-    await mod.default();
-    return mod;
+    try {
+      const mod = (await import(/* @vite-ignore */ wasmUrl!)) as WasmModule;
+      await mod.default();
+      return mod;
+    } catch (err) {
+      wasmInit = undefined;
+      throw err;
+    }
   })();
   return wasmInit;
 }
