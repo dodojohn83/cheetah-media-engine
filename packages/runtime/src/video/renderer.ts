@@ -5,6 +5,7 @@
 
 import type { Renderer, RendererConfig, RenderFrame, RendererMetrics, SnapshotOptions, SnapshotResult } from './types';
 import { RendererError } from './types';
+import { encodeSnapshot, type CanvasLike } from './snapshot-encoder';
 import { Canvas2DRenderer } from './canvas2d';
 import { WebGL2Renderer } from './webgl';
 import { WebGpuRenderer } from './webgpu';
@@ -74,7 +75,18 @@ export class VideoRenderer implements Renderer {
   async snapshot(opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     if (this.closed) throw new RendererError('closed', 'VideoRenderer is closed');
     if (!this.backend) throw new RendererError('not-configured', 'configure() must be called before snapshot()');
-    return this.backend.snapshot(opts);
+    const result = await this.backend.snapshot(opts);
+    if (opts.format) {
+      const blob = await encodeSnapshot(result.data as ImageData | CanvasLike, {
+        format: opts.format,
+        quality: opts.quality,
+        maxWidth: opts.maxWidth,
+        maxHeight: opts.maxHeight,
+        includeOverlay: opts.includeOverlay,
+      });
+      return { width: result.width, height: result.height, data: blob };
+    }
+    return result;
   }
 
   get currentKind(): RendererKind | undefined {

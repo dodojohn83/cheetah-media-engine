@@ -16,3 +16,20 @@ export type {
   ColorSpaceInfo,
 } from './types';
 export { RendererError } from './types';
+export {
+  encodeSnapshot,
+  formatToMime,
+  computeTargetSize,
+  type SnapshotFormat,
+  type SnapshotEncoderOptions,
+  type CanvasLike,
+  type CanvasRenderingContext2DLike,
+} from './snapshot-encoder';
+export {
+  startRecording,
+  type RecordingContainer,
+  type RecordingOptions,
+  type RecordingStats,
+  type RecordingResult,
+  type RecordingSession,
+} from './recorder';

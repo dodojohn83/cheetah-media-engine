@@ -46,11 +46,19 @@ export interface RendererConfig {
   readonly dpr?: number | undefined;
 }
 
+export type SnapshotFormat = 'png' | 'jpeg' | 'webp';
+
 export interface SnapshotOptions {
-  readonly type?: 'image/png' | 'image/jpeg' | undefined;
+  /** Target image format; when omitted the renderer returns raw `ImageData`. */
+  readonly format?: SnapshotFormat | undefined;
+  /** Compression quality for lossy formats, 0..1. */
   readonly quality?: number | undefined;
+  /** Maximum width in CSS pixels; the image is scaled down preserving aspect ratio. */
   readonly maxWidth?: number | undefined;
+  /** Maximum height in CSS pixels; the image is scaled down preserving aspect ratio. */
   readonly maxHeight?: number | undefined;
+  /** Whether to include on-screen overlays (not yet implemented). */
+  readonly includeOverlay?: boolean | undefined;
 }
 
 export interface SnapshotResult {

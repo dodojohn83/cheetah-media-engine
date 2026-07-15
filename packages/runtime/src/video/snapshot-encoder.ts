@@ -1,0 +1,158 @@
+/**
+ * Snapshot encoder: converts the last rendered frame into a browser-supported
+ * image blob (PNG/JPEG/WebP) without blocking the render queue.
+ *
+ * The heavy lifting (toBlob) is delegated to the browser's canvas encoder, which
+ * runs off the main thread when the implementation supports it.
+ */
+
+import { RendererError } from './types';
+
+export type SnapshotFormat = 'png' | 'jpeg' | 'webp';
+
+export interface SnapshotEncoderOptions {
+  /** Target image format. */
+  readonly format?: SnapshotFormat | undefined;
+  /** Compression quality for lossy formats, 0..1. */
+  readonly quality?: number | undefined;
+  /** Maximum width in CSS pixels; the image is scaled down preserving aspect ratio. */
+  readonly maxWidth?: number | undefined;
+  /** Maximum height in CSS pixels; the image is scaled down preserving aspect ratio. */
+  readonly maxHeight?: number | undefined;
+  /** Whether to include on-screen overlays (not yet implemented). */
+  readonly includeOverlay?: boolean | undefined;
+}
+
+const FORMAT_TO_MIME: Record<SnapshotFormat, string> = {
+  png: 'image/png',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+};
+
+export function formatToMime(format: SnapshotFormat): string | undefined {
+  return FORMAT_TO_MIME[format];
+}
+
+export function computeTargetSize(
+  sourceWidth: number,
+  sourceHeight: number,
+  maxWidth?: number,
+  maxHeight?: number,
+): { width: number; height: number } {
+  let width = sourceWidth;
+  let height = sourceHeight;
+  if (maxWidth !== undefined && maxWidth > 0 && width > maxWidth) {
+    const scale = maxWidth / width;
+    width = maxWidth;
+    height = Math.max(1, Math.round(height * scale));
+  }
+  if (maxHeight !== undefined && maxHeight > 0 && height > maxHeight) {
+    const scale = maxHeight / height;
+    height = maxHeight;
+    width = Math.max(1, Math.round(width * scale));
+  }
+  return { width, height };
+}
+
+export interface CanvasLike {
+  width: number;
+  height: number;
+  getContext(contextId: '2d'): CanvasRenderingContext2DLike | null;
+  toBlob(callback: (blob: Blob | null) => void, type?: string, quality?: number): void;
+}
+
+export interface CanvasRenderingContext2DLike {
+  putImageData(imagedata: ImageData, dx: number, dy: number): void;
+  drawImage(image: unknown, dx: number, dy: number, dw: number, dh: number): void;
+}
+
+function createCanvas(width: number, height: number): CanvasLike {
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas as unknown as CanvasLike;
+  }
+  if (typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(width, height);
+    return canvas as unknown as CanvasLike;
+  }
+  throw new RendererError('unsupported', 'No canvas implementation available for snapshot encoding');
+}
+
+function isImageData(source: unknown): source is ImageData {
+  return (
+    (typeof ImageData !== 'undefined' && source instanceof ImageData) ||
+    (source !== null &&
+      typeof source === 'object' &&
+      'data' in source &&
+      (source as { data?: unknown }).data instanceof Uint8ClampedArray &&
+      'width' in source &&
+      'height' in source)
+  );
+}
+
+function isCanvasLike(source: unknown): source is CanvasLike {
+  return source !== null && typeof source === 'object' && typeof (source as { getContext?: unknown }).getContext === 'function';
+}
+
+/**
+ * Encode a still image into a Blob of the requested format.
+ *
+ * @param source An `ImageData`, `HTMLCanvasElement`, `OffscreenCanvas` or
+ *               duck-typed canvas object.
+ * @param options Encoding options.
+ */
+export async function encodeSnapshot(
+  source: ImageData | CanvasLike,
+  options: SnapshotEncoderOptions = {},
+): Promise<Blob> {
+  const format = options.format ?? 'png';
+  const mimeType = formatToMime(format);
+  if (!mimeType) {
+    throw new RendererError('unsupported', `Unsupported snapshot format: ${format}`);
+  }
+
+  const sourceWidth = source.width;
+  const sourceHeight = source.height;
+  const { width, height } = computeTargetSize(sourceWidth, sourceHeight, options.maxWidth, options.maxHeight);
+
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new RendererError('no-context', 'Cannot create 2D context for snapshot encoding');
+  }
+
+  if (isImageData(source)) {
+    ctx.putImageData(source, 0, 0);
+  } else if (isCanvasLike(source)) {
+    ctx.drawImage(source, 0, 0, width, height);
+  } else {
+    throw new RendererError('invalid-source', 'Snapshot source must be ImageData or a canvas');
+  }
+
+  if (options.includeOverlay) {
+    // Overlays are not yet supported; silently ignored to avoid failing the
+    // whole snapshot when a caller requests them.
+  }
+
+  return new Promise((resolve, reject) => {
+    if (typeof canvas.toBlob !== 'function') {
+      reject(new RendererError('unsupported', 'Canvas toBlob not supported'));
+      return;
+    }
+    const onBlob = (blob: Blob | null): void => {
+      if (!blob) {
+        reject(new RendererError('encoding-failed', `Canvas toBlob returned null for ${mimeType}`));
+        return;
+      }
+      resolve(blob);
+    };
+    const quality = options.quality;
+    if (quality !== undefined && format !== 'png') {
+      canvas.toBlob(onBlob, mimeType, Math.min(1, Math.max(0, quality)));
+    } else {
+      canvas.toBlob(onBlob, mimeType);
+    }
+  });
+}
