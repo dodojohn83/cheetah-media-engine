@@ -234,7 +234,7 @@ export class CheetahPlayerElement extends HTMLElement {
       return;
     }
 
-    if (name === 'live' && newValue !== oldValue && this.src) {
+    if (name === 'live' && newValue !== oldValue && this._connected && this.src) {
       // Live flag changes require a reload to take effect on the transport.
       // Reset loaded state so the same URL can be reloaded with the new transport config.
       this._loadedSrc = undefined;
@@ -435,6 +435,10 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   private async _load(src: string | undefined): Promise<void> {
+    if (!this.shadowRoot) {
+      this._buildShadowRoot();
+    }
+
     if (this._loading && this._loadedSrc === src) {
       return;
     }

@@ -183,5 +183,14 @@ describe('components', () => {
       expect(el.src).toBe('https://example.com/live.flv');
       expect(el.getAttribute('data-state')).toBe('failed');
     });
+
+    it('does not crash when live is set before the element is connected', async () => {
+      const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+      el.src = 'https://example.com/live.flv';
+      el.live = true;
+      container.appendChild(el);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(el.getAttribute('data-state')).toBe('failed');
+    });
   });
 });
