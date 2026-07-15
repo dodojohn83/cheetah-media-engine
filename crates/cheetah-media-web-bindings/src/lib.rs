@@ -162,7 +162,8 @@ impl WebEngine {
         if url.is_empty() || !url.contains("://") {
             return Err(js_error(AbiError::InvalidData));
         }
-        self.loaded_url = Some(format!("{url}?live={is_live}"));
+        let sep = if url.contains('?') { '&' } else { '?' };
+        self.loaded_url = Some(format!("{url}{sep}live={is_live}"));
         self.playing = false;
         Ok(())
     }

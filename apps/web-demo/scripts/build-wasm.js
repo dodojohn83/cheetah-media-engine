@@ -21,13 +21,11 @@ const targetProfile = profile === 'dev' ? 'debug' : profile;
 const targetDir = join(root, 'target', 'wasm32-unknown-unknown', targetProfile);
 const wasmFile = join(targetDir, 'cheetah_media_web_bindings.wasm');
 
-if (!existsSync(wasmFile)) {
-  const args = ['build', '-p', 'cheetah-media-web-bindings', '--target', 'wasm32-unknown-unknown'];
-  if (profile === 'release') {
-    args.push('--release');
-  }
-  execFileSync('cargo', args, { stdio: 'inherit', cwd: root });
+const args = ['build', '-p', 'cheetah-media-web-bindings', '--target', 'wasm32-unknown-unknown'];
+if (profile === 'release') {
+  args.push('--release');
 }
+execFileSync('cargo', args, { stdio: 'inherit', cwd: root });
 
 const tmpDir = join(root, 'target', 'wasm-pkg');
 await rm(tmpDir, { recursive: true, force: true });
