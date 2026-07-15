@@ -21,6 +21,7 @@
     "@cheetah-media/web": "workspace:*"
   },
   "devDependencies": {
+    "happy-dom": "15.11.7",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   }

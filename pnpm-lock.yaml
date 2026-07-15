@@ -22,7 +22,7 @@ importers:
         version: 8.1.4(@types/node@22.13.14)
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@22.13.14)(vite@8.1.4(@types/node@22.13.14))
+        version: 4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14))
 
   apps/web-demo:
     dependencies:
@@ -38,7 +38,7 @@ importers:
         version: 8.1.4(@types/node@22.13.14)
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@22.13.14)(vite@8.1.4(@types/node@22.13.14))
+        version: 4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14))
 
   packages/components:
     dependencies:
@@ -46,12 +46,15 @@ importers:
         specifier: workspace:*
         version: link:../web
     devDependencies:
+      happy-dom:
+        specifier: 15.11.7
+        version: 15.11.7
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@22.13.14)(vite@8.1.4(@types/node@22.13.14))
+        version: 4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14))
 
   packages/runtime:
     devDependencies:
@@ -60,7 +63,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@22.13.14)(vite@8.1.4(@types/node@22.13.14))
+        version: 4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14))
 
   packages/web:
     dependencies:
@@ -73,7 +76,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@22.13.14)(vite@8.1.4(@types/node@22.13.14))
+        version: 4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14))
 
   tests/browser:
     dependencies:
@@ -102,7 +105,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@22.13.14)(vite@8.1.4(@types/node@22.13.14))
+        version: 4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14))
 
 packages:
 
@@ -550,6 +553,10 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
+  entities@4.5.0:
+    resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
+    engines: {node: '>=0.12'}
+
   es-module-lexer@2.3.1:
     resolution: {integrity: sha512-shc1dbU90Yl/xq1QrC7QRtfcwURZuVRfPhZbDoldJ1cn1gzDvBaBWlv0eFolj5+0znnPJz5TXLxsN77X/12KTA==}
 
@@ -578,6 +585,10 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  happy-dom@15.11.7:
+    resolution: {integrity: sha512-KyrFvnl+J9US63TEzwoiJOQzZBJY7KgBushJA8X61DMbNsH+2ONkDuLDnCnwUiPTF42tLoEmrPyoqbenVA5zrg==}
+    engines: {node: '>=18.0.0'}
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -821,6 +832,14 @@ packages:
         optional: true
       jsdom:
         optional: true
+
+  webidl-conversions@7.0.0:
+    resolution: {integrity: sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==}
+    engines: {node: '>=12'}
+
+  whatwg-mimetype@3.0.0:
+    resolution: {integrity: sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==}
+    engines: {node: '>=12'}
 
   why-is-node-running@2.3.0:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
@@ -1115,6 +1134,8 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
+  entities@4.5.0: {}
+
   es-module-lexer@2.3.1: {}
 
   estree-walker@3.0.3:
@@ -1132,6 +1153,12 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  happy-dom@15.11.7:
+    dependencies:
+      entities: 4.5.0
+      webidl-conversions: 7.0.0
+      whatwg-mimetype: 3.0.0
 
   lightningcss-android-arm64@1.32.0:
     optional: true
@@ -1320,7 +1347,7 @@ snapshots:
       '@types/node': 22.13.14
       fsevents: 2.3.3
 
-  vitest@4.1.10(@types/node@22.13.14)(vite@8.1.4(@types/node@22.13.14)):
+  vitest@4.1.10(@types/node@22.13.14)(happy-dom@15.11.7)(vite@8.1.4(@types/node@22.13.14)):
     dependencies:
       '@vitest/expect': 4.1.10
       '@vitest/mocker': 4.1.10(vite@8.1.4(@types/node@22.13.14))
@@ -1344,8 +1371,13 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.13.14
+      happy-dom: 15.11.7
     transitivePeerDependencies:
       - msw
+
+  webidl-conversions@7.0.0: {}
+
+  whatwg-mimetype@3.0.0: {}
 
   why-is-node-running@2.3.0:
     dependencies:
