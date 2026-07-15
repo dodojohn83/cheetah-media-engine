@@ -110,13 +110,16 @@ fn make_handle(slot: u32, generation: u64) -> Handle {
 
 /// Web-facing engine context.
 ///
-/// The control surface is exported here: create, configure, push, poll,
-/// release, stop and destroy. Payloads live in a `MemoryArena` and are passed
-/// by descriptor so that JS never caches raw pointers across memory growth.
+/// The control surface is exported here: create, configure, load, play, pause,
+/// push, poll, release, stop and destroy. Payloads live in a `MemoryArena` and
+/// are passed by descriptor so that JS never caches raw pointers across memory
+/// growth.
 #[wasm_bindgen]
 pub struct WebEngine {
     arena: MemoryArena,
     configured: bool,
+    loaded_url: Option<String>,
+    playing: bool,
 }
 
 impl Default for WebEngine {
@@ -133,7 +136,56 @@ impl WebEngine {
         Self {
             arena: MemoryArena::new(INSTANCE_ID),
             configured: false,
+            loaded_url: None,
+            playing: false,
         }
+    }
+
+    /// Return the engine version string.
+    #[wasm_bindgen(js_name = version)]
+    pub fn js_version(&self) -> String {
+        VERSION.to_string()
+    }
+
+    /// Apply configuration. Currently accepts the string and marks the engine as
+    /// configured; detailed parsing will come with the backend ports.
+    pub fn configure(&mut self, _json: &str) -> Result<(), JsValue> {
+        self.configured = true;
+        Ok(())
+    }
+
+    /// Load a media URL and prepare the engine for playback.
+    ///
+    /// `is_live` is stored for later transport selection. The URL is validated
+    /// but actual network/demux integration is added in later tasks.
+    pub fn load(&mut self, url: &str, is_live: bool) -> Result<(), JsValue> {
+        if url.is_empty() || !url.contains("://") {
+            return Err(js_error(AbiError::InvalidData));
+        }
+        self.loaded_url = Some(format!("{url}?live={is_live}"));
+        self.playing = false;
+        Ok(())
+    }
+
+    /// Start playback.
+    pub fn play(&mut self) -> Result<(), JsValue> {
+        if self.loaded_url.is_none() {
+            return Err(js_error(AbiError::InvalidData));
+        }
+        self.playing = true;
+        Ok(())
+    }
+
+    /// Pause playback.
+    pub fn pause(&mut self) -> Result<(), JsValue> {
+        self.playing = false;
+        Ok(())
+    }
+
+    /// Return whether the engine is currently playing.
+    #[wasm_bindgen(getter)]
+    pub fn is_playing(&self) -> bool {
+        self.playing
     }
 
     /// Request a writable region of `size` bytes.
@@ -154,13 +206,6 @@ impl WebEngine {
         self.arena
             .release(make_handle(slot, generation))
             .map_err(js_error)
-    }
-
-    /// Apply configuration. Currently accepts the string and marks the engine as
-    /// configured; detailed parsing will come with the backend ports.
-    pub fn configure(&mut self, _json: &str) -> Result<(), JsValue> {
-        self.configured = true;
-        Ok(())
     }
 
     /// Push a compressed packet described by the region `slot`/`generation`.
@@ -196,7 +241,7 @@ impl WebEngine {
     /// Stop the engine, releasing all borrowed regions but keeping config.
     pub fn stop(&mut self) -> Result<(), JsValue> {
         self.arena = MemoryArena::new(INSTANCE_ID);
-        self.configured = false;
+        self.playing = false;
         Ok(())
     }
 

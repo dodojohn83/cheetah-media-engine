@@ -9,6 +9,7 @@
 export const PROTOCOL_VERSION = 1;
 
 export type MessageType =
+  | 'bootstrap'
   | 'capabilities'
   | 'load'
   | 'play'
@@ -46,6 +47,10 @@ export interface WorkerErrorPayload {
   readonly stage: string;
   readonly message: string;
   readonly recoverable: boolean;
+}
+
+export interface BootstrapPayload {
+  readonly wasmUrl: string;
 }
 
 export interface CapabilityPayload {

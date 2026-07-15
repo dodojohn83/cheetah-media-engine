@@ -136,10 +136,11 @@ describe('web sdk', () => {
       states.push((ev.details?.to as string) ?? player.state);
     });
     await player.load('http://example.com/test.flv');
-    expect(player.state).toBe('loading');
+    expect(player.state).toBe('preroll');
     await player.stop();
     expect(player.state).toBe('idle');
     expect(states).toContain('loading');
+    expect(states).toContain('preroll');
     expect(states).toContain('idle');
   });
 

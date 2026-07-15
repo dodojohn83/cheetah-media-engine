@@ -1,6 +1,7 @@
 import {
   decodeEnvelope,
   encodeEnvelope,
+  type BootstrapPayload,
   type Envelope,
   type EventPayload,
   type LoadPayload,
@@ -170,6 +171,11 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
       sequence = 0;
       rejectAll(new Error('New stream loaded'));
       pending = new Map();
+      ensureWorker();
+      if (_wasmUrl) {
+        const bootstrap: BootstrapPayload = { wasmUrl: _wasmUrl };
+        await post('bootstrap', bootstrap, 30000);
+      }
       const payload: LoadPayload = { url, isLive: options.isLive ?? false };
       await post('load', payload, 30000);
     },
