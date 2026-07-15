@@ -13,7 +13,7 @@ const root = join(fileURLToPath(import.meta.url), '..', '..', '..', '..');
 const publicDir = join(root, 'apps', 'web-demo', 'public');
 const wasmDir = join(publicDir, 'wasm');
 const workerSrc = join(root, 'packages', 'runtime', 'dist', 'worker.js');
-const workerDst = join(publicDir, 'worker.js');
+const messagesSrc = join(root, 'packages', 'runtime', 'dist', 'messages.js');
 
 const rawProfile = process.env.WASM_PROFILE ?? 'release';
 const profile = ['release', 'dev'].includes(rawProfile) ? rawProfile : 'release';
@@ -42,9 +42,10 @@ for (const file of ['cheetah_media_web_bindings.js', 'cheetah_media_web_bindings
   await cp(join(tmpDir, file), join(wasmDir, file));
 }
 
-if (!existsSync(workerSrc)) {
+if (!existsSync(workerSrc) || !existsSync(messagesSrc)) {
   execFileSync('pnpm', ['--filter', '@cheetah-media/runtime', 'build'], { stdio: 'inherit', cwd: root });
 }
-await cp(workerSrc, workerDst);
+await cp(workerSrc, join(publicDir, 'worker.js'));
+await cp(messagesSrc, join(publicDir, 'messages.js'));
 
-console.log('[build-wasm] copied worker and wasm to', publicDir);
+console.log('[build-wasm] copied worker, messages and wasm to', publicDir);
