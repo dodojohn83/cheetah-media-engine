@@ -196,6 +196,7 @@ export class CheetahPlayerElement extends HTMLElement {
     if (this._player) {
       void this._cleanupPlayer();
     }
+    this._updateState('idle');
   }
 
   private async _cleanupPlayer(forceDestroy = false): Promise<void> {
@@ -463,8 +464,8 @@ export class CheetahPlayerElement extends HTMLElement {
       await this._cleanupPlayer(true);
     }
 
-    if (this._loadGeneration !== generation) {
-      // A newer _load replaced us while we were cleaning up.
+    if (this._loadGeneration !== generation || !this._connected) {
+      // A newer _load replaced us, or the element was disconnected during cleanup.
       return;
     }
 
@@ -480,17 +481,25 @@ export class CheetahPlayerElement extends HTMLElement {
 
     try {
       await player.load(src, { isLive: this.live });
-      if (this._loadGeneration !== generation || this._player !== player) {
+      if (this._loadGeneration !== generation || this._player !== player || !this._connected) {
+        // Superseded or disconnected while loading; discard the player.
         await player.destroy().catch(() => undefined);
+        this._player = undefined;
+        this._loadedSrc = undefined;
+        this._loading = false;
         return;
       }
       this._loading = false;
-      if (this._connected && this.autoplay) {
+      if (this.autoplay) {
         this._tryAutoplay();
       }
     } catch (cause) {
-      if (this._loadGeneration !== generation || this._player !== player) {
+      if (this._loadGeneration !== generation || this._player !== player || !this._connected) {
+        // Superseded or disconnected while loading; discard the player.
         await player.destroy().catch(() => undefined);
+        this._player = undefined;
+        this._loadedSrc = undefined;
+        this._loading = false;
         return;
       }
       this._loading = false;
