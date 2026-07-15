@@ -485,10 +485,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       details,
     };
 
-    if (this.eventHistory.length >= this.config.diagnostics.maxEventHistory) {
+    this.eventHistory.push(event as CheetahPlayerEvent);
+    while (this.eventHistory.length > this.config.diagnostics.maxEventHistory) {
       this.eventHistory.shift();
     }
-    this.eventHistory.push(event as CheetahPlayerEvent);
 
     if (type === 'stats') {
       this.updateStatsFromDetails(event.details, event.epoch, event.timestamp);

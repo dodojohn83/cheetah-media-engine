@@ -241,4 +241,12 @@ describe('web sdk', () => {
     expect(diag.recentEvents.length).toBeLessThanOrEqual(3);
     expect(Object.isFrozen(diag.recentEvents)).toBe(true);
   });
+
+  it('respects maxEventHistory=0', () => {
+    const player = createPlayerWithRuntime({ diagnostics: { maxEventHistory: 0 } }, () => mockRuntime());
+    player.play();
+    player.pause();
+    const diag = player.exportDiagnostics();
+    expect(diag.recentEvents.length).toBe(0);
+  });
 });
