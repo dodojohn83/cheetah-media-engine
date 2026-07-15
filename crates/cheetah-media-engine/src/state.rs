@@ -128,6 +128,8 @@ pub enum EngineEvent {
     Stopped,
     /// The engine was destroyed.
     Destroyed,
+    /// Performance/resource metrics snapshot.
+    Metrics(super::MetricsSnapshot),
 }
 
 /// Request describing what to load.
@@ -200,6 +202,8 @@ pub enum EngineCommand {
     Network(NetworkEvent),
     /// Backend callback.
     Backend(BackendEvent),
+    /// Request a metrics snapshot.
+    GetMetrics,
 }
 
 /// Result of applying a command.
@@ -249,6 +253,8 @@ pub struct Engine {
     ledger: ResourceLedger,
     /// Latency controller.
     latency: LatencyController,
+    /// Performance/resource instrumentation.
+    metrics: super::Metrics,
     /// Monotonic clock in milliseconds used for recovery/backoff.
     now_ms: u64,
 }
@@ -274,6 +280,7 @@ impl Engine {
             recovery_tracker: RecoveryTracker::default(),
             ledger: ResourceLedger::new(),
             latency: LatencyController::default(),
+            metrics: super::Metrics::new(),
             now_ms: 0,
         }
     }
@@ -296,6 +303,16 @@ impl Engine {
     /// Current latency controller.
     pub fn latency_controller(&self) -> &LatencyController {
         &self.latency
+    }
+
+    /// Mutable metrics collector.
+    pub fn metrics_mut(&mut self) -> &mut super::Metrics {
+        &mut self.metrics
+    }
+
+    /// Current metrics snapshot.
+    pub fn metrics(&self) -> super::MetricsSnapshot {
+        self.metrics.snapshot()
     }
 
     /// Advance internal time. Should be driven by the caller's monotonic clock.
@@ -332,6 +349,9 @@ impl Engine {
             EngineCommand::Destroy => self.on_destroy(&mut out),
             EngineCommand::Network(ev) => self.on_network(ev, &mut out),
             EngineCommand::Backend(ev) => self.on_backend(ev, &mut out),
+            EngineCommand::GetMetrics => {
+                out.push(EngineEvent::Metrics(self.metrics.snapshot()));
+            }
         };
 
         Ok(out)
@@ -950,5 +970,19 @@ mod tests {
             }
         }
         assert!(engine.ledger().is_zero());
+    }
+
+    #[test]
+    fn get_metrics_returns_snapshot() {
+        let mut engine = Engine::new();
+        engine
+            .metrics_mut()
+            .record_copy(cheetah_media_types::CopyReason::DemuxToDecoder, 123);
+        let out = engine.apply(EngineCommand::GetMetrics).unwrap();
+        assert!(
+            out.events
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Metrics(_)))
+        );
     }
 }

@@ -45,6 +45,8 @@ pub struct PoolStats {
     pub free_count: usize,
     pub total_acquired: usize,
     pub total_released: usize,
+    pub hits: usize,
+    pub misses: usize,
 }
 
 /// A pool of reusable `BufferRef` buffers.
@@ -65,6 +67,8 @@ struct PoolInner {
     in_use_count: AtomicUsize,
     total_acquired: AtomicUsize,
     total_released: AtomicUsize,
+    hits: AtomicUsize,
+    misses: AtomicUsize,
     free: Mutex<Vec<Vec<u8>>>,
 }
 
@@ -77,6 +81,8 @@ impl PoolInner {
             free_count,
             total_acquired: self.total_acquired.load(Ordering::Relaxed),
             total_released: self.total_released.load(Ordering::Relaxed),
+            hits: self.hits.load(Ordering::Relaxed),
+            misses: self.misses.load(Ordering::Relaxed),
         }
     }
 }
@@ -131,6 +137,8 @@ impl SimpleBufferPool {
                 in_use_count: AtomicUsize::new(0),
                 total_acquired: AtomicUsize::new(0),
                 total_released: AtomicUsize::new(0),
+                hits: AtomicUsize::new(0),
+                misses: AtomicUsize::new(0),
                 free: Mutex::new(Vec::new()),
             }),
         }
@@ -183,10 +191,12 @@ impl BufferPool for SimpleBufferPool {
         let mut data = {
             let mut free = self.inner.free.lock();
             if let Some(pos) = free.iter().position(|v| v.capacity() >= size) {
+                self.inner.hits.fetch_add(1, Ordering::Relaxed);
                 let mut chunk = free.swap_remove(pos);
                 chunk.resize(size, 0);
                 chunk
             } else {
+                self.inner.misses.fetch_add(1, Ordering::Relaxed);
                 drop(free);
                 vec![0u8; size]
             }
@@ -233,6 +243,8 @@ mod tests {
         let stats = pool.stats();
         assert_eq!(stats.in_use_count, 1);
         assert_eq!(stats.in_use_bytes, 64);
+        assert_eq!(stats.misses, 1);
+        assert_eq!(stats.hits, 0);
 
         drop(b1);
         let stats = pool.stats();
@@ -244,7 +256,10 @@ mod tests {
 
         let b2 = pool.acquire(64).unwrap();
         assert_eq!(b2.len(), 64);
-        assert_eq!(pool.stats().free_count, 0);
+        let stats = pool.stats();
+        assert_eq!(stats.free_count, 0);
+        assert_eq!(stats.hits, 1);
+        assert_eq!(stats.misses, 1);
     }
 
     #[test]
