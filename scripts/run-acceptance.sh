@@ -56,8 +56,14 @@ if [ "${SKIP_BENCH:-0}" != "1" ]; then
   echo "[acceptance] collecting benchmark data..."
   mkdir -p "$EVIDENCE_DIR/bench"
   cargo bench -p cheetah-media-types --features std
-  find target/criterion -name 'sample.json' -print0 2>/dev/null | xargs -0 -I {} cp {} "$EVIDENCE_DIR/bench/" || true
-  find target/criterion -name 'estimates.json' -print0 2>/dev/null | xargs -0 -I {} cp {} "$EVIDENCE_DIR/bench/" || true
+  find target/criterion -name 'sample.json' -print0 2>/dev/null | while IFS= read -r -d '' f; do
+    bench=$(basename "$(dirname "$(dirname "$f")")")
+    cp "$f" "$EVIDENCE_DIR/bench/${bench}-sample.json"
+  done || true
+  find target/criterion -name 'estimates.json' -print0 2>/dev/null | while IFS= read -r -d '' f; do
+    bench=$(basename "$(dirname "$(dirname "$f")")")
+    cp "$f" "$EVIDENCE_DIR/bench/${bench}-estimates.json"
+  done || true
   node scripts/generate-benchmark-report.mjs
   cp docs/web-v1-handoff/benchmark-report.md "$EVIDENCE_DIR/"
 fi
