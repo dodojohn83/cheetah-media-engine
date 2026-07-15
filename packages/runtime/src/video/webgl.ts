@@ -89,7 +89,6 @@ export class WebGL2Renderer implements Renderer {
   private vTexture: WebGLTexture | null = null;
   private uvTexture: WebGLTexture | null = null;
   private rgbaTexture: WebGLTexture | null = null;
-  private fb: WebGLFramebuffer | null = null;
   private metrics: MutableRendererMetrics = {
     framesSubmitted: 0,
     framesRendered: 0,
@@ -305,7 +304,7 @@ export class WebGL2Renderer implements Renderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    const internalFormat = format;
+    const internalFormat = format === gl.RED ? gl.R8 : format === gl.RG ? gl.RG8 : format === gl.RGBA ? gl.RGBA8 : format;
     const srcFormat = format;
     const srcType = gl.UNSIGNED_BYTE;
     gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, width, height, 0, srcFormat, srcType, data);
@@ -383,38 +382,62 @@ export class WebGL2Renderer implements Renderer {
     if (!gl) throw new RendererError('not-configured', 'WebGL2Renderer not configured');
 
     const canvas = this.surface.getCanvas();
-    let w = canvas.width;
-    let h = canvas.height;
+    const canvasW = canvas.width;
+    const canvasH = canvas.height;
+    let w = canvasW;
+    let h = canvasH;
     if (opts.maxWidth && opts.maxHeight) {
-      const scale = Math.min(1, opts.maxWidth / w, opts.maxHeight / h);
-      w = Math.max(1, Math.floor(w * scale));
-      h = Math.max(1, Math.floor(h * scale));
+      const scale = Math.min(1, opts.maxWidth / canvasW, opts.maxHeight / canvasH);
+      w = Math.max(1, Math.floor(canvasW * scale));
+      h = Math.max(1, Math.floor(canvasH * scale));
     }
 
-    const fb = this.ensureFramebuffer(w, h);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     const data = new Uint8Array(w * h * 4);
-    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    if (w === canvasW && h === canvasH) {
+      // Fast path: read directly from the default framebuffer.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    } else {
+      // Blit from the default framebuffer into a scaled temp framebuffer so we
+      // read a downscaled image instead of a crop.
+      const { fb, tex } = this.createTempFramebuffer(w, h);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fb);
+      gl.blitFramebuffer(
+        0, 0, canvasW, canvasH,
+        0, 0, w, h,
+        gl.COLOR_BUFFER_BIT, gl.LINEAR,
+      );
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.flush();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(fb);
+      gl.deleteTexture(tex);
+    }
 
     this.metrics.snapshotsTaken += 1;
     return { width: w, height: h, data: new ImageData(new Uint8ClampedArray(data), w, h) };
   }
 
-  private ensureFramebuffer(width: number, height: number): WebGLFramebuffer {
+  private createTempFramebuffer(width: number, height: number): { fb: WebGLFramebuffer; tex: WebGLTexture } {
     const gl = this.gl;
     if (!gl) throw new RendererError('no-context', 'WebGL2 context lost');
-    if (this.fb) return this.fb;
     const tex = gl.createTexture();
     const fb = gl.createFramebuffer();
     if (!tex || !fb) throw new RendererError('framebuffer-create', 'Failed to create WebGL framebuffer');
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    this.fb = fb;
-    return fb;
+    return { fb, tex };
   }
 
   getMetrics(): RendererMetrics {
@@ -432,7 +455,6 @@ export class WebGL2Renderer implements Renderer {
       [this.yTexture, this.uTexture, this.vTexture, this.uvTexture, this.rgbaTexture].forEach(
         (t) => t && gl.deleteTexture(t),
       );
-      if (this.fb) gl.deleteFramebuffer(this.fb);
     }
     this.gl = null;
   }

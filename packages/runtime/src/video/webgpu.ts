@@ -88,7 +88,10 @@ export class WebGpuRenderer implements Renderer {
       this.pipeline = undefined;
       this.frameTexture = undefined;
       this.bindGroup = undefined;
-      throw new RendererError('device-lost', info.reason);
+      // The lost state is surfaced synchronously by render(); the promise is
+      // intentionally not rejected so that the application does not see an
+      // unhandled rejection for a hardware-recovery event.
+      void info;
     });
 
     const canvas = this.surface.getCanvas();

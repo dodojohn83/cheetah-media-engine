@@ -99,7 +99,13 @@ export class Canvas2DRenderer implements Renderer {
       const scale = Math.min(1, opts.maxWidth / w, opts.maxHeight / h);
       const sw = Math.max(1, Math.floor(w * scale));
       const sh = Math.max(1, Math.floor(h * scale));
-      const data = this.ctx.getImageData(0, 0, sw, sh);
+      const tmp = new OffscreenCanvas(sw, sh);
+      const tmpCtx = tmp.getContext('2d');
+      if (!tmpCtx) {
+        throw new RendererError('no-context', 'Cannot create snapshot canvas context');
+      }
+      tmpCtx.drawImage(this.ctx.canvas as unknown as CanvasImageSource, 0, 0, sw, sh);
+      const data = tmpCtx.getImageData(0, 0, sw, sh);
       this.metrics.snapshotsTaken += 1;
       return { width: sw, height: sh, data };
     }
