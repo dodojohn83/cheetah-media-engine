@@ -6,6 +6,7 @@
  * Output: docs/web-v1-handoff/benchmark-report.md (or <dir>/benchmark-report.md).
  */
 
+import { execSync } from 'node:child_process';
 import { readdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,7 +54,6 @@ function collectBenchmarks() {
 
 function gitCommit() {
   try {
-    const { execSync } = require('node:child_process');
     return execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim();
   } catch {
     return 'unknown';

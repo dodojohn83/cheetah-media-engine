@@ -1,7 +1,7 @@
 # Cheetah Media Engine Web v1 Benchmark Report
 
-Generated: 2026-07-15T14:42:51.811Z
-Commit: unknown
+Generated: 2026-07-15T14:53:18.395Z
+Commit: c62dc00
 Source: `cargo bench -p cheetah-media-types --features std`
 
 | Benchmark | Mean | 95% CI | Std Dev | Samples |

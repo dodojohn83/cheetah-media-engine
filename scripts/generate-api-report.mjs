@@ -5,6 +5,7 @@
  * Output: docs/web-v1-handoff/api-report.md (or the directory passed as argv[2]).
  */
 
+import { execSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -162,7 +163,6 @@ function eventErrorEntries() {
 
 function gitCommit() {
   try {
-    const { execSync } = require('node:child_process');
     return execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim();
   } catch {
     return 'unknown';

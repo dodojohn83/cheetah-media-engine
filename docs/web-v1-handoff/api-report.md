@@ -1,7 +1,7 @@
 # Cheetah Media Engine Web v1 API Report
 
-Generated: 2026-07-15T14:41:03.838Z
-Commit: unknown
+Generated: 2026-07-15T14:53:18.359Z
+Commit: c62dc00
 
 ## Rust Crate Public API
 

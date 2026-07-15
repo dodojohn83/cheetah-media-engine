@@ -48,7 +48,7 @@ interface Fmp4Split {
 
 function readBoxSize(data: Uint8Array, offset: number): { size: number; headerSize: number } | undefined {
   if (offset + 8 > data.length) return undefined;
-  const dv = new DataView(data.buffer, data.byteOffset + offset, 16);
+  const dv = new DataView(data.buffer, data.byteOffset + offset, Math.min(16, data.length - offset));
   const size = dv.getUint32(0, false);
   if (size === 0) {
     return { size: data.length - offset, headerSize: 8 };
