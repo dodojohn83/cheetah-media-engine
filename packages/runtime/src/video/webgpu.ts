@@ -33,8 +33,9 @@ fn fs_main(@builtin(position) pos: vec4f) -> @location(0) vec4f {
 `;
 
 // GPUTextureUsage numeric constants.
+const COPY_SRC = 0x01;
+const COPY_DST = 0x02;
 const TEXTURE_BINDING = 0x04;
-const COPY_DST = 0x08;
 const RENDER_ATTACHMENT = 0x10;
 const MAP_READ = 0x01;
 const BUFFER_COPY_DST = 0x0008;
@@ -134,7 +135,7 @@ export class WebGpuRenderer implements Renderer {
     this.frameTexture = device.createTexture({
       size: [canvas.width || 1, canvas.height || 1, 1],
       format: 'rgba8unorm',
-      usage: TEXTURE_BINDING | COPY_DST | RENDER_ATTACHMENT,
+      usage: COPY_SRC | COPY_DST | TEXTURE_BINDING | RENDER_ATTACHMENT,
     });
     this.bindGroup = device.createBindGroup({
       layout: this.pipeline!.getBindGroupLayout(0),
