@@ -118,9 +118,8 @@ export class CheetahWallElement extends HTMLElement {
       this._budget = undefined;
     }
     this._registeredIds.clear();
-    for (const cell of this._cells()) {
-      cell.destroy();
-    }
+    // Do not destroy child cells here; cells manage their own lifecycle on
+    // disconnect/reconnect. Destroying them here would break DOM moves.
   }
 
   attributeChangedCallback(name: ObservedAttribute, oldValue: string | null, newValue: string | null): void {
@@ -131,6 +130,7 @@ export class CheetahWallElement extends HTMLElement {
       return;
     }
     if (name === 'selected-cell' || name === 'fullscreen-cell') {
+      this._updateGrid();
       this._updatePriorities();
       return;
     }

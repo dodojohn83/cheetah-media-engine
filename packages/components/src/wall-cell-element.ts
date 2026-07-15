@@ -122,7 +122,9 @@ export class CheetahWallCellElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    this._destroyPlayer();
+    // Do not remove the player element here; the inner <cheetah-player> owns
+    // its own cleanup via the on-disconnect attribute, and removing the DOM
+    // would prevent rebuilding when the cell is moved or reconnected.
   }
 
   attributeChangedCallback(name: ObservedAttribute, oldValue: string | null, newValue: string | null): void {

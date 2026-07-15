@@ -64,14 +64,42 @@ describe('CheetahWallElement', () => {
     wall.appendChild(cell);
     document.body.appendChild(wall);
 
+    const player = cell.shadowRoot?.querySelector('cheetah-player');
+    expect(player).toBeDefined();
+
     const newContainer = document.createElement('div');
     document.body.appendChild(newContainer);
     newContainer.appendChild(wall);
 
     expect(wall.getCellById('moved')).toBeDefined();
     expect(wall.getStats().cells).toBe(1);
+    expect(cell.shadowRoot?.querySelector('cheetah-player')).toBeDefined();
 
     wall.remove();
     newContainer.remove();
+  });
+
+  it('shows only the fullscreen cell when fullscreen-cell is set', async () => {
+    const wall = document.createElement('cheetah-wall') as CheetahWallElement;
+    wall.setAttribute('layout', '4');
+    for (let i = 0; i < 4; i += 1) {
+      const cell = document.createElement('cheetah-wall-cell') as CheetahWallCellElement;
+      cell.setAttribute('cell-id', `c${i}`);
+      wall.appendChild(cell);
+    }
+    document.body.appendChild(wall);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    wall.setAttribute('fullscreen-cell', 'c1');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const cells = wall.querySelectorAll('cheetah-wall-cell');
+    for (let i = 0; i < 4; i += 1) {
+      const display = (cells[i] as HTMLElement).style.display;
+      if (i === 1) expect(display).toBe('block');
+      else expect(display).toBe('none');
+    }
+
+    wall.remove();
   });
 });
