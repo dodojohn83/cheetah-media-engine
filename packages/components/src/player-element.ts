@@ -482,11 +482,9 @@ export class CheetahPlayerElement extends HTMLElement {
     try {
       await player.load(src, { isLive: this.live });
       if (this._loadGeneration !== generation || this._player !== player || !this._connected) {
-        // Superseded or disconnected while loading; discard the player.
+        // Superseded or disconnected while loading; discard the stale player without
+        // touching the current element state, which belongs to a newer load.
         await player.destroy().catch(() => undefined);
-        this._player = undefined;
-        this._loadedSrc = undefined;
-        this._loading = false;
         return;
       }
       this._loading = false;
@@ -495,11 +493,9 @@ export class CheetahPlayerElement extends HTMLElement {
       }
     } catch (cause) {
       if (this._loadGeneration !== generation || this._player !== player || !this._connected) {
-        // Superseded or disconnected while loading; discard the player.
+        // Superseded or disconnected while loading; discard the stale player without
+        // touching the current element state, which belongs to a newer load.
         await player.destroy().catch(() => undefined);
-        this._player = undefined;
-        this._loadedSrc = undefined;
-        this._loading = false;
         return;
       }
       this._loading = false;
