@@ -107,9 +107,9 @@ export class WebGpuRenderer implements Renderer {
     this.createPipeline();
     this.createFrameTexture();
 
-    this.fallbackCanvas = new OffscreenCanvas(1, 1);
+    this.fallbackCanvas = new OffscreenCanvas(this.surface.getCanvas().width || 1, this.surface.getCanvas().height || 1);
     this.fallbackRenderer = new Canvas2DRenderer(this.fallbackCanvas);
-    await this.fallbackRenderer.configure({ canvas: this.fallbackCanvas, fit: 'fill' });
+    await this.fallbackRenderer.configure({ ...config, canvas: this.fallbackCanvas, dpr: 1 });
   }
 
   private createPipeline(): void {
@@ -150,7 +150,6 @@ export class WebGpuRenderer implements Renderer {
     const start = performance.now();
     this.metrics.framesSubmitted += 1;
     try {
-      const visibleRect = RendererSurface.resolveVisibleRect(frame);
       const canvas = this.surface.getCanvas();
       const w = canvas.width;
       const h = canvas.height;
@@ -162,26 +161,17 @@ export class WebGpuRenderer implements Renderer {
         this.createFrameTexture();
       }
 
-      const isRgba = (frame.format ?? '').toLowerCase() === 'rgba';
-      let useFallback = !isRgba;
-
-      if (isRgba) {
-        try {
-          this.copyExternalToTexture(frame as unknown as GPUCopyExternalImageSource, { width: visibleRect.width, height: visibleRect.height });
-        } catch {
-          useFallback = true;
-        }
+      if (!this.fallbackCanvas || !this.fallbackRenderer) {
+        throw new RendererError('no-fallback', 'WebGPU fallback renderer unavailable');
       }
 
-      if (useFallback) {
-        if (!this.fallbackCanvas || !this.fallbackRenderer) {
-          throw new RendererError('no-fallback', 'WebGPU fallback renderer unavailable');
-        }
-        this.fallbackCanvas.width = visibleRect.width;
-        this.fallbackCanvas.height = visibleRect.height;
-        await this.fallbackRenderer.render(frame);
-        this.copyExternalToTexture(this.fallbackCanvas, { width: visibleRect.width, height: visibleRect.height });
-      }
+      // Draw the frame through the Canvas2D renderer so fit/rotation/mirror
+      // are applied to an intermediate buffer. The result is then uploaded to a
+      // full-canvas texture and presented with a full-screen quad.
+      this.fallbackCanvas.width = w;
+      this.fallbackCanvas.height = h;
+      await this.fallbackRenderer.render(frame);
+      this.copyExternalToTexture(this.fallbackCanvas, { width: w, height: h });
 
       this.present();
       this.metrics.framesRendered += 1;

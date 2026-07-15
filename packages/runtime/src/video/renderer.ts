@@ -17,25 +17,6 @@ export interface VideoRendererOptions {
   readonly failIfUnsupported?: boolean | undefined;
 }
 
-function canUseWebgl2(canvas: HTMLCanvasElement | OffscreenCanvas): boolean {
-  const gl =
-    (canvas as HTMLCanvasElement).getContext?.('webgl2') ??
-    (canvas as OffscreenCanvas).getContext?.('webgl2') ??
-    null;
-  const Ctor = (globalThis as unknown as { WebGL2RenderingContext?: typeof WebGL2RenderingContext }).WebGL2RenderingContext;
-  return Ctor !== undefined && gl instanceof Ctor;
-}
-
-function canUseWebgpu(canvas: HTMLCanvasElement | OffscreenCanvas): boolean {
-  const hasApi = typeof navigator !== 'undefined' && 'gpu' in navigator;
-  if (!hasApi) return false;
-  const ctx =
-    (canvas as HTMLCanvasElement).getContext?.('webgpu') ??
-    (canvas as OffscreenCanvas).getContext?.('webgpu') ??
-    null;
-  return ctx !== null;
-}
-
 export class VideoRenderer implements Renderer {
   readonly identity = 'video-renderer';
   private backend: Renderer | undefined = undefined;
@@ -66,17 +47,13 @@ export class VideoRenderer implements Renderer {
   }
 
   private async tryConfigure(kind: RendererKind, config: RendererConfig): Promise<void> {
-    if (kind === 'webgpu' && canUseWebgpu(config.canvas)) {
-      this.kind = 'webgpu';
+    this.kind = kind;
+    if (kind === 'webgpu') {
       this.backend = new WebGpuRenderer(config.canvas);
-    } else if (kind === 'webgl2' && canUseWebgl2(config.canvas)) {
-      this.kind = 'webgl2';
+    } else if (kind === 'webgl2') {
       this.backend = new WebGL2Renderer(config.canvas);
-    } else if (kind === 'canvas2d') {
-      this.kind = 'canvas2d';
-      this.backend = new Canvas2DRenderer(config.canvas);
     } else {
-      throw new RendererError('unsupported', `Renderer ${kind} is not available`);
+      this.backend = new Canvas2DRenderer(config.canvas);
     }
     await this.backend.configure(config);
   }
