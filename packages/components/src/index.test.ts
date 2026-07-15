@@ -145,5 +145,16 @@ describe('components', () => {
       expect(el.src).toBe('https://example.com/b.flv');
       expect(el.getAttribute('data-state')).toBe('failed');
     });
+
+    it('handles three rapid src changes without leaking players', async () => {
+      const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+      container.appendChild(el);
+      el.src = 'https://example.com/a.flv';
+      el.src = 'https://example.com/b.flv';
+      el.src = 'https://example.com/c.flv';
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(el.src).toBe('https://example.com/c.flv');
+      expect(el.getAttribute('data-state')).toBe('failed');
+    });
   });
 });

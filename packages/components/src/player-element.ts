@@ -34,6 +34,7 @@ export class CheetahPlayerElement extends HTMLElement {
   private _connected = false;
   private _loadedSrc: string | undefined;
   private _loading = false;
+  private _loadGeneration = 0;
   private _recording = false;
   private _locale = detectLocale();
   private _lastError: ErrorDetail | undefined;
@@ -431,6 +432,8 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   private async _load(src: string | undefined): Promise<void> {
+    const generation = ++this._loadGeneration;
+
     if (this._loading && this._loadedSrc === src) {
       return;
     }
@@ -451,6 +454,11 @@ export class CheetahPlayerElement extends HTMLElement {
       await this._cleanupPlayer(true);
     }
 
+    if (this._loadGeneration !== generation) {
+      // A newer _load replaced us while we were cleaning up.
+      return;
+    }
+
     this._loadedSrc = src;
     this._loading = true;
     this._lastError = undefined;
@@ -463,13 +471,19 @@ export class CheetahPlayerElement extends HTMLElement {
 
     try {
       await player.load(src, { isLive: this.live });
-      if (this._player !== player) return; // superseded by a newer load
+      if (this._loadGeneration !== generation || this._player !== player) {
+        await player.destroy().catch(() => undefined);
+        return;
+      }
       this._loading = false;
       if (this._connected && this.autoplay) {
         this._tryAutoplay();
       }
     } catch (cause) {
-      if (this._player !== player) return; // superseded by a newer load
+      if (this._loadGeneration !== generation || this._player !== player) {
+        await player.destroy().catch(() => undefined);
+        return;
+      }
       this._loading = false;
       this._lastError = {
         code: 6999,
