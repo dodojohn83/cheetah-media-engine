@@ -1,6 +1,7 @@
 import { createPlayer, type CheetahPlayer, type PlayerConfig } from '@cheetah-media/web';
+import { CheetahPlayerElement } from './player-element';
 
-export { createPlayer };
+export { createPlayer, CheetahPlayerElement };
 export type { CheetahPlayer, PlayerConfig };
 
 export interface PlayerComponentOptions extends PlayerConfig {
@@ -51,4 +52,8 @@ export function createPlayerComponent(options: PlayerComponentOptions = {}): Pla
       void player.destroy();
     },
   };
+}
+
+if (typeof customElements !== 'undefined' && !customElements.get('cheetah-player')) {
+  customElements.define('cheetah-player', CheetahPlayerElement);
 }
