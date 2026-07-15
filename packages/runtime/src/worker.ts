@@ -181,6 +181,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
       currentEpoch = envelope.epoch;
       withEngine((e) => {
         e.stop();
+        e.destroy();
         engine = undefined;
         sendEvent(envelope.instance, 'stopped');
         reply({ ...envelope, payload: { event: 'stopped' } });
