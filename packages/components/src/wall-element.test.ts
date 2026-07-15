@@ -79,7 +79,7 @@ describe('CheetahWallElement', () => {
     newContainer.remove();
   });
 
-  it('shows only the fullscreen cell when fullscreen-cell is set', async () => {
+  it('shows only the fullscreen cell and spans the full wall', async () => {
     const wall = document.createElement('cheetah-wall') as CheetahWallElement;
     wall.setAttribute('layout', '4');
     for (let i = 0; i < 4; i += 1) {
@@ -92,6 +92,9 @@ describe('CheetahWallElement', () => {
 
     wall.setAttribute('fullscreen-cell', 'c1');
     await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const grid = wall.shadowRoot?.querySelector('.grid') as HTMLElement | undefined;
+    expect(grid?.style.gridTemplateColumns).toBe('repeat(1, 1fr)');
 
     const cells = wall.querySelectorAll('cheetah-wall-cell');
     for (let i = 0; i < 4; i += 1) {

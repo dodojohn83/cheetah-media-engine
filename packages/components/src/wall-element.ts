@@ -342,10 +342,10 @@ export class CheetahWallElement extends HTMLElement {
     if (!this.shadowRoot) return;
     const grid = this.shadowRoot.querySelector('.grid') as HTMLElement | null;
     if (!grid) return;
-    const cols = LAYOUT_COLUMNS[this.layout] ?? 1;
+    const fullscreen = this.fullscreenCell;
+    const cols = fullscreen ? 1 : (LAYOUT_COLUMNS[this.layout] ?? 1);
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gridTemplateRows = `repeat(${cols}, 1fr)`;
-    const fullscreen = this.fullscreenCell;
     const cells = this._cells();
     for (const [i, cell] of cells.entries()) {
       const el = cell as HTMLElement;
