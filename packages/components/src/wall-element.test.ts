@@ -79,6 +79,29 @@ describe('CheetahWallElement', () => {
     newContainer.remove();
   });
 
+  it('hides dynamically added cells that exceed the layout limit', async () => {
+    const wall = document.createElement('cheetah-wall') as CheetahWallElement;
+    wall.setAttribute('layout', '4');
+    document.body.appendChild(wall);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    for (let i = 0; i < 5; i += 1) {
+      const cell = document.createElement('cheetah-wall-cell') as CheetahWallCellElement;
+      cell.setAttribute('cell-id', `dyn${i}`);
+      wall.appendChild(cell);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const cells = wall.querySelectorAll('cheetah-wall-cell');
+    for (let i = 0; i < 5; i += 1) {
+      const display = (cells[i] as HTMLElement).style.display;
+      if (i < 4) expect(display).toBe('block');
+      else expect(display).toBe('none');
+    }
+
+    wall.remove();
+  });
+
   it('pauses and resumes a wall cell without losing its source', async () => {
     const wall = document.createElement('cheetah-wall') as CheetahWallElement;
     const cell = document.createElement('cheetah-wall-cell') as CheetahWallCellElement;

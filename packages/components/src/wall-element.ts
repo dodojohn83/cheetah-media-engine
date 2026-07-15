@@ -204,7 +204,10 @@ export class CheetahWallElement extends HTMLElement {
       this._resizeObserver.observe(this);
     }
     if (typeof MutationObserver !== 'undefined') {
-      this._mutationObserver = new MutationObserver(() => this._registerCells());
+      this._mutationObserver = new MutationObserver(() => {
+        this._registerCells();
+        this._updateGrid();
+      });
       this._mutationObserver.observe(this, { childList: true });
     }
   }
