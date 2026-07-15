@@ -392,12 +392,12 @@ export class WebGL2Renderer implements Renderer {
       h = Math.max(1, Math.floor(canvasH * scale));
     }
 
-    const data = new Uint8Array(w * h * 4);
+    const raw = new Uint8Array(w * h * 4);
 
     if (w === canvasW && h === canvasH) {
       // Fast path: read directly from the default framebuffer.
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, raw);
     } else {
       // Blit from the default framebuffer into a scaled temp framebuffer so we
       // read a downscaled image instead of a crop.
@@ -412,14 +412,22 @@ export class WebGL2Renderer implements Renderer {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.flush();
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, raw);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.deleteFramebuffer(fb);
       gl.deleteTexture(tex);
     }
 
+    // WebGL readPixels is bottom-up; convert to top-down ImageData.
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let row = 0; row < h; row += 1) {
+      const src = (h - 1 - row) * w * 4;
+      const dst = row * w * 4;
+      data.set(raw.subarray(src, src + w * 4), dst);
+    }
+
     this.metrics.snapshotsTaken += 1;
-    return { width: w, height: h, data: new ImageData(new Uint8ClampedArray(data), w, h) };
+    return { width: w, height: h, data: new ImageData(data, w, h) };
   }
 
   private createTempFramebuffer(width: number, height: number): { fb: WebGLFramebuffer; tex: WebGLTexture } {

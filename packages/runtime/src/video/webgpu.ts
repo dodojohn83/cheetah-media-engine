@@ -213,8 +213,6 @@ export class WebGpuRenderer implements Renderer {
   }
 
   async snapshot(opts: SnapshotOptions = {}): Promise<SnapshotResult> {
-    // Keep opts alive for future max-size cropping; currently snapshots the full texture.
-    void opts;
     if (!this.device || !this.frameTexture) throw new RendererError('not-configured', 'WebGPU renderer not configured');
     const width = this.frameTexture.width;
     const height = this.frameTexture.height;
@@ -239,8 +237,30 @@ export class WebGpuRenderer implements Renderer {
       }
     }
     buffer.unmap();
+
+    let imageData = new ImageData(data, width, height);
+    if (opts.maxWidth && opts.maxHeight) {
+      const scale = Math.min(1, opts.maxWidth / width, opts.maxHeight / height);
+      const sw = Math.max(1, Math.floor(width * scale));
+      const sh = Math.max(1, Math.floor(height * scale));
+      imageData = this.scaleImageData(imageData, sw, sh);
+    }
+
     this.metrics.snapshotsTaken += 1;
-    return { width, height, data: new ImageData(data, width, height) };
+    return { width: imageData.width, height: imageData.height, data: imageData };
+  }
+
+  private scaleImageData(image: ImageData, sw: number, sh: number): ImageData {
+    const src = new OffscreenCanvas(image.width, image.height);
+    const srcCtx = src.getContext('2d');
+    if (!srcCtx) throw new RendererError('no-context', 'Cannot create snapshot source context');
+    srcCtx.putImageData(image, 0, 0);
+
+    const dst = new OffscreenCanvas(sw, sh);
+    const dstCtx = dst.getContext('2d');
+    if (!dstCtx) throw new RendererError('no-context', 'Cannot create snapshot destination context');
+    dstCtx.drawImage(src, 0, 0, sw, sh);
+    return dstCtx.getImageData(0, 0, sw, sh);
   }
 
   getMetrics(): RendererMetrics {
@@ -250,6 +270,7 @@ export class WebGpuRenderer implements Renderer {
   close(): void {
     this.device?.destroy();
     this.device = undefined;
+    this.context?.unconfigure();
     this.context = undefined;
     this.fallbackRenderer?.close();
   }
