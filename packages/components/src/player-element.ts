@@ -450,7 +450,7 @@ export class CheetahPlayerElement extends HTMLElement {
       return;
     }
 
-    if (this._loadedSrc === src && this._player) {
+    if (this._loadedSrc === src && this._player && this.getAttribute('data-state') !== 'failed') {
       return;
     }
 
@@ -481,6 +481,13 @@ export class CheetahPlayerElement extends HTMLElement {
         message: cause instanceof Error ? cause.message : 'Load failed',
         recoverable: true,
       };
+      try {
+        await this._player?.destroy();
+      } catch {
+        // ignored
+      }
+      this._player = undefined;
+      this._loadedSrc = undefined;
       this._updateState('failed');
     }
   }

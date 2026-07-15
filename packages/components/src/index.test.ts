@@ -105,5 +105,19 @@ describe('components', () => {
       // Snapshot without a player does not dispatch, but the key is handled.
       expect(eventFired).toBe(false);
     });
+
+    it('retry button re-attempts load after failure', async () => {
+      const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+      container.appendChild(el);
+      el.src = 'https://example.com/missing.flv';
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(el.getAttribute('data-state')).toBe('failed');
+
+      const retryButton = el.shadowRoot?.querySelector('[part="overlay-button"]') as HTMLButtonElement | null;
+      expect(retryButton).toBeTruthy();
+      retryButton?.click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(el.getAttribute('data-state')).toBe('failed');
+    });
   });
 });
