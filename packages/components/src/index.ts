@@ -16,9 +16,14 @@ export interface PlayerComponent {
 
 export function createPlayerComponent(options: PlayerComponentOptions = {}): PlayerComponent {
   const { workerUrl, wasmUrl, ...rest } = options;
+  const runtimeConfig = {
+    ...rest.runtime,
+    ...(workerUrl !== undefined ? { workerUrl } : {}),
+    ...(wasmUrl !== undefined ? { wasmUrl } : {}),
+  };
   const player = createPlayer({
     ...rest,
-    runtime: { workerUrl, wasmUrl },
+    runtime: runtimeConfig,
   });
   let container: HTMLElement | undefined;
   let video: HTMLVideoElement | undefined;
