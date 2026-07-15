@@ -43,6 +43,7 @@ test('resize sets surface CSS variables', async ({ page }) => {
     el.style.height = '360px';
   });
 
-  const width = await player.evaluate((el) => el.style.getPropertyValue('--surface-width'));
-  expect(width).toBe('640px');
+  await expect
+    .poll(async () => player.evaluate((el) => el.style.getPropertyValue('--surface-width')))
+    .toBe('640px');
 });

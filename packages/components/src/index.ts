@@ -1,7 +1,9 @@
 import { createPlayer, type CheetahPlayer, type PlayerConfig } from '@cheetah-media/web';
 import { CheetahPlayerElement } from './player-element';
+import { CheetahWallCellElement } from './wall-cell-element';
+import { CheetahWallElement } from './wall-element';
 
-export { createPlayer, CheetahPlayerElement };
+export { createPlayer, CheetahPlayerElement, CheetahWallElement, CheetahWallCellElement };
 export type { CheetahPlayer, PlayerConfig };
 
 export interface PlayerComponentOptions extends PlayerConfig {
@@ -54,6 +56,14 @@ export function createPlayerComponent(options: PlayerComponentOptions = {}): Pla
   };
 }
 
-if (typeof customElements !== 'undefined' && !customElements.get('cheetah-player')) {
-  customElements.define('cheetah-player', CheetahPlayerElement);
+if (typeof customElements !== 'undefined') {
+  if (!customElements.get('cheetah-player')) {
+    customElements.define('cheetah-player', CheetahPlayerElement);
+  }
+  if (!customElements.get('cheetah-wall')) {
+    customElements.define('cheetah-wall', CheetahWallElement);
+  }
+  if (!customElements.get('cheetah-wall-cell')) {
+    customElements.define('cheetah-wall-cell', CheetahWallCellElement);
+  }
 }

@@ -58,4 +58,13 @@ export {
   createPlayer,
 } from './player';
 
+export {
+  BudgetController,
+  type ResourceBudgetConfig,
+  type CellDemand,
+  type CellAllocation,
+  type StreamProfile,
+  type Resolution,
+} from './budget';
+
 export { createPlayerWithRuntime } from './test-helpers';
