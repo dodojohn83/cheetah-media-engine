@@ -154,7 +154,7 @@ function fitToSize(bundle: DiagnosticsBundle, maxSizeBytes: number): Diagnostics
   let events = bundle.recentEvents;
   let current = bundle;
   while (events.length > 0 && roughSize(JSON.stringify(current)) > maxSizeBytes - SIZE_SAFETY_MARGIN) {
-    events = events.slice(Math.floor(events.length / 4));
+    events = events.slice(Math.max(1, Math.floor(events.length / 4)));
     current = { ...bundle, recentEvents: events };
   }
   if (events.length !== bundle.recentEvents.length) {

@@ -72,4 +72,14 @@ describe('diagnostics', () => {
     expect(bundle.trace).toBeUndefined();
     expect(bundle.metrics).toBeUndefined();
   });
+
+  it('terminates when trimming to a very small max size', () => {
+    const events = Array.from({ length: 3 }, (_, i) => ({
+      type: 'tick',
+      timestamp: i,
+      details: { x: 'a'.repeat(256) },
+    }));
+    const bundle = buildDiagnostics('p', 'idle', 0, {}, { events }, { maxSizeBytes: 64 });
+    expect(bundle.recentEvents.length).toBeLessThanOrEqual(3);
+  });
 });

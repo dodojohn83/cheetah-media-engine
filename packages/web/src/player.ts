@@ -656,9 +656,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   async destroy(): Promise<void> {
     if (this.destroyed) return;
     this.destroyed = true;
-    this.listeners.clear();
-    await this.runtime.destroy();
     this._state = 'destroyed';
+    this.listeners.clear();
+    this.eventHistory.length = 0;
+    this.metricRegistry.reset();
+    await this.runtime.destroy();
   }
 
   async snapshot(options: { maxWidth?: number; maxHeight?: number } = {}): Promise<ImageData> {

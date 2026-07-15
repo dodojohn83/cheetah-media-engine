@@ -263,4 +263,14 @@ describe('web sdk', () => {
     const diag = player.exportDiagnostics();
     expect(diag.recentEvents.length).toBe(0);
   });
+
+  it('destroy clears metrics and history', async () => {
+    const player = playerWithMock();
+    player.runtime.emitEvent('stats', { bufferedMs: 100 });
+    player.play();
+    await player.destroy();
+    expect(player.state).toBe('destroyed');
+    expect(() => player.getMetrics()).toThrow(CheetahMediaError);
+    expect(() => player.exportDiagnostics()).toThrow(CheetahMediaError);
+  });
 });
