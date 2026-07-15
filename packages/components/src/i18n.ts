@@ -17,7 +17,13 @@ export type MessageKey =
   | 'autoplayBlocked'
   | 'unsupported'
   | 'latencyStatus'
-  | 'controls';
+  | 'buffered'
+  | 'controls'
+  | 'idle'
+  | 'playing'
+  | 'paused'
+  | 'stopping'
+  | 'destroyed';
 
 const messages: Record<string, Record<MessageKey, string>> = {
   en: {
@@ -39,7 +45,13 @@ const messages: Record<string, Record<MessageKey, string>> = {
     autoplayBlocked: 'Click to start playback',
     unsupported: 'Unsupported configuration',
     latencyStatus: 'Latency',
+    buffered: 'Buffered',
     controls: 'Player controls',
+    idle: 'Idle',
+    playing: 'Playing',
+    paused: 'Paused',
+    stopping: 'Stopping',
+    destroyed: 'Destroyed',
   },
   zh: {
     play: '播放',
@@ -60,7 +72,13 @@ const messages: Record<string, Record<MessageKey, string>> = {
     autoplayBlocked: '点击开始播放',
     unsupported: '不支持的配置',
     latencyStatus: '延迟',
+    buffered: '缓冲',
     controls: '播放器控件',
+    idle: '空闲',
+    playing: '播放中',
+    paused: '已暂停',
+    stopping: '停止中',
+    destroyed: '已销毁',
   },
 };
 

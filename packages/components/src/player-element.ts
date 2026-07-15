@@ -526,7 +526,7 @@ export class CheetahPlayerElement extends HTMLElement {
 
     const latencyText = latencyMs !== undefined ? `${latencyMs.toFixed(0)}ms` : '-';
     const bufferedText = bufferedMs !== undefined ? `${bufferedMs.toFixed(0)}ms` : '-';
-    this._status.textContent = `${getMessage(this._locale, 'latencyStatus')}: ${latencyText} | Buffered: ${bufferedText}`;
+    this._status.textContent = `${getMessage(this._locale, 'latencyStatus')}: ${latencyText} | ${getMessage(this._locale, 'buffered')}: ${bufferedText}`;
 
     this._dispatch('stats', event);
   }
@@ -552,7 +552,8 @@ export class CheetahPlayerElement extends HTMLElement {
       this._hideOverlay();
     }
 
-    this._announce(getMessage(this._locale, state as MessageKey) ?? state);
+    const announceKey = state === 'autoplay-blocked' ? 'autoplayBlocked' : state;
+    this._announce(getMessage(this._locale, announceKey as MessageKey));
   }
 
   private _updatePlayButton(state: string): void {
