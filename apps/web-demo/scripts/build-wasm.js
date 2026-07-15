@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { cp, mkdir, rm } from 'node:fs/promises';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const root = join(fileURLToPath(import.meta.url), '..', '..', '..', '..');
 const publicDir = join(root, 'apps', 'web-demo', 'public');
@@ -15,8 +15,10 @@ const wasmDir = join(publicDir, 'wasm');
 const workerSrc = join(root, 'packages', 'runtime', 'dist', 'worker.js');
 const workerDst = join(publicDir, 'worker.js');
 
-const profile = process.env.WASM_PROFILE || 'release';
-const targetDir = join(root, 'target', 'wasm32-unknown-unknown', profile);
+const rawProfile = process.env.WASM_PROFILE ?? 'release';
+const profile = ['release', 'dev'].includes(rawProfile) ? rawProfile : 'release';
+const targetProfile = profile === 'dev' ? 'debug' : profile;
+const targetDir = join(root, 'target', 'wasm32-unknown-unknown', targetProfile);
 const wasmFile = join(targetDir, 'cheetah_media_web_bindings.wasm');
 
 if (!existsSync(wasmFile)) {
@@ -24,15 +26,16 @@ if (!existsSync(wasmFile)) {
   if (profile === 'release') {
     args.push('--release');
   }
-  execSync(`cargo ${args.join(' ')}`, { stdio: 'inherit', cwd: root });
+  execFileSync('cargo', args, { stdio: 'inherit', cwd: root });
 }
 
 const tmpDir = join(root, 'target', 'wasm-pkg');
 await rm(tmpDir, { recursive: true, force: true });
 await mkdir(tmpDir, { recursive: true });
 
-execSync(
-  `wasm-bindgen --target web --out-dir ${tmpDir} ${wasmFile}`,
+execFileSync(
+  'wasm-bindgen',
+  ['--target', 'web', '--out-dir', tmpDir, wasmFile],
   { stdio: 'inherit', cwd: root },
 );
 
@@ -42,7 +45,7 @@ for (const file of ['cheetah_media_web_bindings.js', 'cheetah_media_web_bindings
 }
 
 if (!existsSync(workerSrc)) {
-  execSync('pnpm --filter @cheetah-media/runtime build', { stdio: 'inherit', cwd: root });
+  execFileSync('pnpm', ['--filter', '@cheetah-media/runtime', 'build'], { stdio: 'inherit', cwd: root });
 }
 await cp(workerSrc, workerDst);
 

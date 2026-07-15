@@ -238,9 +238,11 @@ impl WebEngine {
         Err(js_error(AbiError::NotSupported))
     }
 
-    /// Stop the engine, releasing all borrowed regions but keeping config.
+    /// Stop the engine, releasing all borrowed regions and clearing the active
+    /// media URL so a new load is required before playback can resume.
     pub fn stop(&mut self) -> Result<(), JsValue> {
         self.arena = MemoryArena::new(INSTANCE_ID);
+        self.loaded_url = None;
         self.playing = false;
         Ok(())
     }
