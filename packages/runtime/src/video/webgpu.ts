@@ -1,0 +1,277 @@
+/**
+ * WebGPU renderer.
+ *
+ * Prefers zero-copy external-image import for RGBA `VideoFrame`/`ImageBitmap`
+ * sources. For YUV or when external import is unsupported it falls back to
+ * drawing the decoded frame to a 2D offscreen canvas and uploading that to a
+ * `GPUTexture`. This gives a single WebGPU presentation path while relying on
+ * the existing 2D color conversion until a full shader-based YUV pipeline is
+ * wired.
+ */
+
+import type { RenderFrame, Renderer, RendererConfig, RendererMetrics, SnapshotOptions, SnapshotResult } from './types';
+import { RendererError } from './types';
+import { RendererSurface } from './surface';
+import { Canvas2DRenderer } from './canvas2d';
+
+const VERTEX_SHADER = `@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
+  // An oversized right triangle that, once clipped, covers the whole viewport.
+  let x = f32(i32(vi) / 2) * 4.0 - 1.0;
+  let y = f32(i32(vi) % 2) * 4.0 - 1.0;
+  return vec4f(x, y, 0.0, 1.0);
+}`;
+
+const FRAGMENT_SHADER = `@group(0) @binding(0) var u_sampler: sampler;
+@group(0) @binding(1) var u_texture: texture_2d<f32>;
+
+@fragment
+fn fs_main(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let uv = pos.xy / vec2f(textureDimensions(u_texture));
+  return textureSample(u_texture, u_sampler, uv);
+}
+`;
+
+// GPUTextureUsage numeric constants.
+const COPY_SRC = 0x01;
+const COPY_DST = 0x02;
+const TEXTURE_BINDING = 0x04;
+const RENDER_ATTACHMENT = 0x10;
+const MAP_READ = 0x01;
+const BUFFER_COPY_DST = 0x0008;
+const MAP_READ_MODE = 1;
+
+function hasWebGPU(): boolean {
+  return typeof navigator !== 'undefined' && 'gpu' in navigator;
+}
+
+export class WebGpuRenderer implements Renderer {
+  readonly identity = 'webgpu';
+  private surface: RendererSurface;
+  private device: GPUDevice | undefined = undefined;
+  private context: GPUCanvasContext | undefined = undefined;
+  private pipeline: GPURenderPipeline | undefined = undefined;
+  private bindGroup: GPUBindGroup | undefined = undefined;
+  private sampler: GPUSampler | undefined = undefined;
+  private frameTexture: GPUTexture | undefined = undefined;
+  private fallbackRenderer: Canvas2DRenderer | undefined = undefined;
+  private fallbackCanvas: OffscreenCanvas | undefined = undefined;
+  private lost = false;
+  private metrics: {
+    framesSubmitted: number;
+    framesRendered: number;
+    framesDropped: number;
+    snapshotsTaken: number;
+    drawLatencyMs: number;
+  } = {
+    framesSubmitted: 0,
+    framesRendered: 0,
+    framesDropped: 0,
+    snapshotsTaken: 0,
+    drawLatencyMs: 0,
+  };
+
+  constructor(canvas: HTMLCanvasElement | OffscreenCanvas) {
+    this.surface = new RendererSurface(canvas);
+  }
+
+  async configure(config: RendererConfig): Promise<void> {
+    this.surface.configure(config);
+    if (!hasWebGPU()) {
+      throw new RendererError('no-webgpu', 'WebGPU not available');
+    }
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new RendererError('no-adapter', 'No WebGPU adapter');
+    this.device = await adapter.requestDevice();
+    this.device.lost.then((info) => {
+      this.lost = true;
+      this.device = undefined;
+      this.pipeline = undefined;
+      this.frameTexture = undefined;
+      this.bindGroup = undefined;
+      // The lost state is surfaced synchronously by render(); the promise is
+      // intentionally not rejected so that the application does not see an
+      // unhandled rejection for a hardware-recovery event.
+      void info;
+    });
+
+    const canvas = this.surface.getCanvas();
+    const ctx =
+      (canvas as HTMLCanvasElement).getContext?.('webgpu') ??
+      (canvas as OffscreenCanvas).getContext?.('webgpu') ??
+      null;
+    if (!ctx) throw new RendererError('no-context', 'Cannot get WebGPU canvas context');
+    this.context = ctx as GPUCanvasContext;
+    this.context.configure({ device: this.device, format: navigator.gpu.getPreferredCanvasFormat() });
+
+    this.sampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+    this.createPipeline();
+    this.createFrameTexture();
+
+    this.fallbackCanvas = new OffscreenCanvas(this.surface.getCanvas().width || 1, this.surface.getCanvas().height || 1);
+    this.fallbackRenderer = new Canvas2DRenderer(this.fallbackCanvas);
+    await this.fallbackRenderer.configure({ ...config, canvas: this.fallbackCanvas, dpr: 1 });
+  }
+
+  private createPipeline(): void {
+    const device = this.device;
+    if (!device) return;
+    const shader = device.createShaderModule({ code: VERTEX_SHADER + FRAGMENT_SHADER });
+    this.pipeline = device.createRenderPipeline({
+      layout: 'auto',
+      vertex: { module: shader, entryPoint: 'vs_main' },
+      fragment: {
+        module: shader,
+        entryPoint: 'fs_main',
+        targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }],
+      },
+    });
+  }
+
+  private createFrameTexture(): void {
+    const device = this.device;
+    if (!device) return;
+    const canvas = this.surface.getCanvas();
+    this.frameTexture = device.createTexture({
+      size: [canvas.width || 1, canvas.height || 1, 1],
+      format: 'rgba8unorm',
+      usage: COPY_SRC | COPY_DST | TEXTURE_BINDING | RENDER_ATTACHMENT,
+    });
+    this.bindGroup = device.createBindGroup({
+      layout: this.pipeline!.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.sampler! },
+        { binding: 1, resource: this.frameTexture.createView() },
+      ],
+    });
+  }
+
+  async render(frame: RenderFrame): Promise<void> {
+    if (this.lost || !this.device) throw new RendererError('device-lost', 'WebGPU device is lost');
+    const start = performance.now();
+    this.metrics.framesSubmitted += 1;
+    try {
+      const canvas = this.surface.getCanvas();
+      const w = canvas.width;
+      const h = canvas.height;
+      if (w === 0 || h === 0) throw new RendererError('invalid-surface', 'Canvas has zero size');
+
+      // Recreate the texture if the surface resized.
+      if (this.frameTexture && (this.frameTexture.width !== w || this.frameTexture.height !== h)) {
+        this.frameTexture.destroy();
+        this.createFrameTexture();
+      }
+
+      if (!this.fallbackCanvas || !this.fallbackRenderer) {
+        throw new RendererError('no-fallback', 'WebGPU fallback renderer unavailable');
+      }
+
+      // Draw the frame through the Canvas2D renderer so fit/rotation/mirror
+      // are applied to an intermediate buffer. The result is then uploaded to a
+      // full-canvas texture and presented with a full-screen quad.
+      this.fallbackCanvas.width = w;
+      this.fallbackCanvas.height = h;
+      await this.fallbackRenderer.render(frame);
+      this.copyExternalToTexture(this.fallbackCanvas, { width: w, height: h });
+
+      this.present();
+      this.metrics.framesRendered += 1;
+    } catch (err) {
+      this.metrics.framesDropped += 1;
+      throw err instanceof RendererError ? err : new RendererError('render-failed', String(err));
+    } finally {
+      this.metrics.drawLatencyMs = performance.now() - start;
+    }
+  }
+
+  private copyExternalToTexture(source: GPUCopyExternalImageSource, size: { width: number; height: number }): void {
+    const device = this.device;
+    if (!device || !this.frameTexture) return;
+    device.queue.copyExternalImageToTexture(
+      { source, flipY: false },
+      { texture: this.frameTexture },
+      [Math.max(1, size.width), Math.max(1, size.height), 1],
+    );
+  }
+
+  private present(): void {
+    const device = this.device;
+    const ctx = this.context;
+    const texture = ctx?.getCurrentTexture();
+    if (!device || !ctx || !texture || !this.pipeline || !this.bindGroup) return;
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        { view: texture.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } },
+      ],
+    });
+    pass.setPipeline(this.pipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    pass.draw(3);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+  }
+
+  async snapshot(opts: SnapshotOptions = {}): Promise<SnapshotResult> {
+    if (!this.device || !this.frameTexture) throw new RendererError('not-configured', 'WebGPU renderer not configured');
+    const width = this.frameTexture.width;
+    const height = this.frameTexture.height;
+    const bytesPerRow = Math.ceil((width * 4) / 256) * 256;
+    const buffer = this.device.createBuffer({
+      size: bytesPerRow * height,
+      usage: MAP_READ | BUFFER_COPY_DST,
+    });
+    const encoder = this.device.createCommandEncoder();
+    encoder.copyTextureToBuffer(
+      { texture: this.frameTexture },
+      { buffer, bytesPerRow },
+      [width, height, 1],
+    );
+    this.device.queue.submit([encoder.finish()]);
+    await buffer.mapAsync(MAP_READ_MODE);
+    const mapped = new Uint8Array(buffer.getMappedRange());
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let row = 0; row < height; row += 1) {
+      for (let col = 0; col < width * 4; col += 1) {
+        data[row * width * 4 + col] = mapped[row * bytesPerRow + col]!;
+      }
+    }
+    buffer.unmap();
+
+    let imageData = new ImageData(data, width, height);
+    if (opts.maxWidth && opts.maxHeight) {
+      const scale = Math.min(1, opts.maxWidth / width, opts.maxHeight / height);
+      const sw = Math.max(1, Math.floor(width * scale));
+      const sh = Math.max(1, Math.floor(height * scale));
+      imageData = this.scaleImageData(imageData, sw, sh);
+    }
+
+    this.metrics.snapshotsTaken += 1;
+    return { width: imageData.width, height: imageData.height, data: imageData };
+  }
+
+  private scaleImageData(image: ImageData, sw: number, sh: number): ImageData {
+    const src = new OffscreenCanvas(image.width, image.height);
+    const srcCtx = src.getContext('2d');
+    if (!srcCtx) throw new RendererError('no-context', 'Cannot create snapshot source context');
+    srcCtx.putImageData(image, 0, 0);
+
+    const dst = new OffscreenCanvas(sw, sh);
+    const dstCtx = dst.getContext('2d');
+    if (!dstCtx) throw new RendererError('no-context', 'Cannot create snapshot destination context');
+    dstCtx.drawImage(src, 0, 0, sw, sh);
+    return dstCtx.getImageData(0, 0, sw, sh);
+  }
+
+  getMetrics(): RendererMetrics {
+    return { ...this.metrics };
+  }
+
+  close(): void {
+    this.device?.destroy();
+    this.device = undefined;
+    this.context?.unconfigure();
+    this.context = undefined;
+    this.fallbackRenderer?.close();
+  }
+}

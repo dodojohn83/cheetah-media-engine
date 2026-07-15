@@ -95,3 +95,24 @@ export {
   type FrameDescriptor as FfmpegFrameDescriptor,
 } from './ffmpeg-pack';
 export * from './audio';
+export {
+  createRenderer,
+  VideoRenderer,
+  Canvas2DRenderer,
+  WebGL2Renderer,
+  WebGpuRenderer,
+  RendererSurface,
+  resolveColorSpace,
+  buildYuvToRgbCoeffs,
+  getYuvMatrix,
+  getColorRange,
+  type RendererConfig,
+  type RendererMetrics,
+  type RenderFrame,
+  type VisibleRect,
+  type FitMode,
+  type SnapshotOptions,
+  type SnapshotResult,
+  type ColorSpaceInfo,
+  RendererError,
+} from './video';
