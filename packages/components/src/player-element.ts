@@ -197,13 +197,13 @@ export class CheetahPlayerElement extends HTMLElement {
     }
   }
 
-  private async _cleanupPlayer(): Promise<void> {
+  private async _cleanupPlayer(forceDestroy = false): Promise<void> {
     const player = this._player;
     if (!player) return;
     this._player = undefined;
     this._loadedSrc = undefined;
     try {
-      if (this.onDisconnect === 'destroy') {
+      if (forceDestroy || this.onDisconnect === 'destroy') {
         await player.destroy();
       } else {
         try {
@@ -448,7 +448,7 @@ export class CheetahPlayerElement extends HTMLElement {
     }
 
     if (this._player) {
-      await this._cleanupPlayer();
+      await this._cleanupPlayer(true);
     }
 
     this._loadedSrc = src;
