@@ -207,6 +207,17 @@ describe('web sdk', () => {
     expect(image.height).toBe(100);
   });
 
+  it('snapshot preserves validation error message', async () => {
+    const runtime = mockRuntime();
+    runtime.request = (type) => {
+      if (type === 'snapshot') return Promise.resolve({ width: 'not-a-number' });
+      return Promise.reject(new Error('unsupported'));
+    };
+    const player = Object.assign(createPlayerWithRuntime({}, () => runtime), { runtime });
+    player.runtime.emitEvent('statechange', { to: 'playing' });
+    await expect(player.snapshot()).rejects.toThrow('Invalid snapshot result');
+  });
+
   it('switchVariant validates input', async () => {
     const player = playerWithMock();
     await expect(player.switchVariant({})).rejects.toBeInstanceOf(CheetahMediaError);
@@ -214,10 +225,11 @@ describe('web sdk', () => {
   });
 
   it('getStats returns latest stats and throttles stats events', () => {
-    const player = playerWithMock();
+    const player = playerWithMock({ diagnostics: { statsIntervalMs: 10_000 } });
     player.runtime.emitEvent('stats', { bufferedMs: 100 });
+    player.runtime.emitEvent('stats', { bufferedMs: 250 });
     const stats = player.getStats();
-    expect(stats.bufferedMs).toBe(100);
+    expect(stats.bufferedMs).toBe(250);
   });
 
   it('caps event history and freezes diagnostics events', () => {

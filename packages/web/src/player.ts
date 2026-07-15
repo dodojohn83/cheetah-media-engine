@@ -491,7 +491,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this.eventHistory.push(event as CheetahPlayerEvent);
 
     if (type === 'stats') {
-      this.updateStatsFromEvent(event as CheetahPlayerEvent<'stats'>);
+      this.updateStatsFromDetails(event.details, event.epoch, event.timestamp);
     }
 
     const set = this.listeners.get(type);
@@ -505,17 +505,21 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     }
   }
 
-  private updateStatsFromEvent(event: CheetahPlayerEvent<'stats'>): void {
-    const d = event.details ?? {};
+  private updateStatsFromDetails(
+    details: Record<string, unknown> | undefined,
+    epoch: number,
+    timestamp: number,
+  ): void {
+    const d = details ?? {};
     this.lastStats = {
       state: this._state,
-      epoch: event.epoch,
+      epoch,
       bufferedMs: typeof d.bufferedMs === 'number' ? d.bufferedMs : this.lastStats?.bufferedMs,
       decodedFrames: typeof d.decodedFrames === 'number' ? d.decodedFrames : this.lastStats?.decodedFrames,
       droppedFrames: typeof d.droppedFrames === 'number' ? d.droppedFrames : this.lastStats?.droppedFrames,
       networkBytes: typeof d.networkBytes === 'number' ? d.networkBytes : this.lastStats?.networkBytes,
       latencyMs: typeof d.latencyMs === 'number' ? d.latencyMs : this.lastStats?.latencyMs,
-      timestamp: event.timestamp,
+      timestamp,
     };
   }
 
@@ -563,6 +567,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
     if (normalized === 'stats' || normalized === 'metrics') {
       const now = this.now();
+      this.updateStatsFromDetails(details, this.runtime.epoch, now);
       if (now - this.lastStatsTime < this.config.diagnostics.statsIntervalMs) {
         return;
       }
@@ -661,6 +666,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
         : new Uint8ClampedArray(data.width * data.height * 4);
       return new ImageData(clamped, data.width, data.height);
     } catch (cause) {
+      if (cause instanceof CheetahMediaError) throw cause;
       throw new CheetahMediaError(6999, 'snapshot', 'Snapshot failed', { cause, recoverable: false });
     }
   }
