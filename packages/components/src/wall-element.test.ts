@@ -56,4 +56,22 @@ describe('CheetahWallElement', () => {
     expect(wall.querySelectorAll('cheetah-wall-cell').length).toBe(0);
     wall.remove();
   });
+
+  it('continues to manage cells after being moved in the DOM', () => {
+    const wall = document.createElement('cheetah-wall') as CheetahWallElement;
+    const cell = document.createElement('cheetah-wall-cell') as CheetahWallCellElement;
+    cell.cellId = 'moved';
+    wall.appendChild(cell);
+    document.body.appendChild(wall);
+
+    const newContainer = document.createElement('div');
+    document.body.appendChild(newContainer);
+    newContainer.appendChild(wall);
+
+    expect(wall.getCellById('moved')).toBeDefined();
+    expect(wall.getStats().cells).toBe(1);
+
+    wall.remove();
+    newContainer.remove();
+  });
 });

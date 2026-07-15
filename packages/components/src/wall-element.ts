@@ -117,6 +117,7 @@ export class CheetahWallElement extends HTMLElement {
     if (this._budget) {
       this._budget = undefined;
     }
+    this._registeredIds.clear();
     for (const cell of this._cells()) {
       cell.destroy();
     }
