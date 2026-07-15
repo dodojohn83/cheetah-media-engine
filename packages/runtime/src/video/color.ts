@@ -52,12 +52,11 @@ export function getYuvMatrix(matrix?: string): YuvMatrix {
  */
 export function buildYuvToRgbCoeffs(matrix: YuvMatrix, range: ColorRange): { coeffs: number[]; offset: number[] } {
   const { kr, kg, kb } = matrix;
-  // Y is normalized to [0,1] from its raw range; Cb/Cr are expanded from the
-  // [0,1] texture value centered at 0.5 to their legal [-1,1] or full-range
-  // [-0.5,0.5] excursion.
+  // Y is normalized to [0,1] from its raw range; Cb/Cr are centered at cZero and
+  // scaled to [-0.5,0.5] over the full chroma excursion [yMin, cMax].
   const yScale = 255 / (range.yMax - range.yMin);
   const yShift = range.yMin / 255;
-  const cScale = 255 / (range.cMax - range.cZero);
+  const cScale = 255 / (range.cMax - range.yMin);
 
   const rV = 2 * (1 - kr) * cScale;
   const bU = 2 * (1 - kb) * cScale;
@@ -66,15 +65,11 @@ export function buildYuvToRgbCoeffs(matrix: YuvMatrix, range: ColorRange): { coe
   const yOff = -(yShift * yScale);
 
   // Columns of the matrix correspond to [y, u, v]; rows are [R, G, B].
+  // uniformMatrix3fv expects column-major order, so we emit columns verbatim.
   const col0 = [yScale, yScale, yScale];
   const col1 = [0, gU, bU];
   const col2 = [rV, gV, 0];
-  const coeffs: number[] = [];
-  for (let row = 0; row < 3; row += 1) {
-    coeffs.push(col0[row]!);
-    coeffs.push(col1[row]!);
-    coeffs.push(col2[row]!);
-  }
+  const coeffs: number[] = [...col0, ...col1, ...col2];
   return { coeffs, offset: [yOff, yOff, yOff] };
 }
 

@@ -267,6 +267,7 @@ export class WebGL2Renderer implements Renderer {
     if (!gl) return;
     const cw = visibleRect.width;
     const ch = visibleRect.height;
+    const halfW = Math.max(1, Math.floor(cw / 2));
     const halfH = Math.max(1, Math.floor(ch / 2));
     const ySize = cw * ch;
     const uvSize = cw * halfH;
@@ -276,7 +277,7 @@ export class WebGL2Renderer implements Renderer {
     await frame.copyTo(uvData, { planeIndex: 1, rect: visibleRect });
 
     this.uploadTexture(this.yTexture, yData, cw, ch, gl.RED);
-    this.uploadTexture(this.uvTexture, uvData, cw, halfH, gl.RG);
+    this.uploadTexture(this.uvTexture, uvData, halfW, halfH, gl.RG);
 
     const { matrix, range } = resolveColorSpace(frame.colorSpace);
     const { coeffs, offset } = buildYuvToRgbCoeffs(matrix, range);

@@ -16,8 +16,9 @@ import { Canvas2DRenderer } from './canvas2d';
 
 const VERTEX_SHADER = `@vertex
 fn vs_main(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
-  let x = f32(vi % 2u) * 2.0 - 1.0;
-  let y = f32(vi / 2u) * 2.0 - 1.0;
+  // An oversized right triangle that, once clipped, covers the whole viewport.
+  let x = f32(i32(vi) / 2) * 4.0 - 1.0;
+  let y = f32(i32(vi) % 2) * 4.0 - 1.0;
   return vec4f(x, y, 0.0, 1.0);
 }`;
 

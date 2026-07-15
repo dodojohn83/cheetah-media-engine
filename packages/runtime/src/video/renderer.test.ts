@@ -185,12 +185,13 @@ describe('Color conversion', () => {
   it('converts full-range black and white YUV', () => {
     const { coeffs, offset } = buildYuvToRgbCoeffs(getYuvMatrix('bt.709'), getColorRange(true));
     const c = coeffs;
-    const [rB, gB, bB] = [0, 3, 6].map((i) => c[i]! * 0 + c[i + 1]! * 0 + c[i + 2]! * 0 + offset[0]!);
+    // coeffs are in column-major order: [Ry, Gy, By, Ru, Gu, Bu, Rv, Gv, Bv].
+    const [rB, gB, bB] = [0, 1, 2].map((row) => c[row]! * 0 + c[row + 3]! * 0 + c[row + 6]! * 0 + offset[0]!);
     expect(rB).toBeCloseTo(0, 5);
     expect(gB).toBeCloseTo(0, 5);
     expect(bB).toBeCloseTo(0, 5);
 
-    const [rW, gW, bW] = [0, 3, 6].map((i) => c[i]! * 1 + c[i + 1]! * 0 + c[i + 2]! * 0 + offset[0]!);
+    const [rW, gW, bW] = [0, 1, 2].map((row) => c[row]! * 1 + c[row + 3]! * 0 + c[row + 6]! * 0 + offset[0]!);
     expect(rW).toBeCloseTo(1, 5);
     expect(gW).toBeCloseTo(1, 5);
     expect(bW).toBeCloseTo(1, 5);
@@ -201,14 +202,28 @@ describe('Color conversion', () => {
     const c = coeffs;
     const blackY = 16 / 255;
     const whiteY = 235 / 255;
-    const [rB, gB, bB] = [0, 3, 6].map((i) => c[i]! * blackY + c[i + 1]! * 0 + c[i + 2]! * 0 + offset[0]!);
+    const [rB, gB, bB] = [0, 1, 2].map((row) => c[row]! * blackY + c[row + 3]! * 0 + c[row + 6]! * 0 + offset[0]!);
     expect(rB).toBeCloseTo(0, 5);
     expect(gB).toBeCloseTo(0, 5);
     expect(bB).toBeCloseTo(0, 5);
 
-    const [rW, gW, bW] = [0, 3, 6].map((i) => c[i]! * whiteY + c[i + 1]! * 0 + c[i + 2]! * 0 + offset[0]!);
+    const [rW, gW, bW] = [0, 1, 2].map((row) => c[row]! * whiteY + c[row + 3]! * 0 + c[row + 6]! * 0 + offset[0]!);
     expect(rW).toBeCloseTo(1, 5);
     expect(gW).toBeCloseTo(1, 5);
     expect(bW).toBeCloseTo(1, 5);
+  });
+
+  it('converts full-range pure red to RGB', () => {
+    const { coeffs, offset } = buildYuvToRgbCoeffs(getYuvMatrix('bt.709'), getColorRange(true));
+    const c = coeffs;
+    const kb = 0.0722;
+    // For BT.709 full-range pure red: Y=Kr, Cb=-Y/(2*(1-Kb)), Cr=0.5.
+    const y = 0.2126;
+    const u = -y / (2 * (1 - kb));
+    const v = 0.5;
+    const rgb = [0, 1, 2].map((row) => c[row]! * y + c[row + 3]! * u + c[row + 6]! * v + offset[0]!);
+    expect(rgb[0]).toBeCloseTo(1, 3);
+    expect(rgb[1]).toBeCloseTo(0, 3);
+    expect(rgb[2]).toBeCloseTo(0, 3);
   });
 });
