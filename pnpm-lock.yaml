@@ -29,6 +29,9 @@ importers:
       '@cheetah-media/components':
         specifier: workspace:*
         version: link:../../packages/components
+      '@cheetah-media/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
     devDependencies:
       typescript:
         specifier: 7.0.2

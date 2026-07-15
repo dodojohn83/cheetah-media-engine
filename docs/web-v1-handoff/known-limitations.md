@@ -1,14 +1,18 @@
 # Web v1 Known Limitations
 
-## 1. Real encoded media playback evidence is pending
+## 1. Browser MSE codec and protocol support boundaries
 
-- **Impact:** INT-002 functional acceptance (HTTP/WS-FLV, HLS/LL-HLS, fMP4,
-  codec playback matrix) cannot be signed off in CI.
-- **Workaround:** Run `scripts/integration-smoke.sh` against a staging server
-  with real media endpoints.
-- **Scope:** All browser/codec/protocol combinations.
-- **Issue:** TBD after media endpoints are provisioned.
-- **Planned version:** Web v1 RC or v1.1.
+- **Impact:** Not all protocol/codec combinations produce successful MSE playback.
+  HTTP-fMP4, WS-fMP4 (HTTP fallback) and HLS fMP4 with H.264 + AAC play successfully
+  in Chromium. HTTP/WS-FLV cannot be played directly by MSE. H.265, MP3 and
+  G.711 A-law/U-law in fMP4 are not accepted by Chromium's MSE `isTypeSupported`.
+- **Workaround:** Use `tests/browser/tests/playback-matrix.spec.ts` to record
+  per-browser support boundaries. For FLV or unsupported codecs, add a transmux
+  path or use the FFmpeg-WASM codec pack once it is integrated.
+- **Scope:** INT-002 functional acceptance; browser/codec/protocol matrix.
+- **Issue:** Evidence collected in `testing/fixtures/evidence/` and
+  `tests/browser/test-results/playback-matrix-*`.
+- **Planned version:** Web v1.1 for FLV/TS transmux and expanded codec packs.
 
 ## 2. FFmpeg-WASM codec pack is currently a mock build
 
@@ -19,14 +23,16 @@
 - **Issue:** `codec-packs/ffmpeg-wasm/README.md` documents the full build.
 - **Planned version:** Web v1.1 or v2 (FFmpeg source integration).
 
-## 3. PERF-001–005 hardware-bound benchmarks cannot run in CI
+## 3. Hardware-bound performance and soak gates
 
-- **Impact:** Latency, throughput, copy budget and soak metrics are validated by
-  unit/integration tests only, not on target hardware.
-- **Workaround:** Run `cargo bench` and `scripts/integration-smoke.sh` on a
-  representative device.
+- **Impact:** Latency, throughput, copy budget and soak metrics are measured on
+  the CI/development VM only (`docs/web-v1-handoff/benchmark-report.md`).
+  Target-device gates (PERF-001–005) are not yet met.
+- **Workaround:** Run `cargo bench` and `scripts/run-acceptance.sh` on the
+  representative deployment hardware, then compare against the VM baseline.
 - **Scope:** Performance release gate.
-- **Issue:** TBD.
+- **Issue:** `cargo bench -p cheetah-media-types --features std` provides
+  reproducible VM baseline data; device-specific soak tests are pending.
 - **Planned version:** Web v1 RC.
 
 ## 4. `dodojohn83/cheetah-signaling` server facade is not yet integrated

@@ -11,7 +11,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@cheetah-media/components": "workspace:*"
+    "@cheetah-media/components": "workspace:*",
+    "@cheetah-media/runtime": "workspace:*"
   },
   "devDependencies": {
     "typescript": "7.0.2",
