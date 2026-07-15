@@ -21,7 +21,13 @@ export type MessageType =
   | 'event'
   | 'error'
   | 'memory-growth'
-  | 'metrics';
+  | 'metrics'
+  | 'snapshot'
+  | 'switch-variant'
+  | 'start-recording'
+  | 'stop-recording'
+  | 'get-stats'
+  | 'get-diagnostics';
 
 export interface Envelope {
   readonly protocolVersion: number;
@@ -83,6 +89,43 @@ export interface MetricsPayload {
   readonly dropped: number;
   readonly queue: string;
   readonly level: number;
+}
+
+export interface SnapshotPayload {
+  readonly maxWidth?: number;
+  readonly maxHeight?: number;
+}
+
+export interface SnapshotResultPayload {
+  readonly width: number;
+  readonly height: number;
+  readonly data?: Uint8ClampedArray;
+}
+
+export interface SwitchVariantPayload {
+  readonly bandwidth?: number;
+  readonly index?: number;
+}
+
+export interface RecordingPayload {
+  readonly mimeType?: string;
+  readonly filename?: string;
+}
+
+export interface StatsPayload {
+  readonly bufferedMs?: number;
+  readonly decodedFrames?: number;
+  readonly droppedFrames?: number;
+  readonly networkBytes?: number;
+  readonly latencyMs?: number;
+}
+
+export interface DiagnosticsPayload {
+  readonly playerId: string;
+  readonly version: string;
+  readonly state: string;
+  readonly epoch: number;
+  readonly eventCount: number;
 }
 
 export function encodeEnvelope(envelope: Envelope): string {

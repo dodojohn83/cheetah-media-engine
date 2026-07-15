@@ -1,21 +1,25 @@
-import { createPlayer, type Player } from '@cheetah-media/web';
+import { createPlayer, type CheetahPlayer, type PlayerConfig } from '@cheetah-media/web';
 
 export { createPlayer };
-export type { Player };
+export type { CheetahPlayer, PlayerConfig };
 
-export interface PlayerComponent {
-  player: Player;
-  mount(container: HTMLElement): void;
-  unmount(): void;
-}
-
-export interface PlayerComponentOptions {
+export interface PlayerComponentOptions extends PlayerConfig {
   workerUrl?: string;
   wasmUrl?: string;
 }
 
+export interface PlayerComponent {
+  player: CheetahPlayer;
+  mount(container: HTMLElement): void;
+  unmount(): void;
+}
+
 export function createPlayerComponent(options: PlayerComponentOptions = {}): PlayerComponent {
-  const player = createPlayer(options);
+  const { workerUrl, wasmUrl, ...rest } = options;
+  const player = createPlayer({
+    ...rest,
+    runtime: { workerUrl, wasmUrl },
+  });
   let container: HTMLElement | undefined;
   let video: HTMLVideoElement | undefined;
 

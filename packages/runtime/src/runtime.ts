@@ -11,11 +11,13 @@ import { MemoryArenaView } from './memory';
 
 export interface EngineRuntime {
   readonly version: string;
+  readonly epoch: number;
   load(url: string, options?: { isLive?: boolean }): Promise<void>;
   play(): void;
   pause(): void;
   stop(): Promise<void>;
   destroy(): Promise<void>;
+  request(type: Envelope['type'], payload?: unknown, timeoutMs?: number): Promise<unknown>;
   onEvent?: ((event: string, details?: Record<string, unknown> | undefined) => void) | undefined;
   onError?: ((error: WorkerErrorPayload) => void) | undefined;
 }
@@ -156,6 +158,10 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
 
   const runtime: EngineRuntime = {
     version: '0.1.0',
+    get epoch() {
+      return epoch;
+    },
+    request: post,
 
     async load(url: string, options = {}): Promise<void> {
       if (destroyed) throw new Error('Runtime destroyed');
