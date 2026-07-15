@@ -232,6 +232,20 @@ describe('web sdk', () => {
     expect(stats.bufferedMs).toBe(250);
   });
 
+  it('getMetrics includes gauges from stats events', () => {
+    const player = playerWithMock({});
+    player.runtime.emitEvent('stats', {
+      bufferedMs: 100,
+      decodedFrames: 50,
+      droppedFrames: 2,
+      networkBytes: 1024,
+      latencyMs: 80,
+    });
+    const metrics = player.getMetrics();
+    expect(metrics.metrics.timeline?.['buffered-ms']?.type).toBe('gauge');
+    expect((metrics.metrics.timeline?.['buffered-ms'] as { value: number } | undefined)?.value).toBe(100);
+  });
+
   it('caps event history and freezes diagnostics events', () => {
     const player = createPlayerWithRuntime({ diagnostics: { maxEventHistory: 3 } }, () => mockRuntime());
     player.play();

@@ -1,7 +1,9 @@
 import {
   createRuntime,
   RUNTIME_VERSION,
+  MetricRegistry,
   type EngineRuntime,
+  type MetricsSnapshot,
   type WorkerErrorPayload,
 } from '@cheetah-media/runtime';
 
@@ -200,6 +202,7 @@ export interface CheetahPlayer {
   switchVariant(variant: { bandwidth?: number; index?: number }): Promise<void>;
 
   getStats(): PlayerStats;
+  getMetrics(): MetricsSnapshot;
   exportDiagnostics(): DiagnosticsSnapshot;
 
   addEventListener<T extends CheetahPlayerEventType>(
@@ -232,6 +235,7 @@ export interface DiagnosticsSnapshot {
   readonly epoch: number;
   readonly config: PlayerConfig;
   readonly lastStats: PlayerStats | undefined;
+  readonly metrics?: MetricsSnapshot | undefined;
   readonly recentEvents: readonly CheetahPlayerEvent[];
 }
 
@@ -433,6 +437,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private lastStatsTime = 0;
   private eventHistory: CheetahPlayerEvent[] = [];
   private listeners = new Map<CheetahPlayerEventType, Set<EventListener>>();
+  private metricRegistry = new MetricRegistry();
 
   constructor(
     config: PlayerConfig,
@@ -521,6 +526,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       latencyMs: typeof d.latencyMs === 'number' ? d.latencyMs : this.lastStats?.latencyMs,
       timestamp,
     };
+
+    if (typeof d.bufferedMs === 'number') this.metricRegistry.gauge('buffered-ms', 'timeline', 'ms').set(d.bufferedMs);
+    if (typeof d.decodedFrames === 'number') this.metricRegistry.gauge('decoded-frames', 'decode', 'frames').set(d.decodedFrames);
+    if (typeof d.droppedFrames === 'number') this.metricRegistry.gauge('dropped-frames', 'render', 'frames').set(d.droppedFrames);
+    if (typeof d.networkBytes === 'number') this.metricRegistry.gauge('network-bytes', 'source', 'bytes').set(d.networkBytes);
+    if (typeof d.latencyMs === 'number') this.metricRegistry.gauge('latency-ms', 'timeline', 'ms').set(d.latencyMs);
   }
 
   private handleRuntimeEvent(event: string, details?: Record<string, unknown>): void {
@@ -720,6 +731,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     );
   }
 
+  getMetrics(): MetricsSnapshot {
+    this.guardDestroyed();
+    return this.metricRegistry.snapshot();
+  }
+
   exportDiagnostics(): DiagnosticsSnapshot {
     this.guardDestroyed();
     return {
@@ -729,6 +745,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       epoch: this.runtime.epoch,
       config: redactConfig(this.config),
       lastStats: this.lastStats,
+      metrics: this.metricRegistry.snapshot(),
       recentEvents: this.config.diagnostics.includeEventHistory
         ? Object.freeze([...this.eventHistory])
         : Object.freeze([]),
