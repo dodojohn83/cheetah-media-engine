@@ -71,30 +71,15 @@ function createCanvas(width: number, height: number): CanvasLike {
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    return {
-      width,
-      height,
-      getContext(contextId: '2d'): CanvasRenderingContext2DLike | null {
-        return canvas.getContext(contextId) as CanvasRenderingContext2DLike | null;
-      },
-      toBlob(callback: (blob: Blob | null) => void, type?: string, quality?: number): void {
-        if (quality !== undefined) {
-          canvas.toBlob(callback, type, quality);
-        } else {
-          canvas.toBlob(callback, type);
-        }
-      },
-    } as unknown as CanvasLike;
+    return canvas as unknown as CanvasLike;
   }
   if (typeof OffscreenCanvas !== 'undefined') {
     const canvas = new OffscreenCanvas(width, height);
-    return {
-      width,
-      height,
-      getContext(contextId: '2d'): CanvasRenderingContext2DLike | null {
-        return canvas.getContext(contextId) as CanvasRenderingContext2DLike | null;
-      },
-      toBlob(callback: (blob: Blob | null) => void, type?: string, quality?: number): void {
+    const offscreen = canvas as unknown as {
+      toBlob?: (callback: (blob: Blob | null) => void, type?: string, quality?: number) => void;
+    };
+    if (typeof offscreen.toBlob !== 'function') {
+      offscreen.toBlob = (callback, type, quality): void => {
         const opts: { type?: string; quality?: number } = {};
         if (type !== undefined) opts.type = type;
         if (quality !== undefined) opts.quality = quality;
@@ -102,8 +87,9 @@ function createCanvas(width: number, height: number): CanvasLike {
           .convertToBlob(opts)
           .then((blob) => callback(blob))
           .catch(() => callback(null));
-      },
-    } as unknown as CanvasLike;
+      };
+    }
+    return canvas as unknown as CanvasLike;
   }
   throw new RendererError('unsupported', 'No canvas implementation available for snapshot encoding');
 }
