@@ -156,6 +156,8 @@ export interface SecurityConfig {
 
 /** Runtime bootstrap URLs. */
 export interface RuntimeConfig {
+  /** Base URL used to resolve default worker and wasm paths. */
+  readonly assetBaseUrl?: string | undefined;
   readonly workerUrl?: string | undefined;
   readonly wasmUrl?: string | undefined;
 }
@@ -318,6 +320,7 @@ const DEFAULT_SECURITY: Required<SecurityConfig> = {
 };
 
 const DEFAULT_RUNTIME: Required<RuntimeConfig> = {
+  assetBaseUrl: undefined,
   workerUrl: undefined,
   wasmUrl: undefined,
 };
@@ -340,6 +343,14 @@ interface FullPlayerConfig {
   readonly security: Required<SecurityConfig>;
   readonly diagnostics: Required<DiagnosticsConfig>;
   readonly runtime: Required<RuntimeConfig>;
+}
+
+function resolveRuntimeUrls(runtime: Required<RuntimeConfig>): { workerUrl: string | undefined; wasmUrl: string | undefined } {
+  const base = runtime.assetBaseUrl?.replace(/\/$/, '');
+  const workerUrl = runtime.workerUrl ?? (base ? `${base}/worker.js` : undefined);
+  const wasmUrl =
+    runtime.wasmUrl ?? (base ? `${base}/wasm/cheetah_media_web_bindings.js` : undefined);
+  return { workerUrl, wasmUrl };
 }
 
 function withDefaults(config: PlayerConfig = {}): FullPlayerConfig {
@@ -417,6 +428,7 @@ function redactConfig(config: FullPlayerConfig): PlayerConfig {
     },
     diagnostics: config.diagnostics,
     runtime: {
+      assetBaseUrl: config.runtime.assetBaseUrl === undefined ? undefined : '<redacted>',
       workerUrl: config.runtime.workerUrl === undefined ? undefined : '<redacted>',
       wasmUrl: config.runtime.wasmUrl === undefined ? undefined : '<redacted>',
     },
@@ -447,9 +459,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this.id = `cheetah-${playerCounter}`;
     this.config = withDefaults(config);
     validateConfig(this.config);
+    const resolved = resolveRuntimeUrls(this.config.runtime);
     this.runtime = runtimeFactory({
-      workerUrl: this.config.runtime.workerUrl,
-      wasmUrl: this.config.runtime.wasmUrl,
+      workerUrl: resolved.workerUrl,
+      wasmUrl: resolved.wasmUrl,
     });
     this.runtime.onEvent = (event, details) => this.handleRuntimeEvent(event, details);
     this.runtime.onError = (error) => this.handleRuntimeError(error);
