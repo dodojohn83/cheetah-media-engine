@@ -439,3 +439,27 @@ impl FlvDemuxer {
         }
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn arbitrary_bytes_do_not_panic(bytes in prop::collection::vec(0u8..=255, 0..2048)) {
+            let mut demuxer = FlvDemuxer::default();
+            demuxer.push(&bytes);
+            // Drive the demuxer until it either exhausts data or reports an error.
+            for _ in 0..64 {
+                match demuxer.next_event() {
+                    Ok(None) => break,
+                    Err(_) => break,
+                    _ => {}
+                }
+            }
+            // Further calls after an error must also be safe.
+            let _ = demuxer.next_event();
+        }
+    }
+}

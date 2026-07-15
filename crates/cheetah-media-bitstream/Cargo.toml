@@ -16,3 +16,6 @@ cheetah-media-types = { path = "../cheetah-media-types", default-features = fals
 
 [lints.rust]
 unsafe_code = "forbid"
+
+[dev-dependencies]
+proptest = "1.5.0"

@@ -6,6 +6,16 @@ use serde::Deserialize;
 
 extern crate alloc;
 
+pub mod compare;
+pub mod store;
+pub mod validate;
+pub use compare::{
+    CompareOptions, Diff, compare_audio_frames, compare_packet_lists, compare_packets,
+    compare_video_frames,
+};
+pub use store::{FixtureStatus, FixtureStore};
+pub use validate::{FixtureError, validate_manifest};
+
 /// A minimal test fixture description.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fixture {

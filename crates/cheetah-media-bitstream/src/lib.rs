@@ -123,4 +123,37 @@ mod tests {
         let mut c = ByteCursor::new(&[0x01]);
         assert_eq!(c.read_u16_be(), Err(ReadError::EndOfStream));
     }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn h264_split_annexb_does_not_panic(bytes in prop::collection::vec(0u8..=255, 0..2048)) {
+            let _ = h264::split_annexb(&bytes);
+        }
+
+        #[test]
+        fn h264_split_avcc_does_not_panic(
+            (bytes, length_size) in (prop::collection::vec(0u8..=255, 0..2048), 1u8..=4u8),
+        ) {
+            if matches!(length_size, 1 | 2 | 4) {
+                let _ = h264::split_avcc(&bytes, length_size);
+            }
+        }
+
+        #[test]
+        fn h265_split_annexb_does_not_panic(bytes in prop::collection::vec(0u8..=255, 0..2048)) {
+            let _ = h265::split_annexb(&bytes);
+        }
+
+        #[test]
+        fn aac_split_adts_does_not_panic(bytes in prop::collection::vec(0u8..=255, 0..2048)) {
+            let _ = aac::split_adts(&bytes);
+        }
+
+        #[test]
+        fn mp3_parse_does_not_panic(bytes in prop::collection::vec(0u8..=255, 0..16)) {
+            let _ = mp3::Mp3Header::parse(&bytes);
+        }
+    }
 }

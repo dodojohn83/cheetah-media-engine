@@ -593,3 +593,21 @@ fn parse_pcr_round_trip() {
     assert!(p.has_pcr);
     assert_eq!(p.pcr, Some(pcr));
 }
+
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn ts_demuxer_arbitrary_bytes_do_not_panic(bytes in prop::collection::vec(0u8..=255, 0..2048)) {
+        let mut demuxer = TsDemuxer::default();
+        demuxer.push(&bytes);
+        for _ in 0..64 {
+            match demuxer.next_event() {
+                Ok(None) => break,
+                Err(_) => break,
+                _ => {}
+            }
+        }
+        let _ = demuxer.next_event();
+    }
+}

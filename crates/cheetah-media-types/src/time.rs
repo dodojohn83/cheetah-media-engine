@@ -444,4 +444,24 @@ mod tests {
         let unwrapped = low.unwrapped_around(prev, 62);
         assert_eq!(unwrapped.ticks(), (1i64 << 62) + 100);
     }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn rescale_to_self_is_identity(num in 1u64..10_000, den in 1u64..10_000, value in -1_000_000i64..1_000_000i64) {
+            let tb = TimeBase::new(num, den).expect("non-zero");
+            prop_assert_eq!(tb.rescale_i64(value, tb).unwrap(), value);
+        }
+
+        #[test]
+        fn rescale_roundtrip_within_precision(num in 1u64..10_000, den in 1u64..10_000, value in -1_000_000i64..1_000_000i64) {
+            let tb = TimeBase::new(num, den).expect("non-zero");
+            let ms = tb.rescale_i64(value, TimeBase::DEFAULT).expect("small inputs do not overflow");
+            let back = TimeBase::DEFAULT.rescale_i64(ms, tb).expect("small inputs do not overflow");
+            let loss = (value - back).abs();
+            // Integer rescale can lose at most one tick in the target timebase.
+            prop_assert!(loss <= 1.max(den.max(num) as i64));
+        }
+    }
 }

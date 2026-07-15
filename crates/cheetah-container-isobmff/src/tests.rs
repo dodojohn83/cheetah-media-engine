@@ -599,3 +599,21 @@ fn progressive_mp4_video_roundtrip_with_b_frames() {
     let (_, stts_body) = find_box(stbl_body, types::STTS).unwrap();
     assert_eq!(total_duration_from_stts(stts_body), 3 * 3000);
 }
+
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn isobmff_demuxer_arbitrary_bytes_do_not_panic(bytes in prop::collection::vec(0u8..=255, 0..2048)) {
+        let mut demuxer = IsobmffDemuxer::new();
+        demuxer.push(&bytes);
+        for _ in 0..64 {
+            match demuxer.next_event() {
+                Ok(None) => break,
+                Err(_) => break,
+                _ => {}
+            }
+        }
+        let _ = demuxer.next_event();
+    }
+}
