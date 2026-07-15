@@ -49,6 +49,12 @@ function makeFakeOffscreenCanvas(): void {
       };
     }
 
+    convertToBlob(options?: { type?: string; quality?: number }): Promise<Blob> {
+      this.__calls.toBlobCalls.push({ type: options?.type, quality: options?.quality });
+      const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+      return Promise.resolve(new Blob([data], { type: options?.type ?? 'image/png' }));
+    }
+
     toBlob(callback: (blob: Blob | null) => void, type?: string, quality?: number): void {
       this.__calls.toBlobCalls.push({ type, quality });
       const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
