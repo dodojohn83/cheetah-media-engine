@@ -5,7 +5,7 @@
 
 import type { Renderer, RendererConfig, RenderFrame, RendererMetrics, SnapshotOptions, SnapshotResult } from './types';
 import { RendererError } from './types';
-import { encodeSnapshot, type CanvasLike } from './snapshot-encoder';
+import { encodeSnapshot, computeTargetSize, type CanvasLike } from './snapshot-encoder';
 import { Canvas2DRenderer } from './canvas2d';
 import { WebGL2Renderer } from './webgl';
 import { WebGpuRenderer } from './webgpu';
@@ -77,6 +77,7 @@ export class VideoRenderer implements Renderer {
     if (!this.backend) throw new RendererError('not-configured', 'configure() must be called before snapshot()');
     const result = await this.backend.snapshot(opts);
     if (opts.format) {
+      const { width, height } = computeTargetSize(result.width, result.height, opts.maxWidth, opts.maxHeight);
       const blob = await encodeSnapshot(result.data as ImageData | CanvasLike, {
         format: opts.format,
         quality: opts.quality,
@@ -84,7 +85,7 @@ export class VideoRenderer implements Renderer {
         maxHeight: opts.maxHeight,
         includeOverlay: opts.includeOverlay,
       });
-      return { width: result.width, height: result.height, data: blob };
+      return { width, height, data: blob };
     }
     return result;
   }

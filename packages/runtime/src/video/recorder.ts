@@ -120,7 +120,8 @@ class MediaStreamRecorderSession implements RecordingSession {
   private backpressure = false;
   private partial = false;
   private segmentCount = 0;
-  private stopped = false;
+  private finalized = false;
+  private pendingWrites: Promise<void>[] = [];
   private stopPromise: Promise<RecordingResult> | undefined;
   private resolveStop: ((result: RecordingResult) => void) | undefined;
   private rejectStop: ((reason: Error) => void) | undefined;
@@ -153,7 +154,13 @@ class MediaStreamRecorderSession implements RecordingSession {
     this.writer = this.options.target.getWriter();
 
     this.recorder.ondataavailable = (event) => {
-      void this._onData(event.data);
+      const p = this._onData(event.data).finally(() => {
+        const idx = this.pendingWrites.indexOf(p);
+        if (idx !== -1) {
+          this.pendingWrites.splice(idx, 1);
+        }
+      });
+      this.pendingWrites.push(p);
     };
     this.recorder.onstop = () => {
       this._finalize();
@@ -187,7 +194,7 @@ class MediaStreamRecorderSession implements RecordingSession {
   }
 
   private _checkLimits(): void {
-    if (this.stopped) return;
+    if (this.finalized) return;
     const elapsed = performance.now() - this.startTime;
     const maxDuration = this.options.maxDurationMs;
     const maxSize = this.options.maxSizeBytes;
@@ -196,27 +203,30 @@ class MediaStreamRecorderSession implements RecordingSession {
     }
   }
 
-  private _finalize(): void {
-    if (this.stopped) return;
-    this.stopped = true;
-    this._closeWriter();
-    const result: RecordingResult = {
-      bytes: this.bytesWritten,
-      durationMs: Math.max(0, performance.now() - this.startTime),
-      mimeType: this.recorder?.mimeType ?? 'video/webm',
-      filename: this.options.filename ?? 'recording',
-      partial: this.partial,
-      segmentCount: Math.max(1, this.segmentCount),
-    };
-    this.resolveStop?.(result);
+  private _finalize(error?: Error): void {
+    if (this.finalized) return;
+    this.finalized = true;
+    Promise.all(this.pendingWrites).then(() => {
+      this._closeWriter();
+      if (error) {
+        this.rejectStop?.(error);
+      } else {
+        const result: RecordingResult = {
+          bytes: this.bytesWritten,
+          durationMs: Math.max(0, performance.now() - this.startTime),
+          mimeType: this.recorder?.mimeType ?? 'video/webm',
+          filename: this.options.filename ?? 'recording',
+          partial: this.partial,
+          segmentCount: Math.max(1, this.segmentCount),
+        };
+        this.resolveStop?.(result);
+      }
+    });
   }
 
   private _fail(error: Error): void {
-    if (this.stopped) return;
-    this.stopped = true;
     this.partial = true;
-    this._closeWriter();
-    this.rejectStop?.(error);
+    this._finalize(error);
   }
 
   private _closeWriter(): void {
@@ -227,36 +237,48 @@ class MediaStreamRecorderSession implements RecordingSession {
     }
   }
 
+  private _ensureStopPromise(): Promise<RecordingResult> {
+    if (!this.stopPromise) {
+      this.stopPromise = new Promise((resolve, reject) => {
+        this.resolveStop = resolve;
+        this.rejectStop = reject;
+      });
+    }
+    return this.stopPromise;
+  }
+
   stop(): Promise<RecordingResult> {
-    if (this.stopped) {
+    if (this.finalized) {
       return this.stopPromise ?? Promise.reject(new RendererError('stopped', 'Recording already stopped'));
     }
     if (!this.recorder || this.recorder.state === 'inactive') {
       return Promise.reject(new RendererError('stopped', 'Recording is not active'));
     }
-    this.stopPromise = new Promise((resolve, reject) => {
-      this.resolveStop = resolve;
-      this.rejectStop = reject;
-    });
+    const promise = this._ensureStopPromise();
     try {
       this.recorder.stop();
     } catch (cause) {
       this._fail(cause instanceof Error ? cause : new Error(String(cause)));
     }
-    return this.stopPromise;
+    return promise;
   }
 
   cancel(): Promise<void> {
-    if (this.stopped) return Promise.resolve();
-    this.partial = true;
-    this.stopped = true;
-    try {
-      this.recorder?.stop();
-    } catch {
-      // ignored
+    if (this.finalized) {
+      return this.stopPromise?.then(() => undefined) ?? Promise.resolve();
     }
-    this._closeWriter();
-    return Promise.resolve();
+    this.partial = true;
+    const promise = this._ensureStopPromise().then(() => undefined);
+    try {
+      if (this.recorder && this.recorder.state !== 'inactive') {
+        this.recorder.stop();
+      } else {
+        this._finalize();
+      }
+    } catch {
+      this._finalize();
+    }
+    return promise;
   }
 
   getStats(): RecordingStats {

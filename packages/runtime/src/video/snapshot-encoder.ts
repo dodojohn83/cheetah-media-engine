@@ -124,7 +124,19 @@ export async function encodeSnapshot(
   }
 
   if (isImageData(source)) {
-    ctx.putImageData(source, 0, 0);
+    if (width === sourceWidth && height === sourceHeight) {
+      ctx.putImageData(source, 0, 0);
+    } else {
+      // putImageData copies pixels 1:1 and does not scale. Draw the raw pixels
+      // onto an intermediate source-sized canvas and then scale to the target.
+      const srcCanvas = createCanvas(sourceWidth, sourceHeight);
+      const srcCtx = srcCanvas.getContext('2d');
+      if (!srcCtx) {
+        throw new RendererError('no-context', 'Cannot create intermediate 2D context for snapshot scaling');
+      }
+      srcCtx.putImageData(source, 0, 0);
+      ctx.drawImage(srcCanvas, 0, 0, width, height);
+    }
   } else if (isCanvasLike(source)) {
     ctx.drawImage(source, 0, 0, width, height);
   } else {

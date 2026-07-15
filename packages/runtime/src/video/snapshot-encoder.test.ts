@@ -182,4 +182,26 @@ describe('encodeSnapshot', () => {
     expect(calls!.toBlobCalls[0]?.type).toBe('image/png');
     expect(calls!.toBlobCalls[0]?.quality).toBeUndefined();
   });
+
+  it('scales ImageData down using an intermediate canvas', async () => {
+    const ctor = (globalThis as unknown as { OffscreenCanvas?: { __instances?: { width: number; height: number; __calls: FakeCanvasStorage }[] } })
+      .OffscreenCanvas;
+    const before = ctor?.__instances?.length ?? 0;
+    const image = new ImageData(new Uint8ClampedArray(4 * 8 * 8), 8, 8);
+    await encodeSnapshot(image, { format: 'png', maxWidth: 4, maxHeight: 4 });
+
+    const instances = ctor?.__instances;
+    expect(instances).toBeDefined();
+    const created = instances!.slice(before);
+    expect(created.length).toBe(2);
+    // encodeSnapshot creates the target canvas first, then a source-sized
+    // intermediate canvas to draw/scale the ImageData.
+    const targetCanvas = created[0];
+    const sourceCanvas = created[1];
+    expect(sourceCanvas?.width).toBe(8);
+    expect(sourceCanvas?.height).toBe(8);
+    expect(targetCanvas?.width).toBe(4);
+    expect(targetCanvas?.height).toBe(4);
+    expect(targetCanvas?.__calls.drawImageCalls.length).toBe(1);
+  });
 });
