@@ -7,6 +7,9 @@
 
 use alloc::vec::Vec;
 
+use crate::latency::LatencyController;
+use crate::recovery::{RecoveryAction, RecoveryDecision, RecoveryPolicy, RecoveryTracker};
+use crate::resource::{ResourceKind, ResourceLedger};
 use cheetah_media_types::{Recoverability, StreamEpoch, TrackId, TrackInfo};
 
 /// Player lifecycle states.
@@ -108,6 +111,19 @@ pub enum EngineEvent {
     Eof,
     /// An error was raised.
     Error(EngineError),
+    /// A recovery action was scheduled for a recoverable error.
+    RecoveryScheduled {
+        action: RecoveryAction,
+        stage: &'static str,
+        code: u32,
+        delay_ms: u64,
+        attempts_left: u32,
+    },
+    /// Resources were leaked across a stop/destroy boundary.
+    ResourceWarning {
+        kinds: alloc::vec::Vec<ResourceKind>,
+        total: u64,
+    },
     /// The stop sequence completed.
     Stopped,
     /// The engine was destroyed.
@@ -140,15 +156,29 @@ pub enum NetworkEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendEvent {
     /// A track was discovered.
-    Track(TrackInfo),
+    Track { epoch: StreamEpoch, info: TrackInfo },
     /// Track configuration changed.
-    ConfigChanged { track_id: TrackId, generation: u64 },
+    ConfigChanged {
+        epoch: StreamEpoch,
+        track_id: TrackId,
+        generation: u64,
+    },
     /// A decoder is ready.
-    DecoderReady { track_id: TrackId },
-    /// A decoder reported a fatal error.
-    DecoderError { track_id: TrackId, code: u32 },
+    DecoderReady {
+        epoch: StreamEpoch,
+        track_id: TrackId,
+    },
+    /// A decoder reported an error.
+    DecoderError {
+        epoch: StreamEpoch,
+        track_id: TrackId,
+        code: u32,
+    },
     /// A frame was rendered.
-    Rendered { track_id: TrackId },
+    Rendered {
+        epoch: StreamEpoch,
+        track_id: TrackId,
+    },
     /// The backend stopped.
     Stopped,
 }
@@ -212,6 +242,15 @@ pub struct Engine {
     pre_rebuffer_state: PlayerState,
     /// Number of tracks in the current session.
     track_count: u32,
+    /// Recovery policy and attempt tracker.
+    recovery_policy: RecoveryPolicy,
+    recovery_tracker: RecoveryTracker,
+    /// Resource ownership ledger.
+    ledger: ResourceLedger,
+    /// Latency controller.
+    latency: LatencyController,
+    /// Monotonic clock in milliseconds used for recovery/backoff.
+    now_ms: u64,
 }
 
 impl Default for Engine {
@@ -231,7 +270,39 @@ impl Engine {
             has_config: false,
             pre_rebuffer_state: PlayerState::Idle,
             track_count: 0,
+            recovery_policy: RecoveryPolicy::default_player(),
+            recovery_tracker: RecoveryTracker::default(),
+            ledger: ResourceLedger::new(),
+            latency: LatencyController::default(),
+            now_ms: 0,
         }
+    }
+
+    /// Current recovery policy.
+    pub fn recovery_policy(&self) -> &RecoveryPolicy {
+        &self.recovery_policy
+    }
+
+    /// Current resource ledger.
+    pub fn ledger(&self) -> &ResourceLedger {
+        &self.ledger
+    }
+
+    /// Mutable resource ledger.
+    pub fn ledger_mut(&mut self) -> &mut ResourceLedger {
+        &mut self.ledger
+    }
+
+    /// Current latency controller.
+    pub fn latency_controller(&self) -> &LatencyController {
+        &self.latency
+    }
+
+    /// Advance internal time. Should be driven by the caller's monotonic clock.
+    pub fn tick(&mut self, now_ms: u64) {
+        self.now_ms = now_ms;
+        let cutoff = now_ms.saturating_sub(self.recovery_policy.max_window_ms());
+        self.recovery_tracker.prune(cutoff);
     }
 
     /// Current player state.
@@ -277,11 +348,7 @@ impl Engine {
     fn on_load(&mut self, req: LoadRequest, out: &mut EngineOutput) {
         match self.state {
             PlayerState::Idle | PlayerState::Failed => {
-                self.epoch = self.epoch.next();
-                self.has_track = false;
-                self.has_config = false;
-                self.track_count = 0;
-                self.pre_rebuffer_state = PlayerState::Idle;
+                self.start_new_session(out);
                 let _ = req; // request is retained for logging/telemetry if needed
                 self.transition(PlayerState::Loading, out);
             }
@@ -293,16 +360,34 @@ impl Engine {
             | PlayerState::Stopping => {
                 // A new load while another session is active is a stop+reload.
                 self.on_stop(out);
-                self.epoch = self.epoch.next();
-                self.has_track = false;
-                self.has_config = false;
-                self.track_count = 0;
+                self.start_new_session(out);
                 self.transition(PlayerState::Loading, out);
             }
             PlayerState::Destroyed => {
                 out.error(EngineError::Destroyed);
             }
         }
+    }
+
+    fn start_new_session(&mut self, out: &mut EngineOutput) {
+        self.epoch = self.epoch.next();
+        self.has_track = false;
+        self.has_config = false;
+        self.track_count = 0;
+        self.pre_rebuffer_state = PlayerState::Idle;
+        self.recovery_tracker = RecoveryTracker::default();
+        self.latency = LatencyController::default();
+        // Any resources still owned from a previous session are a leak.
+        self.reset_ledger(out);
+    }
+
+    fn reset_ledger(&mut self, out: &mut EngineOutput) {
+        if !self.ledger.is_zero() {
+            let kinds = self.ledger.open_kinds();
+            let total = self.ledger.total();
+            out.push(EngineEvent::ResourceWarning { kinds, total });
+        }
+        self.ledger.reset();
     }
 
     fn on_play(&mut self, out: &mut EngineOutput) {
@@ -356,6 +441,10 @@ impl Engine {
                 out.error(EngineError::Destroyed);
             }
         }
+        // Stop should release all resources; warn and reset if the ledger is not empty.
+        if self.state == PlayerState::Stopping && !self.ledger.is_zero() {
+            self.reset_ledger(out);
+        }
     }
 
     fn on_destroy(&mut self, out: &mut EngineOutput) {
@@ -364,6 +453,8 @@ impl Engine {
                 // idempotent; no-op
             }
             _ => {
+                // Destroy must end with a clean ledger.
+                self.reset_ledger(out);
                 self.transition(PlayerState::Destroyed, out);
                 out.push(EngineEvent::Destroyed);
             }
@@ -395,21 +486,31 @@ impl Engine {
                 }
                 _ => {}
             },
-            NetworkEvent::Fatal { code } => self.fail(code, "network", out),
+            NetworkEvent::Fatal { code } => {
+                self.recover_or_fail(code, "network", out);
+            }
         }
     }
 
     fn on_backend(&mut self, ev: BackendEvent, out: &mut EngineOutput) {
+        // Generation barrier: ignore events from a previous session.
+        if let Some(epoch) = ev.epoch()
+            && epoch != self.epoch
+        {
+            return;
+        }
+
         match ev {
-            BackendEvent::Track(track) => {
+            BackendEvent::Track { info, .. } => {
                 self.has_track = true;
                 self.track_count += 1;
-                out.push(EngineEvent::TrackAdded(track.clone()));
+                out.push(EngineEvent::TrackAdded(info.clone()));
                 self.maybe_enter_preroll(out);
             }
             BackendEvent::ConfigChanged {
                 track_id,
                 generation,
+                ..
             } => {
                 self.has_config = true;
                 out.push(EngineEvent::TrackConfigChanged {
@@ -421,7 +522,9 @@ impl Engine {
             BackendEvent::DecoderReady { .. } => {
                 // Ready does not change state; tracks/config still drive preroll.
             }
-            BackendEvent::DecoderError { code, .. } => self.fail(code, "decoder", out),
+            BackendEvent::DecoderError { code, .. } => {
+                self.recover_or_fail(code, "decoder", out);
+            }
             BackendEvent::Rendered { .. } => {
                 // Rendered events are consumed by metrics/clock; no state change.
             }
@@ -446,6 +549,67 @@ impl Engine {
             self.transition(PlayerState::Failed, out);
         }
     }
+
+    fn recover_or_fail(&mut self, code: u32, stage: &'static str, out: &mut EngineOutput) {
+        if self.state == PlayerState::Destroyed || self.state == PlayerState::Failed {
+            return;
+        }
+
+        let decision = self
+            .recovery_policy
+            .decide(code, stage, self.now_ms, &|action| {
+                self.recovery_tracker.attempts(code, stage, action)
+            });
+
+        match decision {
+            RecoveryDecision::Retry {
+                action,
+                delay_ms,
+                attempts_left,
+            } => {
+                self.recovery_tracker
+                    .record(code, stage, action, self.now_ms);
+                if action == RecoveryAction::ReconnectSource && self.state != PlayerState::Loading {
+                    // Network reconnect is treated as a transient rebuffer.
+                    self.pre_rebuffer_state = if self.state == PlayerState::Rebuffering {
+                        self.pre_rebuffer_state
+                    } else {
+                        self.state
+                    };
+                    self.transition(PlayerState::Rebuffering, out);
+                }
+                out.push(EngineEvent::RecoveryScheduled {
+                    action,
+                    stage,
+                    code,
+                    delay_ms,
+                    attempts_left,
+                });
+            }
+            RecoveryDecision::Escalate { action } => {
+                // The escalation chain reached its end without a retry budget.
+                // Record the final attempt and fail.
+                self.recovery_tracker
+                    .record(code, stage, action, self.now_ms);
+                self.fail(code, stage, out);
+            }
+            RecoveryDecision::Fatal => self.fail(code, stage, out),
+        }
+    }
+}
+
+impl BackendEvent {
+    /// The epoch this event belongs to, if any.
+    fn epoch(&self) -> Option<StreamEpoch> {
+        match self {
+            Self::Track { epoch, .. } => Some(*epoch),
+            Self::ConfigChanged { epoch, .. } => Some(*epoch),
+            Self::DecoderReady { epoch, .. } => Some(*epoch),
+            Self::DecoderError { epoch, .. } => Some(*epoch),
+            Self::Rendered { epoch, .. } => Some(*epoch),
+            Self::Stopped => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -462,13 +626,16 @@ mod tests {
         )
     }
 
-    fn load(engine: &mut Engine) -> EngineOutput {
+    fn load(engine: &mut Engine) -> StreamEpoch {
+        let e0 = engine.epoch();
         engine
             .apply(EngineCommand::Load(LoadRequest {
                 url: "http://example.com/test.flv",
                 is_live: false,
             }))
-            .unwrap()
+            .unwrap();
+        assert_eq!(engine.epoch().get(), e0.get() + 1);
+        engine.epoch()
     }
 
     fn transition_events(out: &EngineOutput) -> Vec<(PlayerState, PlayerState)> {
@@ -481,23 +648,33 @@ mod tests {
             .collect()
     }
 
+    fn recovery_events(out: &EngineOutput) -> Vec<RecoveryAction> {
+        out.events
+            .iter()
+            .filter_map(|e| match e {
+                EngineEvent::RecoveryScheduled { action, .. } => Some(*action),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn lifecycle_idle_to_playing() {
         let mut engine = Engine::new();
         assert_eq!(engine.state(), PlayerState::Idle);
 
-        let out = load(&mut engine);
-        assert_eq!(
-            transition_events(&out),
-            vec![(PlayerState::Idle, PlayerState::Loading)]
-        );
+        let epoch = load(&mut engine);
 
         let out = engine
-            .apply(EngineCommand::Backend(BackendEvent::Track(track())))
+            .apply(EngineCommand::Backend(BackendEvent::Track {
+                epoch,
+                info: track(),
+            }))
             .unwrap();
         assert!(out.events.contains(&EngineEvent::TrackAdded(track())));
         let out = engine
             .apply(EngineCommand::Backend(BackendEvent::ConfigChanged {
+                epoch,
                 track_id: TrackId::new(1).unwrap(),
                 generation: 1,
             }))
@@ -568,24 +745,60 @@ mod tests {
             Err(EngineError::Destroyed)
         ));
         assert_eq!(engine.state(), PlayerState::Destroyed);
+        assert!(engine.ledger().is_zero());
     }
 
     #[test]
-    fn fatal_network_moves_to_failed() {
+    fn network_fatal_schedules_reconnect_while_loading() {
         let mut engine = Engine::new();
+        engine.tick(1000);
         load(&mut engine);
+        let out = engine
+            .apply(EngineCommand::Network(NetworkEvent::Fatal { code: 42 }))
+            .unwrap();
+        // During the initial load the engine stays in Loading and lets the source retry.
+        assert!(transition_events(&out).is_empty());
+        assert_eq!(engine.state(), PlayerState::Loading);
+        assert_eq!(recovery_events(&out), vec![RecoveryAction::ReconnectSource]);
+    }
+
+    #[test]
+    fn network_fatal_rebuffers_while_playing_then_becomes_fatal() {
+        let mut engine = Engine::new();
+        let epoch = load(&mut engine);
+        engine
+            .apply(EngineCommand::Backend(BackendEvent::Track {
+                epoch,
+                info: track(),
+            }))
+            .unwrap();
+        engine
+            .apply(EngineCommand::Backend(BackendEvent::ConfigChanged {
+                epoch,
+                track_id: TrackId::new(1).unwrap(),
+                generation: 1,
+            }))
+            .unwrap();
+        engine.apply(EngineCommand::Play).unwrap();
+
+        // The first fatal network error moves to Rebuffering and schedules reconnect.
         let out = engine
             .apply(EngineCommand::Network(NetworkEvent::Fatal { code: 42 }))
             .unwrap();
         assert_eq!(
             transition_events(&out),
-            vec![(PlayerState::Loading, PlayerState::Failed)]
+            vec![(PlayerState::Playing, PlayerState::Rebuffering)]
         );
-        assert!(
-            out.events
-                .iter()
-                .any(|e| matches!(e, EngineEvent::Error(EngineError::Backend { code: 42, .. })))
-        );
+        assert_eq!(recovery_events(&out), vec![RecoveryAction::ReconnectSource]);
+
+        // Burn the reconnect budget.
+        for t in 1..=5 {
+            engine.tick(1000 + t * 1000);
+            engine
+                .apply(EngineCommand::Network(NetworkEvent::Fatal { code: 42 }))
+                .unwrap();
+        }
+        assert_eq!(engine.state(), PlayerState::Failed);
     }
 
     #[test]
@@ -603,22 +816,25 @@ mod tests {
     fn load_increments_epoch() {
         let mut engine = Engine::new();
         let e0 = engine.epoch();
-        load(&mut engine);
-        let e1 = engine.epoch();
+        let e1 = load(&mut engine);
         assert_eq!(e1.get(), e0.get() + 1);
-        load(&mut engine);
-        assert_eq!(engine.epoch().get(), e1.get() + 1);
+        let e2 = load(&mut engine);
+        assert_eq!(e2.get(), e1.get() + 1);
     }
 
     #[test]
     fn rebuffer_and_recover() {
         let mut engine = Engine::new();
-        load(&mut engine);
+        let epoch = load(&mut engine);
         engine
-            .apply(EngineCommand::Backend(BackendEvent::Track(track())))
+            .apply(EngineCommand::Backend(BackendEvent::Track {
+                epoch,
+                info: track(),
+            }))
             .unwrap();
         engine
             .apply(EngineCommand::Backend(BackendEvent::ConfigChanged {
+                epoch,
                 track_id: TrackId::new(1).unwrap(),
                 generation: 1,
             }))
@@ -640,5 +856,99 @@ mod tests {
             transition_events(&out),
             vec![(PlayerState::Rebuffering, PlayerState::Playing)]
         );
+    }
+
+    #[test]
+    fn stale_backend_events_are_ignored_after_new_load() {
+        let mut engine = Engine::new();
+        let epoch1 = load(&mut engine);
+        // Simulate a new load before the old backend events arrive.
+        let epoch2 = load(&mut engine);
+        assert_ne!(epoch1, epoch2);
+
+        let out = engine
+            .apply(EngineCommand::Backend(BackendEvent::Track {
+                epoch: epoch1,
+                info: track(),
+            }))
+            .unwrap();
+        assert!(!out.events.contains(&EngineEvent::TrackAdded(track())));
+        assert_eq!(engine.state(), PlayerState::Loading);
+    }
+
+    #[test]
+    fn stop_warns_on_resource_leak() {
+        let mut engine = Engine::new();
+        load(&mut engine);
+        engine.ledger_mut().acquire(ResourceKind::Network);
+        engine.ledger_mut().acquire(ResourceKind::Timer);
+        let out = engine.apply(EngineCommand::Stop).unwrap();
+        assert!(
+            out.events
+                .iter()
+                .any(|e| matches!(e, EngineEvent::ResourceWarning { .. }))
+        );
+        assert!(engine.ledger().is_zero());
+    }
+
+    #[test]
+    fn decoder_error_schedules_fallback() {
+        let mut engine = Engine::new();
+        engine.tick(1000);
+        let epoch = load(&mut engine);
+        engine
+            .apply(EngineCommand::Backend(BackendEvent::ConfigChanged {
+                epoch,
+                track_id: TrackId::new(1).unwrap(),
+                generation: 1,
+            }))
+            .unwrap();
+        let out = engine
+            .apply(EngineCommand::Backend(BackendEvent::DecoderError {
+                epoch,
+                track_id: TrackId::new(1).unwrap(),
+                code: 7,
+            }))
+            .unwrap();
+        assert_eq!(recovery_events(&out), vec![RecoveryAction::FallbackBackend]);
+        // State remains Loading because the error is recoverable and we are not playing yet.
+        assert_eq!(engine.state(), PlayerState::Loading);
+    }
+
+    #[test]
+    fn repeated_load_cycles_keep_ledger_clean() {
+        let mut engine = Engine::new();
+        for i in 0..1_000 {
+            load(&mut engine);
+            engine.apply(EngineCommand::Stop).unwrap();
+            engine
+                .apply(EngineCommand::Backend(BackendEvent::Stopped))
+                .unwrap();
+            engine.tick(i as u64 + 1);
+        }
+        assert!(engine.ledger().is_zero());
+    }
+
+    #[test]
+    fn repeated_backend_faults_do_not_grow_state_without_bound() {
+        let mut engine = Engine::new();
+        engine.tick(1_000_000);
+        let epoch = load(&mut engine);
+        // Apply 10,000 decoder faults with time moving forward enough that
+        // the tracker prunes old entries.
+        for i in 0..10_000 {
+            engine.tick(1_000_000 + i * 1_000);
+            engine
+                .apply(EngineCommand::Backend(BackendEvent::DecoderError {
+                    epoch,
+                    track_id: TrackId::new(1).unwrap(),
+                    code: 7,
+                }))
+                .unwrap();
+            if engine.state() == PlayerState::Failed {
+                break;
+            }
+        }
+        assert!(engine.ledger().is_zero());
     }
 }

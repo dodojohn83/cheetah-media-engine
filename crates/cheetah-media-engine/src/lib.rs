@@ -7,9 +7,18 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 extern crate alloc;
 
+pub mod latency;
+pub mod recovery;
+pub mod resource;
 pub mod scheduler;
 pub mod state;
 
+pub use latency::{LatencyAction, LatencyBreakdown, LatencyController, LatencyTarget};
+pub use recovery::{
+    ClassificationRule, RecoveryAction, RecoveryDecision, RecoveryPolicy, RecoveryTracker,
+    RetryBudget,
+};
+pub use resource::{ResourceGuard, ResourceKind, ResourceLedger};
 pub use scheduler::{BoundedQueue, Priority, QueueConfig, QueueName, Scheduler, SchedulerEvent};
 pub use state::{
     BackendEvent, Engine, EngineCommand, EngineError, EngineEvent, EngineOutput, LoadRequest,
