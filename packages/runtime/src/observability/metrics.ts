@@ -111,6 +111,7 @@ class Gauge implements BaseMetric {
 class Histogram implements BaseMetric {
   private buckets: number[];
   private counts: number[];
+  private overflowCount = 0;
   private total = 0;
   private sum = 0;
   private min = Infinity;
@@ -137,13 +138,13 @@ class Histogram implements BaseMetric {
         return;
       }
     }
-    // Value exceeds the last finite bucket; add an implicit +Inf bucket at end.
-    const lastIndex = this.counts.length - 1;
-    this.counts[lastIndex] = (this.counts[lastIndex] ?? 0) + 1;
+    // Value exceeds the last finite bucket; track it separately for percentile accuracy.
+    this.overflowCount += 1;
   }
 
   reset(): void {
     this.counts.fill(0);
+    this.overflowCount = 0;
     this.total = 0;
     this.sum = 0;
     this.min = Infinity;
@@ -156,6 +157,10 @@ class Histogram implements BaseMetric {
     for (let i = 0; i < this.buckets.length; i += 1) {
       cumulative += this.counts[i]!;
       buckets.push({ upperBound: this.buckets[i]!, count: cumulative });
+    }
+    if (this.overflowCount > 0) {
+      cumulative += this.overflowCount;
+      buckets.push({ upperBound: this.max, count: cumulative });
     }
     return {
       type: 'histogram',
@@ -176,11 +181,14 @@ class Histogram implements BaseMetric {
   private percentile(p: number): number {
     if (this.total === 0) return 0;
     const target = p * this.total;
+    const hasOverflow = this.overflowCount > 0;
+    const bounds = hasOverflow ? [...this.buckets, this.max] : [...this.buckets];
+    const counts = hasOverflow ? [...this.counts, this.overflowCount] : [...this.counts];
     let previousCount = 0;
     let previousBound = 0;
-    for (let i = 0; i < this.buckets.length; i += 1) {
-      const count = this.counts[i]!;
-      const bucketUpper = this.buckets[i]!;
+    for (let i = 0; i < bounds.length; i += 1) {
+      const count = counts[i]!;
+      const bucketUpper = bounds[i]!;
       const cumulative = previousCount + count;
       if (cumulative >= target) {
         const bucketLower = previousBound;
@@ -191,7 +199,7 @@ class Histogram implements BaseMetric {
       previousCount = cumulative;
       previousBound = bucketUpper;
     }
-    return this.buckets[this.buckets.length - 1]!;
+    return bounds[bounds.length - 1]!;
   }
 }
 

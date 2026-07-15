@@ -60,6 +60,21 @@ describe('MetricRegistry', () => {
     expect(hist.percentiles.p95).toBeLessThanOrEqual(10);
   });
 
+  it('places overflow values in a separate bucket for percentile accuracy', () => {
+    const registry = new MetricRegistry();
+    const histogram = registry.histogram('decode-latency', 'decode', 'ms');
+    for (let i = 0; i < 50; i += 1) histogram.record(100); // within finite buckets
+    for (let i = 0; i < 50; i += 1) histogram.record(70_000); // overflow
+    const snapshot = registry.snapshot();
+    const hist = snapshot.metrics.decode?.['decode-latency'];
+    if (hist?.type !== 'histogram') throw new Error('expected histogram');
+    expect(hist.count).toBe(100);
+    expect(hist.buckets[hist.buckets.length - 1]!.upperBound).toBe(70_000);
+    // The overflow bucket is distinct and tail percentiles are not capped at the last finite boundary.
+    expect(hist.percentiles.p95).toBeGreaterThan(60_000);
+    expect(hist.percentiles.p99).toBeGreaterThan(60_000);
+  });
+
   it('resets all metrics or a single category', () => {
     const registry = new MetricRegistry();
     registry.counter('a', 'source').inc(3);
