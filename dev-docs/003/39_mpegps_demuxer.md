@@ -77,3 +77,5 @@ impl MpegPsDemuxer {
   - 畸形/空输入返回稳定错误；
   - 音频 AAC PES 识别；
 - [x] 无 `todo!()`/`unimplemented!()`；对外部输入无 `unwrap()`/`expect()`。
+
+PR: `wp/39-mpegps-demuxer` → #40。
