@@ -913,8 +913,8 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   private handleCaptureError(error: CaptureError): void {
     this._intercomActive = false;
-    void this.cleanupIntercom();
     this.reportIntercomError(error, false);
+    void this.cleanupIntercom();
   }
 
   private reportIntercomError(error: Error, fatal: boolean): void {
