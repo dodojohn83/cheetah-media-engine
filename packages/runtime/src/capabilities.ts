@@ -26,6 +26,8 @@ export interface CapabilityReport {
   readonly webgl2: boolean;
   readonly canvas2d: boolean;
   readonly videoFrame: boolean;
+  /** `true` when `WebTransport` global is present. */
+  readonly webTransport: boolean;
   /** `true` when the `WebAssembly` global is present and a small Memory can be created. */
   readonly wasm: boolean;
 
@@ -51,6 +53,12 @@ export interface ProbeDetails {
     readonly canvas2d: boolean;
     readonly videoFrame: boolean;
     readonly preferredPixelFormat: string | undefined;
+  };
+  readonly webTransport: {
+    readonly datagrams: boolean;
+    readonly incomingUnidirectionalStreams: boolean;
+    readonly incomingBidirectionalStreams: boolean;
+    readonly byob: boolean;
   };
 }
 
@@ -84,6 +92,60 @@ function hasThreadsSupport(): boolean {
   if (!hasGlobal('Atomics')) return false;
   try {
     new SharedArrayBuffer(4);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasWebTransportSupport(): boolean {
+  if (!hasGlobal('WebTransport')) return false;
+  const ctor = getGlobal<typeof globalThis.WebTransport>('WebTransport');
+  if (typeof ctor !== 'function') return false;
+  try {
+    // Safe, no network is performed.
+    return 'prototype' in ctor;
+  } catch {
+    return false;
+  }
+}
+
+function probeWebTransport(): ProbeDetails['webTransport'] {
+  const result = {
+    datagrams: false,
+    incomingUnidirectionalStreams: false,
+    incomingBidirectionalStreams: false,
+    byob: false,
+  };
+  const ctor = getGlobal<typeof globalThis.WebTransport>('WebTransport');
+  if (typeof ctor !== 'function') return result;
+  const proto = ctor.prototype as unknown as Record<string, unknown>;
+  if (!proto) return result;
+  const hasGetter = (name: string): boolean => {
+    try {
+      const desc = Object.getOwnPropertyDescriptor(proto, name);
+      return desc !== undefined && (typeof desc.get === 'function' || name in proto);
+    } catch {
+      return false;
+    }
+  };
+  result.datagrams = hasGetter('datagrams');
+  result.incomingUnidirectionalStreams = hasGetter('incomingUnidirectionalStreams');
+  result.incomingBidirectionalStreams = hasGetter('incomingBidirectionalStreams');
+  result.byob = hasByobReaderSupport();
+  return result;
+}
+
+function hasByobReaderSupport(): boolean {
+  if (!hasGlobal('ReadableStream')) return false;
+  try {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    });
+    const reader = stream.getReader({ mode: 'byob' });
+    reader.releaseLock();
     return true;
   } catch {
     return false;
@@ -129,6 +191,7 @@ export function detectCapabilities(): CapabilityReport {
   const webgl2 = hasGlobal('WebGL2RenderingContext');
   const canvas2d = hasGlobal('HTMLCanvasElement');
   const videoFrame = hasGlobal('VideoFrame');
+  const webTransport = hasWebTransportSupport();
   const wasm = hasWasmSupport();
 
   const reasons: string[] = [];
@@ -143,6 +206,7 @@ export function detectCapabilities(): CapabilityReport {
   if (webgpu) reasons.push('webgpu');
   if (webgl2) reasons.push('webgl2');
   if (canvas2d) reasons.push('canvas2d');
+  if (webTransport) reasons.push('webtransport-api');
 
   return {
     secureContext,
@@ -159,6 +223,7 @@ export function detectCapabilities(): CapabilityReport {
     webgl2,
     canvas2d,
     videoFrame,
+    webTransport,
     wasm,
     fingerprint: computeFingerprint(),
     timestamp: performance.now(),
@@ -333,6 +398,7 @@ export async function probeCapabilities(): Promise<ProbedCapabilityReport> {
   const wasmThreads = probeWasmThreads();
   const wasmSharedMemory = probeWasmSharedMemory();
   const renderer = probeRenderer();
+  const webTransport = probeWebTransport();
 
   const webCodecsMap: Record<string, boolean> = {};
   for (const [codec, supported] of Object.entries(webCodecsVideo)) {
@@ -346,6 +412,9 @@ export async function probeCapabilities(): Promise<ProbedCapabilityReport> {
   const reasons = [...base.reasons];
   if (Object.values(webCodecsMap).some(Boolean)) reasons.push('webcodecs-config-supported');
   if (Object.values(mse).some(Boolean)) reasons.push('mse-codec-supported');
+  if (webTransport.incomingUnidirectionalStreams || webTransport.datagrams) {
+    reasons.push('webtransport-supported');
+  }
 
   return {
     ...base,
@@ -361,6 +430,7 @@ export async function probeCapabilities(): Promise<ProbedCapabilityReport> {
         memoryLimitPages,
       },
       renderer,
+      webTransport,
     },
   };
 }
