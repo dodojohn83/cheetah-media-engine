@@ -356,6 +356,37 @@ fn video_es_chunks_stay_bounded_across_pes() {
     );
 }
 
+#[test]
+fn malformed_pes_header_is_skipped() {
+    // A bounded video PES whose header_data_length (5) exceeds the bytes
+    // actually available in the packet. parse_pes_header returns NeedMoreData,
+    // but the full packet is already buffered so the demuxer must skip it.
+    let mut data = Vec::new();
+    data.extend_from_slice(&[
+        0x00, 0x00, 0x01, 0xE0, // video stream start code
+        0x00, 0x07, // packet_length = 7 (only 7 bytes after this)
+        0x81, 0x80, 0x05, // flags + header_data_length = 5
+        0x21, 0x00, 0x01, 0x00, // only 4 optional bytes (need 5)
+    ]);
+    data.extend_from_slice(&make_video_pes(&[0x00, 0x00, 0x00, 0x01, 0x09]));
+
+    let mut demuxer = MpegPsDemuxer::new(MpegPsConfig::h264());
+    demuxer.push(&data);
+    demuxer.end().unwrap();
+
+    let packets: Vec<_> = collect_events(&mut demuxer)
+        .into_iter()
+        .filter_map(|e| match e {
+            MpegPsEvent::Packet(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !packets.is_empty(),
+        "demuxer should recover after malformed PES"
+    );
+}
+
 fn build_adts_frame(sample_rate: u32, channels: u8, raw_len: usize) -> Vec<u8> {
     use cheetah_media_bitstream::aac::AdtsHeader;
 

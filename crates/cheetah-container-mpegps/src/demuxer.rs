@@ -302,13 +302,18 @@ impl MpegPsDemuxer {
 
         let header = match parse_pes_header(&self.buffer[..pes_end]) {
             Ok(h) => h,
-            Err(MpegPsError::NeedMoreData) => return Ok(false),
+            Err(MpegPsError::NeedMoreData) => {
+                // By the time we reach here `pes_end` is fixed (bounded packet)
+                // or is the known end of an unbounded packet. Needing more data
+                // for the header means the packet is malformed; skip it rather
+                // than waiting forever for bytes that can never arrive.
+                self.buffer.drain(0..pes_end);
+                return Ok(true);
+            }
             Err(e) => return Err(e),
         };
 
-        if header.header_size > pes_end {
-            return Ok(false);
-        }
+        debug_assert!(header.header_size <= pes_end);
 
         let payload = self.buffer[header.header_size..pes_end].to_vec();
         let media_time = MediaTime::new(header.pts, header.dts, None, TimeBase::TS_90K);
