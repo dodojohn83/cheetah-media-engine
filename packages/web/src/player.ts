@@ -71,7 +71,21 @@ export type CheetahPlayerEventType =
   | 'warning'
   | 'error'
   | 'recording'
-  | 'ptz';
+  | 'ptz'
+  | 'metadata';
+
+/** A single metadata item extracted from a stream or injected by an external caller. */
+export interface MetadataItem {
+  readonly source: number;
+  readonly key: number;
+  readonly timestampMs?: number;
+  readonly value: Uint8Array | string;
+}
+
+/** Details for a `metadata` player event. */
+export interface MetadataEventDetails {
+  readonly items: readonly MetadataItem[];
+}
 
 /** Base event emitted to application listeners. */
 export interface CheetahPlayerEvent<T extends CheetahPlayerEventType = CheetahPlayerEventType> {
@@ -617,6 +631,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
     if (normalized === 'recording') {
       this.emit('recording', details);
+      return;
+    }
+
+    if (normalized === 'metadata') {
+      this.emit('metadata', details);
       return;
     }
 

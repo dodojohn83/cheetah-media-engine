@@ -163,6 +163,15 @@ export const styles = /*css*/ `
     z-index: 1;
   }
 
+  .overlay-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+
   .watermark-item,
   .watermark-tile-container {
     position: absolute;

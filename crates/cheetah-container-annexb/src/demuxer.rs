@@ -2,9 +2,10 @@
 
 use alloc::collections::VecDeque;
 use alloc::vec::Vec;
+use cheetah_media_bitstream::{parse_sei, unescape_rbsp};
 use cheetah_media_types::{
-    CodecId, MediaPacket, MediaTime, PacketFlags, SequenceNumber, StreamEpoch, TimeBase, Timestamp,
-    TrackId, TrackInfo, TrackKind,
+    CodecId, MediaPacket, MediaTime, MetadataItem, PacketFlags, SequenceNumber, StreamEpoch,
+    TimeBase, Timestamp, TrackId, TrackInfo, TrackKind,
 };
 
 use crate::error::AnnexbError;
@@ -65,6 +66,8 @@ pub enum AnnexbEvent {
     Track(TrackInfo),
     /// A compressed media packet.
     Packet(MediaPacket<'static>),
+    /// Metadata extracted from SEI or other non-VCL NAL units.
+    Metadata(Vec<MetadataItem>),
     /// End of stream.
     Eof,
 }
@@ -254,6 +257,16 @@ impl AnnexBDemuxer {
             return Ok(());
         }
 
+        if self.is_sei(&nal) {
+            if let Some(items) = self.extract_sei_metadata(&nal)
+                && !items.is_empty()
+            {
+                self.pending_events.push_back(AnnexbEvent::Metadata(items));
+            }
+            // SEI NALs are not forwarded as video packets.
+            return Ok(());
+        }
+
         if self.param_sets.consume(&nal) {
             // Only emit a Track once a complete decoder configuration is available.
             if self.param_sets.is_complete() {
@@ -274,6 +287,42 @@ impl AnnexBDemuxer {
         let packet = self.new_packet(nal, is_keyframe);
         self.pending_events.push_back(AnnexbEvent::Packet(packet));
         Ok(())
+    }
+
+    /// Return true for H.264 SEI (NAL type 6) and H.265 SEI (NAL types 39/40).
+    fn is_sei(&self, nal: &[u8]) -> bool {
+        match self.config.codec {
+            CodecId::H264 => {
+                if nal.is_empty() {
+                    return false;
+                }
+                (nal[0] & 0x1f) == 6
+            }
+            CodecId::H265 => {
+                if nal.len() < 2 {
+                    return false;
+                }
+                let nal_type = (nal[0] >> 1) & 0x3f;
+                matches!(nal_type, 39 | 40)
+            }
+            _ => false,
+        }
+    }
+
+    fn extract_sei_metadata(&self, nal: &[u8]) -> Option<Vec<MetadataItem>> {
+        let payload = match self.config.codec {
+            CodecId::H264 if nal.len() > 1 => &nal[1..],
+            CodecId::H265 if nal.len() > 2 => &nal[2..],
+            _ => return None,
+        };
+        let rbsp = unescape_rbsp(payload);
+        let messages = parse_sei(&rbsp).ok()?;
+        Some(
+            messages
+                .into_iter()
+                .map(|m| MetadataItem::sei(m.payload_type, m.payload))
+                .collect(),
+        )
     }
 
     /// Return true for H.264 IDR slices and H.265 IRAP slices.

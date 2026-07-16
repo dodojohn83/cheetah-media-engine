@@ -10,8 +10,8 @@ use cheetah_media_bitstream::h265::NalUnit as H265NalUnit;
 use cheetah_media_bitstream::{BitCursor, h264, h265};
 use cheetah_media_types::{
     BufferRef, ChannelLayout, CodecConfig, CodecId, ColorSpace, MediaDuration, MediaPacket,
-    MediaTime, PixelFormat, SampleFormat, SequenceNumber, StreamEpoch, TimeBase, TrackId,
-    TrackInfo, TrackKind, VideoFormat,
+    MediaTime, MetadataItem, PixelFormat, SampleFormat, SequenceNumber, StreamEpoch, TimeBase,
+    TrackId, TrackInfo, TrackKind, VideoFormat,
 };
 
 use crate::{
@@ -34,6 +34,8 @@ pub enum TsEvent {
     Track(TrackInfo),
     /// A compressed media packet.
     Packet(MediaPacket<'static>),
+    /// Metadata extracted from PES private streams.
+    Metadata(Vec<MetadataItem>),
     /// PCR clock state update.
     Clock(ClockState),
 }
@@ -382,7 +384,18 @@ impl TsDemuxer {
                     Ok(())
                 }
             },
-            TrackKind::Data => Ok(()),
+            TrackKind::Data => {
+                let track_id = self.track_id_for(pid)?;
+                let mut item =
+                    MetadataItem::pes_private(u32::from(output.header.stream_id), output.payload);
+                if let Some(ts_ms) = time.pts_ms() {
+                    item = item.with_timestamp(ts_ms);
+                }
+                self.pending_events
+                    .push_back(TsEvent::Metadata(alloc::vec![item]));
+                let _ = track_id;
+                Ok(())
+            }
         }
     }
 
@@ -678,6 +691,7 @@ fn stream_type_to_codec(stream_type: u8) -> Result<(TrackKind, CodecId), TsError
         0x03 | 0x04 => Ok((TrackKind::Audio, CodecId::Mp3)),
         0x90 => Ok((TrackKind::Audio, CodecId::G711A)),
         0x91 => Ok((TrackKind::Audio, CodecId::G711U)),
+        0x06 => Ok((TrackKind::Data, CodecId::Unknown(0))),
         _ => Err(TsError::unsupported(
             2301,
             Some("unsupported MPEG-TS stream type"),

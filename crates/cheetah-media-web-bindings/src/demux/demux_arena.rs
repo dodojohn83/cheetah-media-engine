@@ -1,7 +1,7 @@
 //! Helpers for storing demuxer output in a `MemoryArena`.
 
 use cheetah_media_abi::{AbiError, Handle, MemoryArena, MemoryDescriptor};
-use cheetah_media_types::{CodecId, MediaPacket, MediaTime, TimeBase, TrackInfo};
+use cheetah_media_types::{CodecId, MediaPacket, MediaTime, MetadataItem, TimeBase, TrackInfo};
 
 use super::demux_event::{DemuxEvent, DemuxEventKind};
 
@@ -171,6 +171,74 @@ pub(crate) fn packet_event(
         let _ = arena.release(h);
     }
     let (event, handle) = write_packet(arena, &packet)?;
+    *last_data = handle;
+    Ok(event)
+}
+
+/// Encode metadata items into a compact binary blob for the JavaScript side.
+///
+/// Layout: count (u32 BE), then for each item:
+///   source (u8), key (u32 BE), has_ts (u8), ts_ms (i64 BE, 0 if None),
+///   value_len (u32 BE), value bytes.
+pub(crate) fn write_metadata(
+    arena: &mut MemoryArena,
+    items: Vec<MetadataItem>,
+) -> Result<(DemuxEvent, Option<Handle>), AbiError> {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&(items.len() as u32).to_be_bytes());
+    for item in items {
+        buf.push(item.source as u8);
+        buf.extend_from_slice(&item.key.to_be_bytes());
+        let has_ts = item.timestamp_ms.is_some() as u8;
+        buf.push(has_ts);
+        let ts_ms = item.timestamp_ms.unwrap_or(0);
+        buf.extend_from_slice(&ts_ms.to_be_bytes());
+        let len = item.value.len() as u32;
+        buf.extend_from_slice(&len.to_be_bytes());
+        buf.extend_from_slice(&item.value);
+    }
+
+    let (data_handle, data_desc) = store_or_empty(arena, &buf)?;
+    let event = DemuxEvent {
+        kind: DemuxEventKind::Metadata,
+        track_id: 0,
+        track_kind: 2, // Data
+        codec: 255,
+        width: 0,
+        height: 0,
+        sample_rate: 0,
+        channels: 0,
+        config_slot: 0,
+        config_generation: 0,
+        config_offset: 0,
+        config_len: 0,
+        data_slot: data_handle.as_ref().map_or(0, |h| h.slot),
+        data_generation: data_handle.as_ref().map_or(0, |h| h.generation),
+        data_offset: data_desc.offset,
+        data_len: if data_handle.is_some() {
+            data_desc.length
+        } else {
+            0
+        },
+        pts_ms: 0,
+        dts_ms: 0,
+        duration_ms: 0,
+        flags: 0,
+        error_code: 0,
+        error_message: String::new(),
+    };
+    Ok((event, data_handle))
+}
+
+pub(crate) fn metadata_event(
+    arena: &mut MemoryArena,
+    items: Vec<MetadataItem>,
+    last_data: &mut Option<Handle>,
+) -> Result<DemuxEvent, AbiError> {
+    if let Some(h) = last_data.take() {
+        let _ = arena.release(h);
+    }
+    let (event, handle) = write_metadata(arena, items)?;
     *last_data = handle;
     Ok(event)
 }

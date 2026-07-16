@@ -63,6 +63,8 @@ export {
   type CheetahPlayerEvent,
   type CheetahPlayerEventType,
   type EventListener,
+  type MetadataItem,
+  type MetadataEventDetails,
   type PlayerConfig,
   type TransportConfig,
   type LatencyConfig,

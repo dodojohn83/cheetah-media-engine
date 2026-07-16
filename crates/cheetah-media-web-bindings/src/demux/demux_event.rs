@@ -11,6 +11,7 @@ pub enum DemuxEventKind {
     Packet = 1,
     Eof = 2,
     Error = 3,
+    Metadata = 4,
 }
 
 /// A demuxer event exposed to JavaScript.

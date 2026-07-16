@@ -1,5 +1,5 @@
 use cheetah_media_bitstream::h264::H264CodecConfig;
-use cheetah_media_types::{CodecConfig, CodecId};
+use cheetah_media_types::{CodecConfig, CodecId, MetadataItem, MetadataSource};
 
 use crate::demuxer::{find_start_code, nal_payload};
 use crate::tests::{collect_events, default_config, idr, make_annexb, non_idr, pps, sps};
@@ -310,4 +310,26 @@ fn nal_payload_helper_skips_header() {
 fn find_start_code_returns_none_for_short_input() {
     assert_eq!(find_start_code(&[0x00, 0x00], 0), None);
     assert_eq!(find_start_code(&[0x00, 0x00, 0x00], 0), None);
+}
+
+#[test]
+fn demuxer_extracts_h264_sei_metadata() {
+    // SEI NAL (type 6) with a single payload_type=4, size=5, "hello".
+    let sei = vec![0x06, 0x04, 0x05, b'h', b'e', b'l', b'l', b'o'];
+    let data = make_annexb(&[sps(), pps(), sei, idr()]);
+    let mut demuxer = AnnexBDemuxer::new(default_config());
+    demuxer.push(&data);
+    demuxer.end().unwrap();
+
+    let mut metadata: Vec<MetadataItem> = Vec::new();
+    for event in collect_events(&mut demuxer) {
+        if let AnnexbEvent::Metadata(items) = event {
+            metadata.extend(items);
+        }
+    }
+
+    assert_eq!(metadata.len(), 1);
+    assert_eq!(metadata[0].source, MetadataSource::Sei);
+    assert_eq!(metadata[0].key, 4);
+    assert_eq!(metadata[0].value, b"hello");
 }

@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use cheetah_media_types::{CodecId, TrackKind};
+use cheetah_media_types::{CodecId, MetadataItem, MetadataSource, TrackKind};
 
 use crate::*;
 
@@ -287,6 +287,7 @@ fn demuxer_basic_video_flow() {
         match event {
             TsEvent::Track(t) => tracks.push(t),
             TsEvent::Packet(p) => packets.push(p),
+            TsEvent::Metadata(_) => {}
             TsEvent::Clock(_) => {}
         }
     }
@@ -530,6 +531,7 @@ fn demuxer_fifo_track_before_packet() {
                 assert!(saw_track, "Track event must precede Packet event");
                 return;
             }
+            TsEvent::Metadata(_) => {}
             TsEvent::Clock(_) => {}
         }
     }
@@ -592,6 +594,42 @@ fn parse_pcr_round_trip() {
     let p = packet::TsPacket::parse(&pkt).unwrap();
     assert!(p.has_pcr);
     assert_eq!(p.pcr, Some(pcr));
+}
+
+#[test]
+fn demuxer_extracts_private_stream_metadata() {
+    let mut stream = Vec::new();
+
+    // PAT -> program 1 maps to PMT PID 0x100. PUSI payloads begin with pointer field 0x00.
+    let mut pat_payload = vec![0x00];
+    pat_payload.extend_from_slice(&pat_section(&[(0x0001, 0x100)]));
+    stream.extend_from_slice(&ts_packet(0x000, true, &pat_payload, 0));
+
+    // PMT with video PID 0x101 (H.264) and private data PID 0x102 (stream type 0x06)
+    let mut pmt_payload = vec![0x00];
+    pmt_payload.extend_from_slice(&pmt_section(0x0001, 0x101, &[(0x1b, 0x101), (0x06, 0x102)]));
+    stream.extend_from_slice(&ts_packet(0x100, true, &pmt_payload, 0));
+
+    // Private PES on PID 0x102 with stream_id 0xBF and payload.
+    let payload = b"overlay-coords";
+    let pes = pes_packet(0xbf, payload, Some(90000), None);
+    stream.extend_from_slice(&ts_packet(0x102, true, &pes, 0));
+
+    let mut demux = TsDemuxer::new();
+    demux.push(&stream);
+
+    let mut metadata: Vec<MetadataItem> = Vec::new();
+    while let Some(event) = demux.next_event().unwrap() {
+        if let TsEvent::Metadata(items) = event {
+            metadata.extend(items);
+        }
+    }
+
+    assert_eq!(metadata.len(), 1);
+    assert_eq!(metadata[0].source, MetadataSource::PesPrivate);
+    assert_eq!(metadata[0].key, 0xBF);
+    assert_eq!(metadata[0].value, payload);
+    assert_eq!(metadata[0].timestamp_ms, Some(1000));
 }
 
 use proptest::prelude::*;

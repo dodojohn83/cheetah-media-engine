@@ -2,6 +2,7 @@ import { createPlayer, type CheetahPlayer, type CheetahPlayerEvent } from '@chee
 import { detectLocale, getMessage, type MessageKey } from './i18n';
 import { styles } from './styles';
 import { createWatermarkOverlay, parseWatermarks, type Watermark, type WatermarkOverlay } from './watermark';
+import { clearMetadataOverlay, parseMetadataPayload, renderMetadataOverlay, type MetadataShape } from './metadata-overlay';
 
 const OBSERVED_ATTRIBUTES = [
   'src',
@@ -56,6 +57,7 @@ export class CheetahPlayerElement extends HTMLElement {
   private _status!: HTMLDivElement;
   private _liveRegion!: HTMLDivElement;
   private _watermarkOverlay!: WatermarkOverlay;
+  private _metadataSvg!: SVGSVGElement;
 
   get src(): string | undefined {
     return this.getAttribute('src') ?? undefined;
@@ -315,6 +317,14 @@ export class CheetahPlayerElement extends HTMLElement {
     this._watermarkOverlay = createWatermarkOverlay();
     shadow.appendChild(this._watermarkOverlay.root);
 
+    this._metadataSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this._metadataSvg.classList.add('overlay-svg');
+    this._metadataSvg.setAttribute('part', 'overlay-svg');
+    this._metadataSvg.setAttribute('viewBox', '0 0 1 1');
+    this._metadataSvg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    this._metadataSvg.setAttribute('aria-hidden', 'true');
+    shadow.appendChild(this._metadataSvg);
+
     const controls = document.createElement('div');
     controls.className = 'controls';
     controls.setAttribute('part', 'controls');
@@ -560,6 +570,7 @@ export class CheetahPlayerElement extends HTMLElement {
     this._player.addEventListener('buffering', (event) => this._dispatch('buffering', event));
     this._player.addEventListener('warning', (event) => this._dispatch('warning', event));
     this._player.addEventListener('recording', (event) => this._dispatch('recording', event));
+    this._player.addEventListener('metadata', (event) => this._onMetadata(event as CheetahPlayerEvent<'metadata'>));
   }
 
   private _onStateChange(event: CheetahPlayerEvent<'statechange'>): void {
@@ -588,6 +599,30 @@ export class CheetahPlayerElement extends HTMLElement {
     this._status.textContent = `${getMessage(this._locale, 'latencyStatus')}: ${latencyText} | ${getMessage(this._locale, 'buffered')}: ${bufferedText}`;
 
     this._dispatch('stats', event);
+  }
+
+  private _onMetadata(event: CheetahPlayerEvent<'metadata'>): void {
+    const details = event.details ?? {};
+    let shapes: MetadataShape[] = [];
+
+    if (Array.isArray(details.items)) {
+      for (const item of details.items) {
+        if (item && typeof item === 'object') {
+          const value = (item as Record<string, unknown>).value;
+          shapes = shapes.concat(parseMetadataPayload(value));
+        }
+      }
+    } else if (details.shapes !== undefined) {
+      shapes = parseMetadataPayload(details.shapes);
+    }
+
+    if (shapes.length === 0) {
+      clearMetadataOverlay(this._metadataSvg);
+    } else {
+      renderMetadataOverlay(shapes, this._metadataSvg);
+    }
+
+    this._dispatch('metadata', event);
   }
 
   private _updateState(state: import('@cheetah-media/web').PlayerState | 'autoplay-blocked'): void {
