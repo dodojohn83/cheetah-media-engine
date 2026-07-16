@@ -1,9 +1,10 @@
 import { createPlayer, type CheetahPlayer, type PlayerConfig } from '@cheetah-media/web';
 import { CheetahPlayerElement } from './player-element';
+import { CheetahPtzPanelElement } from './ptz-panel-element';
 import { CheetahWallCellElement } from './wall-cell-element';
 import { CheetahWallElement } from './wall-element';
 
-export { createPlayer, CheetahPlayerElement, CheetahWallElement, CheetahWallCellElement };
+export { createPlayer, CheetahPlayerElement, CheetahPtzPanelElement, CheetahWallElement, CheetahWallCellElement };
 export type { CheetahPlayer, PlayerConfig };
 
 export interface PlayerComponentOptions extends PlayerConfig {
@@ -65,5 +66,8 @@ if (typeof customElements !== 'undefined') {
   }
   if (!customElements.get('cheetah-wall-cell')) {
     customElements.define('cheetah-wall-cell', CheetahWallCellElement);
+  }
+  if (!customElements.get('cheetah-ptz-panel')) {
+    customElements.define('cheetah-ptz-panel', CheetahPtzPanelElement);
   }
 }

@@ -136,3 +136,4 @@ corepack pnpm exec playwright test
 | 42 | 已完成 | `wp/42-webrtc-transport` → #44 | WebRTC H.264/H.265 signaling/transport 骨架 |
 | 43 | 已完成 | `wp/43-vod-seek-speed` → #45 | MP4/HLS 点播、seek、倍速；43a/43b/43c 全部通过完整矩阵 |
 | 44 | 已完成 | `wp/44-frame-step` -> #46 | 逐帧/暂停显示 API；MSE time-step、WebCodecs 前向步进/队列保持连接、FallbackController/Player 转发 |
+| 45 | 已完成 | `wp/45-ptz-panel` -> #47 | PTZ 操作盘组件、GB28181 PtzCmd 编码、CheetahPlayer.ptz 事件；信号传输由调用方转发到 signaling 服务 |
