@@ -27,6 +27,7 @@ interface RTCSessionDescriptionInit {
 interface RTCDataChannel {
   readonly label: string;
   readonly readyState: 'connecting' | 'open' | 'closing' | 'closed';
+  binaryType: BinaryType;
   onopen: ((this: RTCDataChannel, ev: Event) => void) | null;
   onclose: ((this: RTCDataChannel, ev: Event) => void) | null;
   onerror: ((this: RTCDataChannel, ev: Event) => void) | null;
@@ -139,6 +140,7 @@ export class WebRtcTransport implements Transport {
     this.closeController = new AbortController();
     this.pc = new Ctor();
     this.channel = this.pc.createDataChannel('media', { ordered: true });
+    this.channel.binaryType = 'arraybuffer';
 
     const opened = this.waitForChannelOpen(this.pc, this.channel);
     this.attachMessageHandler(this.channel, onChunk);
@@ -175,9 +177,19 @@ export class WebRtcTransport implements Transport {
   ): void {
     channel.onmessage = (event) => {
       if (this.stopped) return;
-      if (event.data instanceof ArrayBuffer) {
-        const bytes = new Uint8Array(event.data);
-        this.deliver(bytes, onChunk);
+      const data = event.data as ArrayBuffer | Blob;
+      if (data instanceof ArrayBuffer) {
+        this.deliver(new Uint8Array(data), onChunk);
+        return;
+      }
+      if (typeof Blob !== 'undefined' && data instanceof Blob) {
+        data.arrayBuffer().then((buffer) => {
+          if (!this.stopped && !this.ended) {
+            this.deliver(new Uint8Array(buffer), onChunk);
+          }
+        }).catch(() => {
+          // Blob read failure is treated as a non-fatal payload skip.
+        });
       }
     };
     channel.onerror = () => {

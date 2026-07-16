@@ -4,6 +4,7 @@ import { WebRtcTransport, TransportErrorCode } from './transport';
 class MockRTCDataChannel {
   public label = 'media';
   public ordered = true;
+  public binaryType: BinaryType = 'arraybuffer';
   public readyState: 'connecting' | 'open' | 'closing' | 'closed' = 'connecting';
   public onopen: ((this: unknown, ev: Event) => void) | null = null;
   public onclose: ((this: unknown, ev: Event) => void) | null = null;
@@ -27,7 +28,7 @@ class MockRTCDataChannel {
     this.onerror?.call(this, new Event('error'));
   }
 
-  public triggerMessage(data: ArrayBuffer): void {
+  public triggerMessage(data: ArrayBuffer | Blob): void {
     this.onmessage?.call(this, { data });
   }
 }
@@ -160,6 +161,31 @@ describe('WebRtcTransport', () => {
     });
 
     expect(error.code).toBe(TransportErrorCode.WebRtcNotSupported);
+  });
+
+  it('sets data channel binaryType to arraybuffer and delivers Blob fallback', async () => {
+    installMocks();
+    const chunks: Uint8Array[] = [];
+    const errors: { code: number }[] = [];
+
+    const transport = new WebRtcTransport({ url: 'https://example.com/webrtc' });
+    transport.start(
+      (chunk) => chunks.push(chunk.bytes),
+      (error) => errors.push(error),
+      () => { /* no-op */ },
+    );
+
+    await vi.waitFor(() => expect(currentPc!.channel?.readyState).toBe('open'));
+    expect(currentPc!.channel?.binaryType).toBe('arraybuffer');
+
+    const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x09, 0x10]);
+    currentPc!.channel?.triggerMessage(new Blob([bytes.buffer]));
+
+    await vi.waitFor(() => {
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toEqual(bytes);
+    });
+    expect(errors).toHaveLength(0);
   });
 
   it('reports an invalid URL', async () => {
