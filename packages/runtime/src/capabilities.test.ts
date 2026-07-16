@@ -71,16 +71,25 @@ describe('probeCapabilities()', () => {
 
   it('probes webRtc details without network', async () => {
     const original = (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection;
+    const originalRTCRtpSender = (globalThis as unknown as { RTCRtpSender?: unknown }).RTCRtpSender;
+    const originalRTCRtpReceiver = (globalThis as unknown as { RTCRtpReceiver?: unknown }).RTCRtpReceiver;
     function MockRTCPeerConnection() { /* no-op */ }
     MockRTCPeerConnection.prototype.createDataChannel = function () { return undefined; };
-    MockRTCPeerConnection.prototype.createEncodedStreams = function () { return { readable: new ReadableStream(), writable: new WritableStream() }; };
+    function MockRTCRtpSender() { /* no-op */ }
+    MockRTCRtpSender.prototype.createEncodedStreams = function () { return { readable: new ReadableStream(), writable: new WritableStream() }; };
+    function MockRTCRtpReceiver() { /* no-op */ }
+    MockRTCRtpReceiver.prototype.createEncodedStreams = function () { return { readable: new ReadableStream(), writable: new WritableStream() }; };
     (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection = MockRTCPeerConnection as unknown as typeof globalThis.RTCPeerConnection;
+    (globalThis as unknown as { RTCRtpSender?: unknown }).RTCRtpSender = MockRTCRtpSender as unknown as typeof globalThis.RTCRtpSender;
+    (globalThis as unknown as { RTCRtpReceiver?: unknown }).RTCRtpReceiver = MockRTCRtpReceiver as unknown as typeof globalThis.RTCRtpReceiver;
     const report = await probeCapabilities();
     expect(report.details.webRtc.peerConnection).toBe(true);
     expect(report.details.webRtc.dataChannel).toBe(true);
     expect(report.details.webRtc.insertableStreams).toBe(true);
     expect(report.reasons).toContain('webrtc-supported');
     (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection = original;
+    (globalThis as unknown as { RTCRtpSender?: unknown }).RTCRtpSender = originalRTCRtpSender;
+    (globalThis as unknown as { RTCRtpReceiver?: unknown }).RTCRtpReceiver = originalRTCRtpReceiver;
   });
 });
 

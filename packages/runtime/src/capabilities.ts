@@ -159,6 +159,17 @@ function hasWebRtcSupport(): boolean {
   }
 }
 
+function hasMethodOnGlobalPrototype(globalName: string, methodName: string): boolean {
+  const ctor = getGlobal<unknown>(globalName);
+  if (typeof ctor !== 'function') return false;
+  try {
+    const proto = (ctor as { prototype?: unknown }).prototype as Record<string, unknown> | undefined;
+    return proto ? typeof proto[methodName] === 'function' : false;
+  } catch {
+    return false;
+  }
+}
+
 function probeWebRtc(): ProbeDetails['webRtc'] {
   const result = {
     peerConnection: false,
@@ -180,8 +191,16 @@ function probeWebRtc(): ProbeDetails['webRtc'] {
       }
     };
     result.dataChannel = hasMethod('createDataChannel');
-    result.insertableStreams = hasMethod('createEncodedStreams') || hasMethod('encodedInsertableStreams');
   }
+
+  // Insertable Streams methods live on RTCRtpSender/RTCRtpReceiver; the
+  // legacy transform variant is exposed via the RTCRtpScriptTransform constructor.
+  result.insertableStreams =
+    hasMethodOnGlobalPrototype('RTCRtpSender', 'createEncodedStreams') ||
+    hasMethodOnGlobalPrototype('RTCRtpReceiver', 'createEncodedStreams') ||
+    hasMethodOnGlobalPrototype('RTCRtpSender', 'encodedInsertableStreams') ||
+    hasMethodOnGlobalPrototype('RTCRtpReceiver', 'encodedInsertableStreams') ||
+    hasGlobal('RTCRtpScriptTransform');
 
   const nav = globalThis as unknown as {
     navigator?: {
