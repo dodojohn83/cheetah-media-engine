@@ -18,11 +18,12 @@ export type Protocol =
   | 'ws-annexb'
   | 'http-mpegps'
   | 'ws-mpegps'
+  | 'webtransport'
   | 'hls'
   | 'll-hls';
 export type Backend = 'webcodecs' | 'mse' | 'wasm-threads-simd' | 'wasm-simd' | 'wasm-baseline';
 export type Renderer = 'webgpu' | 'webgl2' | 'canvas2d';
-export type TransportMode = 'fetch' | 'websocket';
+export type TransportMode = 'fetch' | 'websocket' | 'webtransport';
 export type LatencyTarget = 'realtime' | 'low' | 'normal';
 
 export interface TrackProfile {
@@ -134,6 +135,7 @@ function canMseContainer(request: PlanRequest): boolean {
     case 'ws-annexb':
     case 'http-mpegps':
     case 'ws-mpegps':
+    case 'webtransport':
       return false;
     default:
       return false;
@@ -282,6 +284,8 @@ function chooseTransport(request: PlanRequest): TransportMode {
     case 'ws-annexb':
     case 'ws-mpegps':
       return 'websocket';
+    case 'webtransport':
+      return 'webtransport';
     case 'http-flv':
     case 'http-fmp4':
     case 'http-annexb':

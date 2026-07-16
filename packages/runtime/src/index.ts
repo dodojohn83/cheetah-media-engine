@@ -51,6 +51,7 @@ export {
   createTransport,
   FetchTransport,
   WebSocketTransport,
+  WebTransportTransport,
   TransportErrorCode,
   type Transport,
   type TransportConfig,

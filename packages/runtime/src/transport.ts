@@ -2,112 +2,33 @@
  * Unified network transport for media byte streams.
  *
  * The transport layer is agnostic to container formats; it only delivers
- * byte chunks and metadata to the caller. It supports both HTTP(S) fetch
- * streaming and WebSocket binary streaming, with backpressure and bounded
- * retry policies.
+ * byte chunks and metadata to the caller. It supports HTTP(S) fetch,
+ * WebSocket binary streaming and WebTransport unidirectional streams,
+ * with backpressure and bounded retry policies.
  */
 
-export interface TransportConfig {
-  readonly url: string;
-  readonly method?: 'GET' | 'POST';
-  readonly headers?: Record<string, string>;
-  readonly credentials?: RequestCredentials;
-  readonly referrer?: string;
-  readonly timeoutMs?: number;
-  readonly maxBytes?: number;
-  readonly maxRetries?: number;
-  readonly redirect?: RequestRedirect;
-}
+import {
+  type Chunk,
+  makeError,
+  type Transport,
+  TransportErrorCode,
+  type TransportConfig,
+  type TransportError,
+  validateUrl,
+} from './transport-common';
 
-export interface TransportStats {
-  readonly bytesRead: number;
-  readonly chunks: number;
-  readonly startedAt: number;
-  readonly endedAt?: number;
-}
-
-export interface Chunk {
-  readonly bytes: Uint8Array;
-  readonly timestamp: number;
-}
-
-export interface TransportError {
-  readonly code: number;
-  readonly stage: 'transport';
-  readonly message: string;
-  readonly retryable: boolean;
-}
-
-export const TransportErrorCode = {
-  InvalidUrl: 7001,
-  InsecureContent: 7002,
-  Network: 7003,
-  HttpStatus: 7004,
-  Timeout: 7005,
-  Canceled: 7006,
-  ContentLengthMismatch: 7007,
-  MaxBytesExceeded: 7008,
-  WebSocketClosed: 7009,
-} as const;
-
-function makeError(
-  code: number,
-  message: string,
-  retryable: boolean,
-): TransportError {
-  return { code, stage: 'transport', message, retryable };
-}
-
-function validateUrl(url: string): TransportError | undefined {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return makeError(TransportErrorCode.InvalidUrl, `Invalid URL: ${url}`, false);
-  }
-  if (parsed.username || parsed.password) {
-    return makeError(
-      TransportErrorCode.InvalidUrl,
-      'URL must not contain user credentials',
-      false,
-    );
-  }
-  if (
-    (parsed.protocol === 'http:' || parsed.protocol === 'ws:') &&
-    typeof globalThis !== 'undefined' &&
-    (globalThis as unknown as { isSecureContext?: boolean }).isSecureContext
-  ) {
-    return makeError(
-      TransportErrorCode.InsecureContent,
-      'Plain-text transport is not allowed from a secure context',
-      false,
-    );
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-    return makeError(
-      TransportErrorCode.InvalidUrl,
-      `Unsupported transport scheme: ${parsed.protocol}`,
-      false,
-    );
-  }
-  return undefined;
-}
-
-function sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headers)) {
-    const lower = key.toLowerCase();
-    if (lower === 'authorization' || lower === 'cookie') continue;
-    out[key] = value;
-  }
-  return out;
-}
-
-export interface Transport {
-  readonly config: TransportConfig;
-  start(onChunk: (chunk: Chunk) => void, onError: (error: TransportError) => void, onEnd: () => void): void;
-  stop(): void;
-}
+import { WebTransportTransport } from './webtransport';
+export { WebTransportTransport } from './webtransport';
+export {
+  type Chunk,
+  type Transport,
+  type TransportConfig,
+  type TransportError,
+  type TransportStats,
+  TransportErrorCode,
+  makeError,
+  validateUrl,
+} from './transport-common';
 
 /**
  * Fetch-based HTTP byte stream transport.
@@ -155,7 +76,7 @@ export class FetchTransport implements Transport {
     const timeoutMs = this.config.timeoutMs ?? 30000;
     const maxBytes = this.config.maxBytes ?? Number.MAX_SAFE_INTEGER;
     const method = this.config.method ?? 'GET';
-    const headers = sanitizeHeaders(this.config.headers ?? {});
+    const headers = this.sanitizeHeaders(this.config.headers ?? {});
 
     while (this.retries <= maxRetries) {
       this.timedOut = false;
@@ -198,8 +119,8 @@ export class FetchTransport implements Transport {
           done = d;
           if (value) {
             if (this.bytesRead + value.byteLength > maxBytes) {
-              clearTimeout(timer);
               this.controller?.abort();
+              clearTimeout(timer);
               onError(makeError(TransportErrorCode.MaxBytesExceeded, 'Max response size exceeded', false));
               onEnd();
               return;
@@ -231,6 +152,16 @@ export class FetchTransport implements Transport {
 
     onError(makeError(TransportErrorCode.Network, 'Max retries exceeded', false));
     onEnd();
+  }
+
+  private sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(headers)) {
+      const lower = key.toLowerCase();
+      if (lower === 'authorization' || lower === 'cookie') continue;
+      out[key] = value;
+    }
+    return out;
   }
 
   private toError(err: unknown): TransportError {
@@ -405,9 +336,22 @@ export class WebSocketTransport implements Transport {
 }
 
 /**
- * Create a transport based on URL scheme.
+ * Create a transport based on URL scheme or an explicit mode hint.
  */
-export function createTransport(config: TransportConfig): Transport {
+export function createTransport(
+  config: TransportConfig,
+  mode?: 'fetch' | 'websocket' | 'webtransport',
+): Transport {
+  if (mode === 'webtransport') {
+    return new WebTransportTransport(config);
+  }
+  if (mode === 'websocket') {
+    return new WebSocketTransport(config as WebSocketConfig);
+  }
+  if (mode === 'fetch') {
+    return new FetchTransport(config);
+  }
+
   let url: URL;
   try {
     url = new URL(config.url);

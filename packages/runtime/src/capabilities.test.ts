@@ -15,6 +15,15 @@ describe('detectCapabilities()', () => {
     const report = detectCapabilities();
     expect(report.wasm).toBe(typeof globalThis.WebAssembly !== 'undefined');
   });
+
+  it('reports webTransport support when the API is present', () => {
+    const original = (globalThis as unknown as { WebTransport?: unknown }).WebTransport;
+    (globalThis as unknown as { WebTransport?: unknown }).WebTransport = class {};
+    const report = detectCapabilities();
+    expect(report.webTransport).toBe(true);
+    expect(report.reasons).toContain('webtransport-api');
+    (globalThis as unknown as { WebTransport?: unknown }).WebTransport = original;
+  });
 });
 
 describe('probeCapabilities()', () => {
@@ -28,6 +37,27 @@ describe('probeCapabilities()', () => {
 
   it('does not throw in a node/vitest environment', async () => {
     await expect(probeCapabilities()).resolves.toBeDefined();
+  });
+
+  it('probes webTransport details without network', async () => {
+    const original = (globalThis as unknown as { WebTransport?: unknown }).WebTransport;
+    function MockTransport() { /* no-op */ }
+    Object.defineProperty(MockTransport.prototype, 'datagrams', {
+      get() {
+        return { readable: new ReadableStream<Uint8Array>() };
+      },
+    });
+    Object.defineProperty(MockTransport.prototype, 'incomingUnidirectionalStreams', {
+      get() {
+        return new ReadableStream<ReadableStream<Uint8Array>>();
+      },
+    });
+    (globalThis as unknown as { WebTransport?: unknown }).WebTransport = MockTransport as unknown as typeof globalThis.WebTransport;
+    const report = await probeCapabilities();
+    expect(report.details.webTransport.incomingUnidirectionalStreams).toBe(true);
+    expect(report.details.webTransport.datagrams).toBe(true);
+    expect(report.reasons).toContain('webtransport-supported');
+    (globalThis as unknown as { WebTransport?: unknown }).WebTransport = original;
   });
 });
 
@@ -55,6 +85,7 @@ describe('CapabilityCache', () => {
         mse: {},
         wasm: { simd: false, threads: false, sharedMemory: false, memoryLimitPages: 0 },
         renderer: { webgpu: false, webgl2: false, canvas2d: false, videoFrame: false, preferredPixelFormat: undefined },
+        webTransport: { datagrams: false, incomingUnidirectionalStreams: false, incomingBidirectionalStreams: false, byob: false },
       },
     } satisfies ProbedCapabilityReport;
 
@@ -78,6 +109,7 @@ describe('CapabilityCache', () => {
         mse: {},
         wasm: { simd: false, threads: false, sharedMemory: false, memoryLimitPages: 0 },
         renderer: { webgpu: false, webgl2: false, canvas2d: false, videoFrame: false, preferredPixelFormat: undefined },
+        webTransport: { datagrams: false, incomingUnidirectionalStreams: false, incomingBidirectionalStreams: false, byob: false },
       },
     } satisfies ProbedCapabilityReport;
 

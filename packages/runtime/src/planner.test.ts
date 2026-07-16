@@ -18,6 +18,7 @@ function makeCaps(overrides: Partial<ProbedCapabilityReport> = {}): ProbedCapabi
     webgl2: true,
     canvas2d: true,
     videoFrame: true,
+    webTransport: true,
     wasm: true,
     fingerprint: 'test',
     timestamp: 0,
@@ -52,6 +53,12 @@ function makeCaps(overrides: Partial<ProbedCapabilityReport> = {}): ProbedCapabi
         canvas2d: true,
         videoFrame: true,
         preferredPixelFormat: 'I420',
+      },
+      webTransport: {
+        datagrams: false,
+        incomingUnidirectionalStreams: true,
+        incomingBidirectionalStreams: false,
+        byob: false,
       },
     },
   };
@@ -281,6 +288,19 @@ describe('plan()', () => {
 
     expect(result.candidates).toHaveLength(0);
     expect(result.primary.reason).toContain('no supported');
+  });
+
+  it('selects webtransport mode for the webtransport protocol', () => {
+    const request: PlanRequest = {
+      protocol: 'webtransport',
+      tracks: [{ kind: 'video', codec: 'h264', width: 640, height: 360 }],
+      latencyTarget: 'realtime',
+      isolation: true,
+    };
+    const result = plan(request, makeCaps());
+
+    expect(result.primary.transport).toBe('webtransport');
+    expect(result.primary.videoBackend).toBe('webcodecs');
   });
 });
 

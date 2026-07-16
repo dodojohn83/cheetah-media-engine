@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createTransport, FetchTransport, WebSocketTransport, TransportErrorCode } from './transport';
+import { createTransport, FetchTransport, WebSocketTransport, WebTransportTransport, TransportErrorCode } from './transport';
 
 class CloseEvent extends Event {
   public readonly code: number;
@@ -388,5 +388,15 @@ describe('createTransport', () => {
       );
     });
     expect(err.code).toBe(TransportErrorCode.InvalidUrl);
+  });
+
+  it('selects WebTransportTransport when mode is webtransport', () => {
+    const transport = createTransport({ url: 'https://example.com/stream' }, 'webtransport');
+    expect(transport).toBeInstanceOf(WebTransportTransport);
+  });
+
+  it('selects WebSocketTransport when mode is websocket', () => {
+    const transport = createTransport({ url: 'https://example.com/stream' }, 'websocket');
+    expect(transport).toBeInstanceOf(WebSocketTransport);
   });
 });
