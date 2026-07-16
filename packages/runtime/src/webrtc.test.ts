@@ -56,9 +56,10 @@ class MockRTCPeerConnection {
     }
   });
   public close = vi.fn(() => {
+    // Real RTCPeerConnection.close() does not fire connectionstatechange or
+    // data-channel close events for a local close, so the transport must drive
+    // completion through stop() rather than waiting for events.
     this.connectionState = 'closed';
-    this.onconnectionstatechange?.call(this, new Event('connectionstatechange'));
-    this.channel?.triggerClose();
   });
 }
 

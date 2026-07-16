@@ -79,6 +79,8 @@ export class WebRtcTransport implements Transport {
   private onError?: (error: TransportError) => void;
   private onEnd?: () => void;
   private closeController: AbortController | undefined;
+  private channelOpenWaiter?: { resolve: () => void; reject: (err: Error) => void } | undefined;
+  private channelCloseWaiter?: { closeWith: (error?: TransportError) => void } | undefined;
 
   constructor(config: TransportConfig) {
     this.config = config;
@@ -120,6 +122,10 @@ export class WebRtcTransport implements Transport {
       } catch {
         // close() can throw if already closed; ignore.
       }
+      this.channelOpenWaiter?.resolve();
+      this.channelCloseWaiter?.closeWith();
+      this.channelOpenWaiter = undefined;
+      this.channelCloseWaiter = undefined;
       this.finish(error);
     });
   }
@@ -205,10 +211,12 @@ export class WebRtcTransport implements Transport {
     channel: RTCDataChannel,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
+      this.channelOpenWaiter = { resolve, reject };
       let settled = false;
       const done = (fn: () => void) => {
         if (settled) return;
         settled = true;
+        this.channelOpenWaiter = undefined;
         fn();
       };
 
@@ -245,11 +253,17 @@ export class WebRtcTransport implements Transport {
 
   private waitForChannelClose(pc: RTCPeerConnection, channel: RTCDataChannel): Promise<TransportError | undefined> {
     return new Promise((resolve) => {
+      let settled = false;
       const closeWith = (error?: TransportError) => {
+        if (settled) return;
+        settled = true;
+        this.channelCloseWaiter = undefined;
         channel.onclose = null;
         pc.onconnectionstatechange = null;
         resolve(error);
       };
+
+      this.channelCloseWaiter = { closeWith };
 
       if (this.stopped) {
         closeWith();
@@ -350,5 +364,12 @@ export class WebRtcTransport implements Transport {
     } catch {
       // close() can throw if already closed; ignore.
     }
+    // Real browsers do not always fire connectionstatechange/onclose when
+    // RTCPeerConnection.close() is called locally, so resolve any pending
+    // waiters directly to guarantee onEnd is emitted.
+    this.channelOpenWaiter?.resolve();
+    this.channelCloseWaiter?.closeWith();
+    this.channelOpenWaiter = undefined;
+    this.channelCloseWaiter = undefined;
   }
 }
