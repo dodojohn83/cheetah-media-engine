@@ -54,8 +54,12 @@ export class WebTransportTransport implements Transport {
   private streamsReader: ReadableStreamDefaultReader<WebTransportReceiveStream> | undefined;
   private datagramReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   private stopped = false;
+  private ended = false;
   private bytesRead = 0;
   private maxBytes: number;
+  private onError?: (error: TransportError) => void;
+  private onEnd?: () => void;
+  private inFlight = new Set<Promise<void>>();
 
   constructor(config: TransportConfig) {
     this.config = config;
@@ -67,38 +71,45 @@ export class WebTransportTransport implements Transport {
     onError: (error: TransportError) => void,
     onEnd: () => void,
   ): void {
-    if (this.stopped) {
-      onError(makeError(TransportErrorCode.Canceled, 'Transport already stopped', false));
+    if (this.ended) {
+      onError(makeError(TransportErrorCode.Canceled, 'Transport already ended', false));
       onEnd();
       return;
     }
 
+    this.onError = onError;
+    this.onEnd = onEnd;
+
     const urlError = validateWebTransportUrl(this.config.url);
     if (urlError) {
-      onError(urlError);
-      onEnd();
+      this.finish(urlError);
       return;
     }
 
     const Ctor = getWebTransportConstructor();
     if (!Ctor) {
-      onError(makeError(TransportErrorCode.WebTransportNotSupported, 'WebTransport API is not available', false));
-      onEnd();
+      this.finish(makeError(TransportErrorCode.WebTransportNotSupported, 'WebTransport API is not available', false));
       return;
     }
 
     this.transport = new Ctor(this.config.url);
-    this.run(this.transport, onChunk, onError, onEnd).catch((err) => {
-      onError(this.toError(err));
-      onEnd();
+    this.run(this.transport, onChunk).catch((err) => {
+      this.finish(this.toError(err));
     });
+  }
+
+  private finish(error?: TransportError): void {
+    if (this.ended) return;
+    this.ended = true;
+    if (error) {
+      this.onError?.(error);
+    }
+    this.onEnd?.();
   }
 
   private async run(
     transport: WebTransportHandle,
     onChunk: (chunk: Chunk) => void,
-    onError: (error: TransportError) => void,
-    onEnd: () => void,
   ): Promise<void> {
     await transport.ready;
 
@@ -109,48 +120,52 @@ export class WebTransportTransport implements Transport {
         const { value: receiveStream, done } = await this.streamsReader.read();
         if (done || this.stopped) break;
         if (receiveStream) {
-          this.readStream(receiveStream, onChunk, onError).catch((err) => {
-            onError(this.toError(err));
+          const promise = this.readStream(receiveStream, onChunk).catch((err) => {
+            if (!this.stopped) {
+              this.finish(this.toError(err));
+            }
+          });
+          this.inFlight.add(promise);
+          void promise.finally(() => {
+            this.inFlight.delete(promise);
           });
         }
       }
+      // Wait for any per-stream reads that are still draining buffered chunks
+      // before signalling end-of-stream to the caller.
+      await Promise.all(this.inFlight);
     } else if (transport.datagrams?.readable) {
       this.datagramReader = transport.datagrams.readable.getReader();
       while (!this.stopped) {
         const { value, done } = await this.datagramReader.read();
         if (done || this.stopped) break;
-        if (value) this.deliver(value, onChunk, onError);
+        if (value) this.deliver(value, onChunk);
       }
     }
 
-    onEnd();
+    this.finish();
   }
 
   private async readStream(
     stream: WebTransportReceiveStream,
     onChunk: (chunk: Chunk) => void,
-    onError: (error: TransportError) => void,
   ): Promise<void> {
     const reader = stream.getReader();
     try {
       while (!this.stopped) {
         const { value, done } = await reader.read();
         if (done || this.stopped) break;
-        if (value) this.deliver(value, onChunk, onError);
+        if (value) this.deliver(value, onChunk);
       }
     } finally {
       reader.releaseLock();
     }
   }
 
-  private deliver(
-    bytes: Uint8Array,
-    onChunk: (chunk: Chunk) => void,
-    onError: (error: TransportError) => void,
-  ): boolean {
+  private deliver(bytes: Uint8Array, onChunk: (chunk: Chunk) => void): boolean {
     if (this.bytesRead + bytes.length > this.maxBytes) {
       this.stop();
-      onError(makeError(TransportErrorCode.MaxBytesExceeded, 'Max response size exceeded', false));
+      this.finish(makeError(TransportErrorCode.MaxBytesExceeded, 'Max response size exceeded', false));
       return false;
     }
     this.bytesRead += bytes.length;
@@ -159,6 +174,9 @@ export class WebTransportTransport implements Transport {
   }
 
   private toError(err: unknown): TransportError {
+    if (this.stopped) {
+      return makeError(TransportErrorCode.Canceled, 'Transport stopped', false);
+    }
     if (err instanceof DOMException && err.name === 'AbortError') {
       return makeError(TransportErrorCode.Canceled, 'Transport stopped', false);
     }
@@ -168,20 +186,11 @@ export class WebTransportTransport implements Transport {
 
   stop(): void {
     this.stopped = true;
-    try {
-      this.streamsReader?.releaseLock();
-    } catch {
-      // Reader may already be released if the stream closed.
-    }
-    this.streamsReader = undefined;
-    try {
-      this.datagramReader?.releaseLock();
-    } catch {
-      // Ignore release errors on closed streams.
-    }
-    this.datagramReader = undefined;
+    // Closing the transport terminates pending stream reads cleanly; do not
+    // release reader locks while a read is in flight, which would reject with
+    // a TypeError and be reported as a transport failure.
     this.transport?.close().catch(() => {
-      // close() can reject if the transport is already closed; ignore.
+      // close() can reject if already closed; ignore.
     });
   }
 }

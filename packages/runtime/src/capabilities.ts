@@ -137,19 +137,7 @@ function probeWebTransport(): ProbeDetails['webTransport'] {
 }
 
 function hasByobReaderSupport(): boolean {
-  if (!hasGlobal('ReadableStream')) return false;
-  try {
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.close();
-      },
-    });
-    const reader = stream.getReader({ mode: 'byob' });
-    reader.releaseLock();
-    return true;
-  } catch {
-    return false;
-  }
+  return typeof (globalThis as unknown as { ReadableStreamBYOBReader?: unknown }).ReadableStreamBYOBReader !== 'undefined';
 }
 
 function hasWasmSupport(): boolean {
