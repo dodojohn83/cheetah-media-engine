@@ -21,6 +21,7 @@ import {
   type CompositeRecordingResult as CompositeRecordingResultType,
 } from '@cheetah-media/runtime';
 import { createGb28181PtzCmd, type PtzCommand } from './ptz';
+import { NoopVrRenderer, NoopAiFrameProcessor, type VrRenderer, type AiFrameProcessor } from './vr';
 import type { IntercomPacket } from '@cheetah-media/runtime';
 
 export type { DownloadResult, DownloadProgress, DownloadSink } from '@cheetah-media/runtime';
@@ -255,6 +256,8 @@ export interface CheetahPlayer {
   readonly version: string;
   readonly state: PlayerState;
   readonly intercomActive: boolean;
+  readonly vrActive: boolean;
+  readonly aiActive: boolean;
 
   load(url: string, options?: { isLive?: boolean }): Promise<void>;
   play(): void;
@@ -288,6 +291,9 @@ export interface CheetahPlayer {
   resumeCompositeRecording(): void;
   stopCompositeRecording(): Promise<CompositeRecordingResultType>;
   readonly compositeRecordingActive: boolean;
+
+  setVrRenderer(renderer: VrRenderer): void;
+  setAiProcessor(processor: AiFrameProcessor): void;
 
   getStats(): PlayerStats;
   getMetrics(): MetricsSnapshot;
@@ -558,6 +564,8 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private _downloadSink: DownloadSink | undefined;
   private _compositeRecorder: CompositeRecorder | undefined;
   private _lastCompositeOptions: CompositeRecordingOptionsType | undefined;
+  private _vrRenderer: VrRenderer = new NoopVrRenderer();
+  private _aiProcessor: AiFrameProcessor = new NoopAiFrameProcessor();
 
   constructor(
     config: PlayerConfig,
@@ -598,6 +606,14 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   get compositeRecordingActive(): boolean {
     return this._compositeRecorder ? this._compositeRecorder.recordingActive : false;
+  }
+
+  get vrActive(): boolean {
+    return this._vrRenderer.active;
+  }
+
+  get aiActive(): boolean {
+    return this._aiProcessor.active;
   }
 
   private nextSequence(): number {
@@ -868,6 +884,16 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     await this.cleanupDownload().catch(() => undefined);
     await this.cleanupIntercom().catch(() => undefined);
     await this.cleanupCompositeRecording().catch(() => undefined);
+    try {
+      this._vrRenderer.destroy();
+    } catch {
+      // Extension destroy exceptions must not break shutdown.
+    }
+    try {
+      this._aiProcessor.destroy();
+    } catch {
+      // Extension destroy exceptions must not break shutdown.
+    }
     this._state = 'destroyed';
     this.listeners.clear();
     this.eventHistory.length = 0;
@@ -1164,6 +1190,26 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       const message = errorMessageFromCause(cause);
       throw new CheetahMediaError(6999, 'composite-recording', `Composite recording failed: ${message}`, { cause, recoverable: true });
     }
+  }
+
+  setVrRenderer(renderer: VrRenderer): void {
+    this.guardDestroyed();
+    try {
+      this._vrRenderer.destroy();
+    } catch {
+      // Previous renderer destroy exceptions must not block the swap.
+    }
+    this._vrRenderer = renderer ?? new NoopVrRenderer();
+  }
+
+  setAiProcessor(processor: AiFrameProcessor): void {
+    this.guardDestroyed();
+    try {
+      this._aiProcessor.destroy();
+    } catch {
+      // Previous processor destroy exceptions must not block the swap.
+    }
+    this._aiProcessor = processor ?? new NoopAiFrameProcessor();
   }
 
   private async cleanupDownload(): Promise<void> {

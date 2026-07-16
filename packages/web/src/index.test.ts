@@ -3,9 +3,15 @@ import {
   createPlayer,
   createPlayerWithRuntime,
   CheetahMediaError,
+  NoopVrRenderer,
+  NoopAiFrameProcessor,
   type CheetahPlayer,
   type CheetahPlayerEvent,
   type PlayerConfig,
+  type VrRenderer,
+  type AiFrameProcessor,
+  type ProcessableFrame,
+  type AiFrameBudget,
 } from './index';
 import { type EngineRuntime } from '@cheetah-media/runtime';
 
@@ -549,6 +555,114 @@ describe('web sdk', () => {
       expect(player.downloadActive).toBe(false);
       expect(sink.write).toHaveBeenCalledTimes(1);
       expect(sink.close).toHaveBeenCalled();
+    });
+  });
+
+  describe('vr / ai extensions', () => {
+    it('reports vr and ai inactive by default', () => {
+      const player = playerWithMock();
+      expect(player.vrActive).toBe(false);
+      expect(player.aiActive).toBe(false);
+    });
+
+    it('setVrRenderer accepts a custom renderer and reports active', async () => {
+      const player = playerWithMock();
+      const renderer: VrRenderer = {
+        get active() {
+          return true;
+        },
+        initialize: vi.fn().mockReturnValue(true),
+        render: vi.fn(),
+        destroy: vi.fn(),
+      };
+      player.setVrRenderer(renderer);
+      expect(player.vrActive).toBe(true);
+      expect(renderer.initialize).not.toHaveBeenCalled();
+      await player.destroy();
+      expect(renderer.destroy).toHaveBeenCalled();
+    });
+
+    it('setAiProcessor accepts a custom processor and skips when budget is insufficient', async () => {
+      const player = playerWithMock();
+      const processor: AiFrameProcessor = {
+        get active() {
+          return true;
+        },
+        initialize: vi.fn().mockReturnValue(true),
+        process: vi.fn().mockReturnValue(undefined),
+        destroy: vi.fn(),
+      };
+      player.setAiProcessor(processor);
+      expect(player.aiActive).toBe(true);
+
+      const frame = { width: 640, height: 480, timestampMs: 0, source: {} as HTMLCanvasElement } as unknown as ProcessableFrame;
+      const budget: AiFrameBudget = { deadlineMs: 5, canAllocate: false };
+      const result = await (processor as AiFrameProcessor).process(frame, budget);
+      expect(result).toBeUndefined();
+      await player.destroy();
+      expect(processor.destroy).toHaveBeenCalled();
+    });
+
+    it('NoopVrRenderer and NoopAiFrameProcessor are safe defaults', () => {
+      const player = playerWithMock();
+      const vr = new NoopVrRenderer();
+      const ai = new NoopAiFrameProcessor();
+      player.setVrRenderer(vr);
+      player.setAiProcessor(ai);
+      expect(player.vrActive).toBe(false);
+      expect(player.aiActive).toBe(false);
+    });
+
+    it('falls back to no-op when setVrRenderer/setAiProcessor receives null', () => {
+      const player = playerWithMock();
+      player.setVrRenderer(null as unknown as VrRenderer);
+      player.setAiProcessor(null as unknown as AiFrameProcessor);
+      expect(player.vrActive).toBe(false);
+      expect(player.aiActive).toBe(false);
+    });
+
+    it('tolerates a renderer/processor that throws during destroy', async () => {
+      const player = playerWithMock();
+      const badVr: VrRenderer = {
+        get active() {
+          return true;
+        },
+        initialize: vi.fn().mockReturnValue(true),
+        render: vi.fn(),
+        destroy: vi.fn().mockImplementation(() => {
+          throw new Error('vr destroy failed');
+        }),
+      };
+      const badAi: AiFrameProcessor = {
+        get active() {
+          return true;
+        },
+        initialize: vi.fn().mockReturnValue(true),
+        process: vi.fn().mockReturnValue(undefined),
+        destroy: vi.fn().mockImplementation(() => {
+          throw new Error('ai destroy failed');
+        }),
+      };
+      player.setVrRenderer(badVr);
+      player.setAiProcessor(badAi);
+      expect(player.vrActive).toBe(true);
+      expect(player.aiActive).toBe(true);
+
+      // Swap to a new renderer/processor even though the old ones throw.
+      player.setVrRenderer(new NoopVrRenderer());
+      player.setAiProcessor(new NoopAiFrameProcessor());
+      expect(player.vrActive).toBe(false);
+      expect(player.aiActive).toBe(false);
+
+      // Player destroy still succeeds.
+      await player.destroy();
+    });
+
+    it('rejects setVrRenderer and setAiProcessor after destroy', async () => {
+      const player = playerWithMock();
+      await player.destroy();
+      expect(() => player.setVrRenderer(new NoopVrRenderer())).toThrow(CheetahMediaError);
+      expect(() => player.setAiProcessor(new NoopAiFrameProcessor())).toThrow(CheetahMediaError);
     });
   });
 });

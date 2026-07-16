@@ -97,6 +97,18 @@ export {
 } from './player';
 
 export {
+  NoopVrRenderer,
+  NoopAiFrameProcessor,
+  type VrRenderer,
+  type AiFrameProcessor,
+  type ProcessableFrame,
+  type VrProjectionMetadata,
+  type AiFrameBudget,
+  type AiDetectionBox,
+  type AiFrameResult,
+} from './vr';
+
+export {
   BudgetController,
   type ResourceBudgetConfig,
   type CellDemand,
