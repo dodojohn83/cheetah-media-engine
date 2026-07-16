@@ -207,8 +207,68 @@ const ALLOWED_ATTRIBUTES = new Set<string>([
 ]);
 
 function isDangerousUrl(value: string): boolean {
-  const lower = value.trim().toLowerCase();
-  return lower.startsWith('javascript:') || lower.startsWith('data:text/html');
+  // Browsers ignore tabs, newlines and control characters inside a URL scheme,
+  // so normalize them before checking the scheme prefix.
+  const normalized = value.replace(/[\x00-\x20]/g, '').toLowerCase();
+  if (normalized.startsWith('javascript:') || normalized.startsWith('vbscript:')) return true;
+  if (
+    normalized.startsWith('data:text/html') ||
+    normalized.startsWith('data:image/svg+xml')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const DANGEROUS_STYLE_PROPERTIES = new Set<string>(['behavior', '-moz-binding', 'expression']);
+const DANGEROUS_STYLE_VALUE_PATTERN = /expression\s*\(|behaviour\s*\(|vbscript:|javascript:/i;
+const URL_VALUE_PATTERN = /url\s*\(\s*["']?([^\)"']+)["']?\s*\)/gi;
+
+function styleUrlIsSafe(url: string): boolean {
+  const trimmed = url.trim().toLowerCase();
+  return !(
+    trimmed.startsWith('javascript:') ||
+    trimmed.startsWith('vbscript:') ||
+    trimmed.startsWith('data:text/html') ||
+    trimmed.startsWith('data:image/svg+xml')
+  );
+}
+
+/**
+ * Sanitize an inline style declaration by dropping dangerous properties and
+ * any `url(...)` references that contain executable or HTML data schemes.
+ */
+function sanitizeStyle(value: string): string | undefined {
+  const declarations: string[] = [];
+  const parts = value.split(';');
+  for (const part of parts) {
+    const colon = part.indexOf(':');
+    if (colon === -1) continue;
+    const property = part.slice(0, colon).trim().toLowerCase();
+    const propertyValue = part.slice(colon + 1).trim();
+    if (!property || DANGEROUS_STYLE_PROPERTIES.has(property)) continue;
+    if (DANGEROUS_STYLE_VALUE_PATTERN.test(propertyValue)) continue;
+
+    // Reject url(...) values with dangerous schemes.
+    let safeValue = propertyValue;
+    let match: RegExpExecArray | null;
+    let unsafeUrl = false;
+    URL_VALUE_PATTERN.lastIndex = 0;
+    while ((match = URL_VALUE_PATTERN.exec(propertyValue)) !== null) {
+      if (!styleUrlIsSafe(match[1]!)) {
+        unsafeUrl = true;
+        break;
+      }
+    }
+    if (unsafeUrl) continue;
+
+    // Remove any comments that older IE might misparse.
+    safeValue = safeValue.replace(/\/\*[\s\S]*?\*\//g, '');
+    if (!safeValue) continue;
+
+    declarations.push(`${property}:${safeValue}`);
+  }
+  return declarations.length > 0 ? declarations.join(';') : undefined;
 }
 
 function sanitizeAttribute(name: string, value: string): string | undefined {
@@ -216,6 +276,9 @@ function sanitizeAttribute(name: string, value: string): string | undefined {
   if (lowerName.startsWith('on')) return undefined;
   if (!ALLOWED_ATTRIBUTES.has(lowerName)) return undefined;
   if ((lowerName === 'href' || lowerName === 'src') && isDangerousUrl(value)) return undefined;
+  if (lowerName === 'style') {
+    return sanitizeStyle(value);
+  }
   return value;
 }
 

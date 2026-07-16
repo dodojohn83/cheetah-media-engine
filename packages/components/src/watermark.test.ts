@@ -167,7 +167,7 @@ describe('sanitizeHtml', () => {
     expect(div.textContent).toBe('xy');
   });
 
-  it("removes dangerous URLs", () => {
+  it('removes dangerous URLs', () => {
     const fragment = sanitizeHtml('<a href="javascript:alert(1)">link</a><img src="javascript:alert(2)">');
     const div = document.createElement('div');
     div.appendChild(fragment);
@@ -175,7 +175,30 @@ describe('sanitizeHtml', () => {
     expect(div.querySelector('img')?.getAttribute('src')).toBeNull();
   });
 
-  it("removes non-allowlisted tags and attributes", () => {
+  it('rejects dangerous URLs with embedded whitespace or control characters', () => {
+    const fragment = sanitizeHtml('<a href="java\tscript:alert(1)">link</a><a href="\x01javascript:alert(2)">link2</a>');
+    const div = document.createElement('div');
+    div.appendChild(fragment);
+    const links = div.querySelectorAll('a');
+    expect(links[0]!.getAttribute('href')).toBeNull();
+    expect(links[1]!.getAttribute('href')).toBeNull();
+  });
+
+  it('sanitizes inline styles', () => {
+    const fragment = sanitizeHtml('<span style="color:red; background:url(javascript:alert(1)); -moz-binding:url(x); behavior:url(x); width:expression(alert(2)); font-weight:bold">x</span>');
+    const div = document.createElement('div');
+    div.appendChild(fragment);
+    const span = div.querySelector('span');
+    const style = span?.getAttribute('style') ?? '';
+    expect(style).toContain('color');
+    expect(style).toContain('font-weight');
+    expect(style).not.toContain('background');
+    expect(style).not.toContain('-moz-binding');
+    expect(style).not.toContain('behavior');
+    expect(style).not.toContain('expression');
+  });
+
+  it('removes non-allowlisted tags and attributes', () => {
     const fragment = sanitizeHtml('<x-foo data-x="1"><span data-x="1" unknown-attr="2">safe</span></x-foo>');
     const div = document.createElement('div');
     div.appendChild(fragment);

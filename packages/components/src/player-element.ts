@@ -361,6 +361,10 @@ export class CheetahPlayerElement extends HTMLElement {
     this._liveRegion.setAttribute('aria-live', 'polite');
     this._liveRegion.setAttribute('aria-atomic', 'true');
     shadow.appendChild(this._liveRegion);
+
+    // The watermarks attribute may have been processed before the overlay
+    // existed; refresh it now that the shadow root is built.
+    this._updateWatermarks();
   }
 
   private _createButton(label: string, className: string, onClick: () => void): HTMLButtonElement {
