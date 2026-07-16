@@ -9,6 +9,9 @@ pub mod g711;
 pub mod h264;
 pub mod h265;
 pub mod mp3;
+pub mod rbsp;
+
+pub use rbsp::unescape_rbsp;
 
 pub use aac::{AdtsHeader, AudioSpecificConfig};
 pub use bit::{BitCursor, BitError};

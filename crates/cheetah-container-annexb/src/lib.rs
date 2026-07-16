@@ -1,8 +1,7 @@
 //! Annex-B H.264/H.265 byte-stream parser.
 //!
 //! This crate provides an incremental demuxer that splits an Annex-B byte
-//! stream into `MediaPacket` events. H.264 is fully supported in this work
-//! package; H.265 support will be added in WP-38.
+//! stream into `MediaPacket` events for H.264 and H.265.
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 extern crate alloc;

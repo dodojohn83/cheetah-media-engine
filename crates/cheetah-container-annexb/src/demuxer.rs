@@ -8,7 +8,7 @@ use cheetah_media_types::{
 };
 
 use crate::error::AnnexbError;
-use crate::param_sets::H264ParameterSetCache;
+use crate::param_sets::ParameterSetCache;
 
 /// Default maximum NAL unit size in bytes.
 const DEFAULT_MAX_NAL_SIZE: usize = 16 * 1024 * 1024;
@@ -20,7 +20,7 @@ const DEFAULT_MAX_BUFFER_SIZE: usize = 32 * 1024 * 1024;
 pub struct AnnexBConfig {
     /// Track identifier for emitted packets.
     pub track_id: TrackId,
-    /// Expected codec; this WP supports H.264 only.
+    /// Expected codec; this crate supports H.264 and H.265.
     pub codec: CodecId,
     /// Timebase used for generated timestamps.
     pub timebase: TimeBase,
@@ -44,6 +44,18 @@ impl AnnexBConfig {
             max_buffer_bytes: DEFAULT_MAX_BUFFER_SIZE,
         }
     }
+
+    /// Create a new config for H.265.
+    pub fn h265(track_id: TrackId, timebase: TimeBase) -> Self {
+        Self {
+            track_id,
+            codec: CodecId::H265,
+            timebase,
+            stream_epoch: StreamEpoch::new(0),
+            max_nal_size_bytes: DEFAULT_MAX_NAL_SIZE,
+            max_buffer_bytes: DEFAULT_MAX_BUFFER_SIZE,
+        }
+    }
 }
 
 /// Event emitted by `AnnexBDemuxer`.
@@ -57,7 +69,7 @@ pub enum AnnexbEvent {
     Eof,
 }
 
-/// Incremental Annex-B H.264 demuxer.
+/// Incremental Annex-B H.264/H.265 demuxer.
 #[derive(Debug)]
 pub struct AnnexBDemuxer {
     config: AnnexBConfig,
@@ -65,7 +77,7 @@ pub struct AnnexBDemuxer {
     pending_events: VecDeque<AnnexbEvent>,
     track: TrackInfo,
     sequence: u64,
-    param_sets: H264ParameterSetCache,
+    param_sets: ParameterSetCache,
     ended: bool,
     eof_emitted: bool,
     codec_error: Option<AnnexbError>,
@@ -86,7 +98,7 @@ impl AnnexBDemuxer {
             pending_events: VecDeque::new(),
             track,
             sequence: 0,
-            param_sets: H264ParameterSetCache::new(),
+            param_sets: ParameterSetCache::new(config.codec),
             ended: false,
             eof_emitted: false,
             codec_error: None,
@@ -108,7 +120,7 @@ impl AnnexBDemuxer {
         if let Some(err) = self.codec_error {
             return Err(err);
         }
-        if self.config.codec != CodecId::H264 {
+        if !matches!(self.config.codec, CodecId::H264 | CodecId::H265) {
             self.codec_error = Some(AnnexbError::UnsupportedCodec);
             return Err(AnnexbError::UnsupportedCodec);
         }
@@ -136,7 +148,7 @@ impl AnnexBDemuxer {
             return Ok(());
         }
         self.ended = true;
-        if self.config.codec != CodecId::H264 {
+        if !matches!(self.config.codec, CodecId::H264 | CodecId::H265) {
             return Err(AnnexbError::UnsupportedCodec);
         }
         Ok(())
@@ -242,47 +254,46 @@ impl AnnexBDemuxer {
             return Ok(());
         }
 
-        let nal_type = nal[0] & 0x1f;
+        if self.param_sets.consume(&nal) {
+            // Only emit a Track once a complete decoder configuration is available.
+            if self.param_sets.is_complete() {
+                let old_config = self.track.codec_config.clone();
+                let old_format = self.track.video_format;
+                self.param_sets.update_track(&mut self.track);
 
-        match nal_type {
-            7 => {
-                self.param_sets.set_sps(&nal);
-                if self.param_sets.is_complete() {
-                    self.emit_parameter_set_events()?;
+                if self.track.codec_config != old_config || self.track.video_format != old_format {
+                    self.pending_events
+                        .push_back(AnnexbEvent::Track(self.track.clone()));
                 }
-                return Ok(());
             }
-            8 => {
-                self.param_sets.set_pps(&nal);
-                if self.param_sets.is_complete() {
-                    self.emit_parameter_set_events()?;
-                }
-                return Ok(());
-            }
-            _ => {}
+            return Ok(());
         }
 
-        // For data NALs, emit a packet. If the track just became complete,
-        // a Track event has already been emitted by the parameter set path.
-        let is_keyframe = nal_type == 5;
+        // For data NALs, emit a packet.
+        let is_keyframe = Self::is_keyframe(self.config.codec, &nal);
         let packet = self.new_packet(nal, is_keyframe);
         self.pending_events.push_back(AnnexbEvent::Packet(packet));
         Ok(())
     }
 
-    fn emit_parameter_set_events(&mut self) -> Result<(), AnnexbError> {
-        let old_config = self.track.codec_config.clone();
-        let old_format = self.track.video_format;
-        self.param_sets.update_track(&mut self.track);
-
-        if self.track.codec_config == old_config && self.track.video_format == old_format {
-            // Nothing changed; do not emit a duplicate Track.
-            return Ok(());
+    /// Return true for H.264 IDR slices and H.265 IRAP slices.
+    fn is_keyframe(codec: CodecId, nal: &[u8]) -> bool {
+        match codec {
+            CodecId::H264 => {
+                if nal.is_empty() {
+                    return false;
+                }
+                (nal[0] & 0x1f) == 5
+            }
+            CodecId::H265 => {
+                if nal.len() < 2 {
+                    return false;
+                }
+                let nal_type = (nal[0] >> 1) & 0x3f;
+                (16..=23).contains(&nal_type)
+            }
+            _ => false,
         }
-
-        self.pending_events
-            .push_back(AnnexbEvent::Track(self.track.clone()));
-        Ok(())
     }
 
     fn new_packet(&mut self, data: Vec<u8>, is_keyframe: bool) -> MediaPacket<'static> {
@@ -325,9 +336,9 @@ pub(crate) fn find_start_code(data: &[u8], start: usize) -> Option<(usize, usize
                 return Some((i, 3));
             }
             if data[i + 2] == 0x03 && i + 3 < data.len() && data[i + 3] <= 0x03 {
-                // Emulation prevention: skip the 0x03 and the following byte,
-                // then continue scanning from the byte after the protected value.
-                i += 3;
+                // Emulation prevention: skip the entire 0x00 0x00 0x03 XX sequence
+                // and resume scanning from the byte after the protected value.
+                i += 4;
                 continue;
             }
         }
@@ -357,6 +368,21 @@ mod tests {
         // Payload contains 00 00 03 01 which must not be treated as a start code.
         let data = [
             0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x03, 0x01, 0x00, 0x00, 0x01, 0x02,
+        ];
+        assert_eq!(find_start_code(&data, 0), Some((0, 4)));
+        assert_eq!(find_start_code(&data, 4), Some((9, 3)));
+    }
+
+    #[test]
+    fn find_start_code_skips_emulation_prevention_at_nal_boundary() {
+        // A NAL ending with the EPB sequence 00 00 03 00 must not have its
+        // protected payload byte consumed as part of the next start code.
+        let data = [
+            0x00, 0x00, 0x00, 0x01, // 4-byte start code
+            0x67, // NAL header
+            0x00, 0x00, 0x03, 0x00, // EPB inside NAL payload
+            0x00, 0x00, 0x01, // 3-byte start code of next NAL
+            0x68, // next NAL header
         ];
         assert_eq!(find_start_code(&data, 0), Some((0, 4)));
         assert_eq!(find_start_code(&data, 4), Some((9, 3)));

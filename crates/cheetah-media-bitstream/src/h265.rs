@@ -5,6 +5,11 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+pub mod parameter_sets;
+
+pub use crate::rbsp::unescape_rbsp;
+pub use parameter_sets::{ProfileTierLevel, Sps as H265Sps, Vps as H265Vps};
+
 use crate::ByteCursor;
 
 /// Errors specific to H.265 parsing.
@@ -31,6 +36,12 @@ impl core::fmt::Display for H265Error {
 
 impl From<crate::ReadError> for H265Error {
     fn from(_: crate::ReadError) -> Self {
+        Self::TooShort
+    }
+}
+
+impl From<crate::bit::BitError> for H265Error {
+    fn from(_: crate::bit::BitError) -> Self {
         Self::TooShort
     }
 }
@@ -413,7 +424,7 @@ impl H265CodecConfig {
         Ok(cfg)
     }
 
-    fn build_codec_string(
+    pub fn build_codec_string(
         profile_space: u8,
         tier: u8,
         profile_idc: u8,
