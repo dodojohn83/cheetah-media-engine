@@ -77,11 +77,15 @@ impl<C: BlockCipherDecrypt + BlockSizeUser + KeyInit> Transform for CbcTransform
 
         let block_size = C::BlockSize::USIZE;
         // We always retain the last full block; it may be the final padding block.
-        while self.buf.len() >= block_size * 2 {
-            let ct = <Block<C>>::try_from(&self.buf[..block_size])
+        let mut consumed = 0;
+        while self.buf.len() - consumed >= block_size * 2 {
+            let ct = <Block<C>>::try_from(&self.buf[consumed..consumed + block_size])
                 .expect("internal buffer contains a full block");
             self.process_block(ct.as_slice());
-            self.buf.drain(..block_size);
+            consumed += block_size;
+        }
+        if consumed > 0 {
+            self.buf.drain(..consumed);
         }
 
         Ok(&self.out)
