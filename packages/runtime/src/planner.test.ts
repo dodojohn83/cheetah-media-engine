@@ -221,6 +221,67 @@ describe('plan()', () => {
     expect(webcodecsVideo).toBeDefined();
     expect(result.candidates.some((c) => c.videoBackend === 'webcodecs' && c.audioBackend === 'mse')).toBe(true);
   });
+
+  it('routes raw Annex-B H.264 to WebCodecs when supported', () => {
+    const request: PlanRequest = {
+      protocol: 'http-annexb',
+      tracks: [{ kind: 'video', codec: 'h264', width: 640, height: 360 }],
+      latencyTarget: 'normal',
+    };
+    const caps = makeCaps();
+    const result = plan(request, caps);
+
+    expect(result.primary.transport).toBe('fetch');
+    expect(result.primary.videoBackend).toBe('webcodecs');
+    expect(result.primary.renderer).toBe('webgpu');
+  });
+
+  it('uses websocket transport for ws-annexb', () => {
+    const request: PlanRequest = {
+      protocol: 'ws-annexb',
+      tracks: [{ kind: 'video', codec: 'h265', width: 1920, height: 1080 }],
+      latencyTarget: 'realtime',
+      isolation: true,
+    };
+    const caps = makeCaps();
+    const result = plan(request, caps);
+
+    expect(result.primary.transport).toBe('websocket');
+    expect(result.primary.videoBackend).toBe('webcodecs');
+  });
+
+  it('prefers WASM for MPEG-PS because WebCodecs and MSE cannot demux it', () => {
+    const request: PlanRequest = {
+      protocol: 'http-mpegps',
+      tracks: [
+        { kind: 'video', codec: 'h264', width: 640, height: 360 },
+        { kind: 'audio', codec: 'aac', sampleRate: 48000, channels: 2 },
+      ],
+      latencyTarget: 'normal',
+      isolation: true,
+    };
+    const caps = makeCaps();
+    const result = plan(request, caps);
+
+    expect(result.primary.transport).toBe('fetch');
+    expect(result.primary.videoBackend).toBe('wasm-threads-simd');
+    expect(result.primary.audioBackend).toBe('wasm-threads-simd');
+    expect(result.unsupported.some((u) => u.backend === 'mse')).toBe(true);
+    expect(result.unsupported.some((u) => u.backend === 'webcodecs')).toBe(true);
+  });
+
+  it('reports no route for MPEG-PS when WASM is unavailable', () => {
+    const request: PlanRequest = {
+      protocol: 'ws-mpegps',
+      tracks: [{ kind: 'video', codec: 'h264', width: 640, height: 360 }],
+      latencyTarget: 'normal',
+    };
+    const caps = makeCaps({ wasm: false, simd: false, threads: false });
+    const result = plan(request, caps);
+
+    expect(result.candidates).toHaveLength(0);
+    expect(result.primary.reason).toContain('no supported');
+  });
 });
 
 describe('explain()', () => {
