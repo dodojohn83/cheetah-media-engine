@@ -199,6 +199,23 @@ describe('StreamDownloader', () => {
     expect(dl.progress.state).toBe('idle');
   });
 
+  it('stop closes the sink when the download is paused', async () => {
+    const close = vi.fn();
+    const sink = { write: () => undefined, close };
+    const dl = new StreamDownloader();
+    const start = dl.start({
+      ...makeOptions('https://example.com/range'),
+      sink,
+      onProgress: (p) => {
+        if (p.bytesWritten >= 2) dl.pause();
+      },
+    });
+    await start;
+    expect(close).not.toHaveBeenCalled();
+    await dl.stop();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it('calling stop before start is a no-op', async () => {
     const dl = new StreamDownloader();
     await expect(dl.stop()).resolves.toBeUndefined();

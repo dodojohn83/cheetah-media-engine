@@ -47,6 +47,7 @@ export class StreamDownloader {
   private bytesReceived = 0;
   private startedAt = 0;
   private completedAt = 0;
+  private currentSink: DownloadSink | undefined;
 
   get progress(): DownloadProgress {
     return {
@@ -73,6 +74,7 @@ export class StreamDownloader {
     this.bytesReceived = 0;
     this.startedAt = performance.now();
     this.completedAt = 0;
+    this.currentSink = options.sink;
 
     try {
       await this.run(options, false);
@@ -95,7 +97,8 @@ export class StreamDownloader {
     } finally {
       const finalState = this.state as DownloadState;
       if (finalState !== 'paused') {
-        await this.closeSink(options.sink);
+        await this.closeSink(this.currentSink);
+        this.currentSink = undefined;
       }
     }
   }
@@ -114,6 +117,7 @@ export class StreamDownloader {
     }
 
     this.state = 'running';
+    this.currentSink = options.sink;
     try {
       await this.run(options, true);
       this.completedAt = performance.now();
@@ -135,15 +139,25 @@ export class StreamDownloader {
     } finally {
       const finalState = this.state as DownloadState;
       if (finalState !== 'paused') {
-        await this.closeSink(options.sink);
+        await this.closeSink(this.currentSink);
+        this.currentSink = undefined;
       }
     }
   }
 
   async stop(): Promise<void> {
-    if (this.state !== 'running' && this.state !== 'paused') return;
-    this.state = 'idle';
-    this.controller?.abort();
+    if (this.state === 'paused') {
+      this.state = 'idle';
+      await this.closeSink(this.currentSink);
+      this.currentSink = undefined;
+      return;
+    }
+    if (this.state === 'running') {
+      this.state = 'idle';
+      this.controller?.abort();
+      // The pending start()/resume() finally will close the sink.
+      return;
+    }
   }
 
   private async run(options: DownloadOptions, isResume: boolean): Promise<void> {
@@ -206,7 +220,8 @@ export class StreamDownloader {
     }
   }
 
-  private async closeSink(sink: DownloadSink): Promise<void> {
+  private async closeSink(sink: DownloadSink | undefined): Promise<void> {
+    if (!sink) return;
     try {
       await Promise.resolve(sink.close()).catch(() => undefined);
     } catch {
