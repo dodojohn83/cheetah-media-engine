@@ -37,6 +37,7 @@ export interface WebCodecsBackendOptions {
   readonly tracks: readonly TrackProfile[];
   readonly callbacks: WebCodecsCallbacks;
   readonly maxPendingDecodes?: number;
+  readonly maxVideoQueue?: number;
 }
 
 export interface WebCodecsMetrics {
@@ -279,7 +280,7 @@ export class WebCodecsBackend implements MediaBackend {
     this.tracks = options.tracks;
     this.callbacks = options.callbacks;
     this.maxPending = options.maxPendingDecodes ?? 32;
-    this.maxVideoQueue = options.maxPendingDecodes ?? 32;
+    this.maxVideoQueue = options.maxVideoQueue ?? options.maxPendingDecodes ?? 32;
   }
 
   private totalPending(): number {
@@ -391,8 +392,11 @@ export class WebCodecsBackend implements MediaBackend {
     if (this.displayPaused) {
       if (this.keepConnectionOnPause) {
         if (this.videoInputQueue.length >= this.maxVideoQueue) {
+          // Drop the newest chunk so the buffered window stays contiguous from
+          // the pause point; decoding a delta whose reference was discarded
+          // would produce broken pictures.
           this._metrics.droppedChunks += 1;
-          this.videoInputQueue.shift();
+          return;
         }
         const entry: { data: Uint8Array; timestamp: number; isKeyFrame: boolean; duration?: number } = {
           data,

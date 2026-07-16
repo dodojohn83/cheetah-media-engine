@@ -47,6 +47,7 @@ export interface HTMLVideoElementLike {
   readyState: number;
   error: { readonly code: number; readonly message: string } | null;
   play(): Promise<void> | undefined;
+  pause(): void;
   load(): void;
   addEventListener(type: string, listener: (event?: unknown) => void): void;
   removeEventListener(type: string, listener: (event?: unknown) => void): void;
@@ -488,6 +489,8 @@ export class MseBackend implements MediaBackend {
     if (this.stopped || this.closing || this.errored || !this.configured) {
       throw new MseError('not-configured', 'Cannot pause display before configure');
     }
+    // Freeze the displayed picture while keeping the media pipeline alive.
+    this.videoElement.pause?.();
     this.displayPaused = true;
     this.displayKeepConnection = keepConnection;
     if (!keepConnection) {

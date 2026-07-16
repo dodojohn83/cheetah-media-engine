@@ -182,6 +182,7 @@ class MockHTMLVideoElement extends MockEventTarget implements HTMLVideoElementLi
   readyState = 0;
   error: { code: number; message: string } | null = null;
   play = vi.fn(async () => undefined);
+  pause = vi.fn();
   load = vi.fn();
 }
 
@@ -506,6 +507,7 @@ describe('MseBackend', () => {
     expect(sb.appended.length).toBe(1);
 
     await backend.pauseDisplay(true);
+    expect(video.pause).toHaveBeenCalled();
     backend.pushSegment(new Uint8Array([3, 4, 5]));
     await flushMicrotasks(2);
     expect(sb.appended.length).toBe(2);

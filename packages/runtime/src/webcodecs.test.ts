@@ -476,6 +476,44 @@ describe('WebCodecsBackend', () => {
     expect(onVideoFrame).toHaveBeenCalledTimes(1);
   });
 
+  it('pausing with connection preserves the oldest queued chunks on overflow', async () => {
+    const onVideoFrame = vi.fn();
+    class CaptureVideoDecoder extends MockVideoDecoder {
+      chunks: MockEncodedVideoChunk[] = [];
+      decode(chunk: object): void {
+        this.chunks.push(chunk as MockEncodedVideoChunk);
+        super.decode(chunk);
+      }
+    }
+    const decoders: CaptureVideoDecoder[] = [];
+    vi.stubGlobal('VideoDecoder', class extends CaptureVideoDecoder {
+      constructor(init: { output: () => void; error: (err: Error) => void }) {
+        super(init);
+        decoders.push(this);
+      }
+    });
+
+    const backend = new WebCodecsBackend(ctx, {
+      tracks: [videoTrack],
+      callbacks: { onVideoFrame },
+      maxVideoQueue: 2,
+    });
+    await backend.configure();
+    await backend.pauseDisplay(true);
+
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x65]), 1000, { isKeyFrame: true });
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x41]), 2000, { isKeyFrame: false });
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x41]), 3000, { isKeyFrame: false });
+    expect(backend.metrics.droppedChunks).toBe(1);
+
+    await backend.frameStep('forward');
+    await backend.frameStep('forward');
+    await Promise.resolve();
+    expect(onVideoFrame).toHaveBeenCalledTimes(2);
+    expect(decoders[0]?.chunks.map((c) => c.timestamp)).toEqual([1000, 2000]);
+    await backend.stop();
+  });
+
   it('frameStep rejects backward direction', async () => {
     const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
     await backend.configure();
