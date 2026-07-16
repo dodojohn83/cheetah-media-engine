@@ -377,14 +377,20 @@ export class MicrophoneCapture {
 
     const maxFrames = Math.max(1, this.options.maxBufferedFrames);
     const maxSamples = maxFrames * this.targetFrameSize;
-    if (this.pending.length + out.length > maxSamples) {
-      // Drop the newest frame when the buffer is full to avoid unbounded growth.
+    // Allow one full incoming frame on top of the configured backlog while
+    // draining. The pending buffer is always drained below one frame afterward.
+    const maxAllowed = maxSamples + this.targetFrameSize;
+    let kept = out;
+    if (this.pending.length + out.length > maxAllowed) {
+      const keep = Math.max(0, maxAllowed - this.pending.length);
+      kept = out.subarray(0, keep);
       this.droppedFrames += 1;
-      return;
     }
 
-    this.appendResampled(out);
-    this.emitFullFrames();
+    if (kept.length > 0) {
+      this.appendResampled(kept);
+      this.emitFullFrames();
+    }
   }
 
   private appendResampled(out: Float32Array): void {

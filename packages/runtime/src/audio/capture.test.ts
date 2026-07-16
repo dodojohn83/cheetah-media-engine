@@ -199,7 +199,7 @@ describe('MicrophoneCapture', () => {
     await capture.stop();
   });
 
-  it('drops oversized resampled frames to keep the buffer bounded', async () => {
+  it('caps a burst to maxBufferedFrames + 1 packets and drops the excess', async () => {
     const env = createTestEnv();
     const packets: AudioPacket[] = [];
 
@@ -215,15 +215,16 @@ describe('MicrophoneCapture', () => {
     );
 
     await capture.start();
-    // One huge input frame causes the resampler to output far more than
-    // maxBufferedFrames * targetFrameSize, which should be dropped.
+    // A single huge worklet frame produces a large resampled block; only the
+    // first maxBufferedFrames+1 encoded frames are emitted, the rest is dropped.
     env.fakeWorkletNode.port.postMessage({
       type: 'frame',
       samples: new Float32Array(10000).fill(0),
     });
 
-    expect(packets.length).toBe(0);
+    expect(packets.length).toBeLessThanOrEqual(2);
     expect(capture.getMetrics().droppedFrames).toBeGreaterThan(0);
+    expect(capture.getMetrics().bufferedFrames).toBeLessThanOrEqual(1);
 
     await capture.stop();
   });
