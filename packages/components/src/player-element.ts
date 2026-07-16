@@ -574,6 +574,7 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   private _onStateChange(event: CheetahPlayerEvent<'statechange'>): void {
+    if (!this._connected || !this._player || this._player.id !== event.playerId) return;
     const to = typeof event.details?.to === 'string' ? (event.details.to as import('@cheetah-media/web').PlayerState) : 'idle';
     this._updateState(to);
     if (to === 'playing') {
@@ -583,6 +584,7 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   private _onError(event: CheetahPlayerEvent<'error'>): void {
+    if (!this._connected || !this._player || this._player.id !== event.playerId) return;
     const error = event.details?.error as ErrorDetail | undefined;
     this._lastError = error;
     this._updateState('failed');

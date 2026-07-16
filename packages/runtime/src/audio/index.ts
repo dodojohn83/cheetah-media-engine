@@ -33,3 +33,8 @@ export {
   type MicrophoneCaptureCallbacks,
   type MicrophoneCaptureOptions,
 } from './capture';
+export {
+  IntercomPacketizer,
+  type IntercomPacket,
+  type IntercomPacketizerOptions,
+} from './intercom';

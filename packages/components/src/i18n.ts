@@ -40,7 +40,9 @@ export type MessageKey =
   | 'ptzUpLeft'
   | 'ptzUpRight'
   | 'ptzDownLeft'
-  | 'ptzDownRight';
+  | 'ptzDownRight'
+  | 'intercomStart'
+  | 'intercomStop';
 
 const messages: Record<string, Record<MessageKey, string>> = {
   en: {
@@ -86,6 +88,8 @@ const messages: Record<string, Record<MessageKey, string>> = {
     ptzStop: 'Stop',
     ptzPresetNumber: 'Preset number',
     ptzSpeed: 'Speed',
+    intercomStart: 'Start intercom',
+    intercomStop: 'Stop intercom',
   },
   zh: {
     play: '播放',
@@ -130,6 +134,8 @@ const messages: Record<string, Record<MessageKey, string>> = {
     ptzStop: '停止',
     ptzPresetNumber: '预置位编号',
     ptzSpeed: '速度',
+    intercomStart: '开始对讲',
+    intercomStop: '停止对讲',
   },
 };
 

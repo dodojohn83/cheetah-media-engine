@@ -327,4 +327,29 @@ describe('web sdk', () => {
     expect(() => player.getMetrics()).toThrow(CheetahMediaError);
     expect(() => player.exportDiagnostics()).toThrow(CheetahMediaError);
   });
+
+  it('reports intercom not active by default', () => {
+    const player = playerWithMock();
+    expect(player.intercomActive).toBe(false);
+  });
+
+  it('rejects opus intercom as unsupported', async () => {
+    const player = playerWithMock();
+    await expect(
+      player.startIntercom({ codec: 'opus', sendPacket: () => {} }),
+    ).rejects.toBeInstanceOf(CheetahMediaError);
+  });
+
+  it('rejects intercom when microphone is not available in the environment', async () => {
+    const player = playerWithMock();
+    await expect(
+      player.startIntercom({ codec: 'g711u', sendPacket: () => {} }),
+    ).rejects.toBeInstanceOf(CheetahMediaError);
+  });
+
+  it('stopIntercom is safe when intercom was never started', async () => {
+    const player = playerWithMock();
+    await expect(player.stopIntercom()).resolves.toBeUndefined();
+    expect(player.intercomActive).toBe(false);
+  });
 });
