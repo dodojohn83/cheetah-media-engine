@@ -7,6 +7,7 @@ import {
   CaptureError,
   BlobSink,
   StreamDownloader,
+  CompositeRecorder,
   type EngineRuntime,
   type MetricsSnapshot,
   type WorkerErrorPayload,
@@ -16,11 +17,14 @@ import {
   type DownloadSink,
   type DownloadOptions as RuntimeDownloadOptions,
   type TransportError,
+  type CompositeRecordingOptions as CompositeRecordingOptionsType,
+  type CompositeRecordingResult as CompositeRecordingResultType,
 } from '@cheetah-media/runtime';
 import { createGb28181PtzCmd, type PtzCommand } from './ptz';
 import type { IntercomPacket } from '@cheetah-media/runtime';
 
 export type { DownloadResult, DownloadProgress, DownloadSink } from '@cheetah-media/runtime';
+export type { CompositeRecordingOptions, CompositeRecordingResult, CompositeRecordingProgress, CompositeWatermark } from '@cheetah-media/runtime';
 
 export interface MemoryDescriptor {
   readonly region: number;
@@ -85,6 +89,7 @@ export type CheetahPlayerEventType =
   | 'warning'
   | 'error'
   | 'recording'
+  | 'compositeRecording'
   | 'ptz'
   | 'metadata'
   | 'intercom'
@@ -277,6 +282,12 @@ export interface CheetahPlayer {
   readonly downloadActive: boolean;
   readonly downloadProgress: import('@cheetah-media/runtime').DownloadProgress | undefined;
   readonly downloadBlob: Blob | undefined;
+
+  startCompositeRecording(options: CompositeRecordingOptionsType): Promise<void>;
+  pauseCompositeRecording(): void;
+  resumeCompositeRecording(): void;
+  stopCompositeRecording(): Promise<CompositeRecordingResultType>;
+  readonly compositeRecordingActive: boolean;
 
   getStats(): PlayerStats;
   getMetrics(): MetricsSnapshot;
@@ -545,6 +556,8 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private _downloadController: StreamDownloader | undefined;
   private _lastDownloadOptions: DownloadOptions | undefined;
   private _downloadSink: DownloadSink | undefined;
+  private _compositeRecorder: CompositeRecorder | undefined;
+  private _lastCompositeOptions: CompositeRecordingOptionsType | undefined;
 
   constructor(
     config: PlayerConfig,
@@ -581,6 +594,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   get downloadBlob(): Blob | undefined {
     return this._downloadSink instanceof BlobSink ? this._downloadSink.getBlob() : undefined;
+  }
+
+  get compositeRecordingActive(): boolean {
+    return this._compositeRecorder ? this._compositeRecorder.recordingActive : false;
   }
 
   private nextSequence(): number {
@@ -850,6 +867,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this._intercomStarting = false;
     await this.cleanupDownload().catch(() => undefined);
     await this.cleanupIntercom().catch(() => undefined);
+    await this.cleanupCompositeRecording().catch(() => undefined);
     this._state = 'destroyed';
     this.listeners.clear();
     this.eventHistory.length = 0;
@@ -1068,6 +1086,86 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this._lastDownloadOptions = undefined;
   }
 
+  async startCompositeRecording(options: CompositeRecordingOptionsType): Promise<void> {
+    this.guardDestroyed();
+    if (this._compositeRecorder) {
+      throw new CheetahMediaError(6002, 'sdk', 'Composite recording already active', { recoverable: true });
+    }
+    const recorder = new CompositeRecorder();
+    this._compositeRecorder = recorder;
+    this._lastCompositeOptions = options;
+    const onComplete = (result: CompositeRecordingResultType): void => {
+      this._compositeRecorder = undefined;
+      this._lastCompositeOptions = undefined;
+      if (options.filename && result.blob && result.blob.size > 0) {
+        this.saveBlob(result.blob, options.filename);
+      }
+      this.emit('compositeRecording', { active: false, result });
+    };
+    const onError = (error: Error): void => {
+      this._compositeRecorder = undefined;
+      this._lastCompositeOptions = undefined;
+      this.emit('compositeRecording', { active: false, error: errorMessageFromCause(error) });
+    };
+    const recorderOptions: CompositeRecordingOptionsType = {
+      ...options,
+      onComplete,
+      onError,
+    };
+    try {
+      await recorder.start(recorderOptions);
+      if (this.state === 'destroyed' || this._compositeRecorder !== recorder) {
+        await recorder.stop().catch(() => undefined);
+        this._compositeRecorder = undefined;
+        this._lastCompositeOptions = undefined;
+        return;
+      }
+      this.emit('compositeRecording', { active: true, progress: recorder.progress });
+    } catch (cause) {
+      this._compositeRecorder = undefined;
+      this._lastCompositeOptions = undefined;
+      const message = errorMessageFromCause(cause);
+      throw new CheetahMediaError(6999, 'composite-recording', `Composite recording failed to start: ${message}`, { cause, recoverable: true });
+    }
+  }
+
+  pauseCompositeRecording(): void {
+    this.guardDestroyed();
+    if (!this._compositeRecorder) return;
+    this._compositeRecorder.pause();
+    this.emit('compositeRecording', { active: true, progress: this._compositeRecorder.progress, paused: true });
+  }
+
+  resumeCompositeRecording(): void {
+    this.guardDestroyed();
+    if (!this._compositeRecorder) return;
+    this._compositeRecorder.resume();
+    this.emit('compositeRecording', { active: true, progress: this._compositeRecorder.progress, paused: false });
+  }
+
+  async stopCompositeRecording(): Promise<CompositeRecordingResultType> {
+    this.guardDestroyed();
+    if (!this._compositeRecorder) {
+      throw new CheetahMediaError(6002, 'sdk', 'No composite recording to stop', { recoverable: true });
+    }
+    const recorder = this._compositeRecorder;
+    const options = this._lastCompositeOptions;
+    this._compositeRecorder = undefined;
+    this._lastCompositeOptions = undefined;
+    try {
+      const result = await recorder.stop();
+      if (options?.filename && result.blob && result.blob.size > 0) {
+        this.saveBlob(result.blob, options.filename);
+      }
+      this.emit('compositeRecording', { active: false, result });
+      return result;
+    } catch (cause) {
+      this.emit('compositeRecording', { active: false, error: errorMessageFromCause(cause) });
+      const message = errorMessageFromCause(cause);
+      throw new CheetahMediaError(6999, 'composite-recording', `Composite recording failed: ${message}`, { cause, recoverable: true });
+    }
+  }
+
   private async cleanupDownload(): Promise<void> {
     const controller = this._downloadController;
     this._downloadController = undefined;
@@ -1078,6 +1176,19 @@ export class CheetahPlayerImpl implements CheetahPlayer {
         await controller.stop();
       } catch {
         // stop() may fail if the download already completed; ignore.
+      }
+    }
+  }
+
+  private async cleanupCompositeRecording(): Promise<void> {
+    const recorder = this._compositeRecorder;
+    this._compositeRecorder = undefined;
+    this._lastCompositeOptions = undefined;
+    if (recorder) {
+      try {
+        await recorder.stop();
+      } catch {
+        // stop() may fail if the recording already completed; ignore.
       }
     }
   }

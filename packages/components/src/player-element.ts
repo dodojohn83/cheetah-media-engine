@@ -1,4 +1,13 @@
-import { createPlayer, type CheetahPlayer, type CheetahPlayerEvent } from '@cheetah-media/web';
+import {
+  createPlayer,
+  type CheetahPlayer,
+  type CheetahPlayerEvent,
+  type CompositeRecordingOptions,
+  type CompositeRecordingResult,
+  type CompositeRecordingProgress,
+  type CompositeWatermark,
+  type DownloadProgress,
+} from '@cheetah-media/web';
 import { detectLocale, getMessage, type MessageKey } from './i18n';
 import { styles } from './styles';
 import { createWatermarkOverlay, parseWatermarks, type Watermark, type WatermarkOverlay } from './watermark';
@@ -17,6 +26,8 @@ const OBSERVED_ATTRIBUTES = [
   'max-event-history',
   'on-disconnect',
   'watermarks',
+  'recordingactive',
+  'download',
 ] as const;
 
 type ObservedAttribute = (typeof OBSERVED_ATTRIBUTES)[number];
@@ -47,6 +58,7 @@ export class CheetahPlayerElement extends HTMLElement {
   private _playButton!: HTMLButtonElement;
   private _muteButton!: HTMLButtonElement;
   private _snapshotButton!: HTMLButtonElement;
+  private _downloadButton!: HTMLButtonElement;
   private _recordButton!: HTMLButtonElement;
   private _fullscreenButton!: HTMLButtonElement;
   private _volumeSlider!: HTMLInputElement;
@@ -167,6 +179,26 @@ export class CheetahPlayerElement extends HTMLElement {
     }
   }
 
+  get recordingactive(): boolean {
+    return this.hasAttribute('recordingactive');
+  }
+
+  set recordingactive(value: boolean) {
+    this.toggleAttribute('recordingactive', value);
+  }
+
+  get download(): string | undefined {
+    return this.getAttribute('download') ?? undefined;
+  }
+
+  set download(value: string | undefined) {
+    if (value === undefined || value === '') {
+      this.removeAttribute('download');
+    } else {
+      this.setAttribute('download', value);
+    }
+  }
+
   get onDisconnect(): 'stop' | 'destroy' {
     const value = this.getAttribute('on-disconnect');
     return value === 'destroy' ? 'destroy' : 'stop';
@@ -279,6 +311,13 @@ export class CheetahPlayerElement extends HTMLElement {
       this._updateWatermarks();
       return;
     }
+
+    if (name === 'download') {
+      if (this._downloadButton) {
+        this._downloadButton.style.display = newValue ? '' : 'none';
+      }
+      return;
+    }
   }
 
   private _buildShadowRoot(): void {
@@ -351,6 +390,10 @@ export class CheetahPlayerElement extends HTMLElement {
 
     this._snapshotButton = this._createButton(getMessage(this._locale, 'snapshot'), 'control-button snapshot-button', () => this._takeSnapshot());
     controls.appendChild(this._snapshotButton);
+
+    this._downloadButton = this._createButton(getMessage(this._locale, 'downloadStart'), 'control-button download-button', () => this._toggleDownload());
+    this._downloadButton.style.display = this.download ? '' : 'none';
+    controls.appendChild(this._downloadButton);
 
     this._recordButton = this._createButton(getMessage(this._locale, 'recordStart'), 'control-button record-button', () => this._toggleRecording());
     controls.appendChild(this._recordButton);
@@ -570,6 +613,8 @@ export class CheetahPlayerElement extends HTMLElement {
     this._player.addEventListener('buffering', (event) => this._dispatch('buffering', event));
     this._player.addEventListener('warning', (event) => this._dispatch('warning', event));
     this._player.addEventListener('recording', (event) => this._dispatch('recording', event));
+    this._player.addEventListener('compositeRecording', (event) => this._onCompositeRecording(event as CheetahPlayerEvent<'compositeRecording'>));
+    this._player.addEventListener('download', (event) => this._onDownload(event as CheetahPlayerEvent<'download'>));
     this._player.addEventListener('metadata', (event) => this._onMetadata(event as CheetahPlayerEvent<'metadata'>));
   }
 
@@ -601,6 +646,44 @@ export class CheetahPlayerElement extends HTMLElement {
     this._status.textContent = `${getMessage(this._locale, 'latencyStatus')}: ${latencyText} | ${getMessage(this._locale, 'buffered')}: ${bufferedText}`;
 
     this._dispatch('stats', event);
+  }
+
+  private _onCompositeRecording(event: CheetahPlayerEvent<'compositeRecording'>): void {
+    const details = event.details ?? {};
+    const active = details.active === true && details.result === undefined;
+    this._recording = active;
+    this.recordingactive = active;
+    this._recordButton.textContent = active
+      ? getMessage(this._locale, 'recordStop')
+      : getMessage(this._locale, 'recordStart');
+    this._recordButton.setAttribute('aria-label', this._recordButton.textContent);
+
+    const progress = details.progress as CompositeRecordingProgress | undefined;
+    this.dispatchEvent(
+      new CustomEvent('recordingprogress', {
+        detail: { progress, result: details.result as CompositeRecordingResult | undefined, error: details.error, playerEvent: event },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private _onDownload(event: CheetahPlayerEvent<'download'>): void {
+    const details = event.details ?? {};
+    const active = details.active === true;
+    const progress = details.progress as DownloadProgress | undefined;
+    this._downloadButton.textContent = active
+      ? getMessage(this._locale, 'downloadStop')
+      : getMessage(this._locale, 'downloadStart');
+    this._downloadButton.setAttribute('aria-label', this._downloadButton.textContent);
+
+    this.dispatchEvent(
+      new CustomEvent('downloadprogress', {
+        detail: { progress, completed: details.completed === true, error: details.error, playerEvent: event },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _onMetadata(event: CheetahPlayerEvent<'metadata'>): void {
@@ -737,15 +820,96 @@ export class CheetahPlayerElement extends HTMLElement {
     }
   }
 
+  private _recordingSource(): HTMLVideoElement | HTMLCanvasElement | undefined {
+    const surface =
+      this.querySelector('[slot="surface"]') ??
+      this.querySelector('video, canvas');
+    if (surface instanceof HTMLVideoElement || surface instanceof HTMLCanvasElement) {
+      return surface;
+    }
+    return undefined;
+  }
+
+  private async _loadImage(url: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`Failed to load watermark image: ${url}`));
+      img.src = url;
+    });
+  }
+
+  private async _buildCompositeWatermarks(
+    source: HTMLVideoElement | HTMLCanvasElement,
+  ): Promise<CompositeWatermark[] | undefined> {
+    const marks = this.watermarks;
+    if (marks.length === 0) return undefined;
+    const width = source instanceof HTMLVideoElement ? source.videoWidth || source.clientWidth : source.width;
+    const height = source instanceof HTMLVideoElement ? source.videoHeight || source.clientHeight : source.height;
+    const outW = width || this.clientWidth || 640;
+    const outH = height || this.clientHeight || 480;
+    const result: CompositeWatermark[] = [];
+    for (const mark of marks) {
+      const x = (mark.x ?? 0) / 100 * outW;
+      const y = (mark.y ?? 0) / 100 * outH;
+      if (mark.type === 'text') {
+        result.push({
+          type: 'text',
+          text: mark.content,
+          x,
+          y,
+          font: (mark as { font?: string }).font ?? '24px sans-serif',
+          color: (mark as { color?: string }).color ?? 'rgba(255,255,255,0.8)',
+        });
+      } else if (mark.type === 'image') {
+        const img = await this._loadImage(mark.content);
+        const w = this._parseLength(mark.width, outW);
+        const h = this._parseLength(mark.height, outH);
+        result.push({
+          type: 'image',
+          image: img,
+          x,
+          y,
+          width: w ?? img.naturalWidth,
+          height: h ?? img.naturalHeight,
+        });
+      }
+    }
+    return result.length > 0 ? result : undefined;
+  }
+
+  private _parseLength(value: string | undefined, base: number): number | undefined {
+    if (value === undefined) return undefined;
+    const trimmed = value.trim();
+    if (trimmed.endsWith('%')) {
+      const n = Number(trimmed.slice(0, -1));
+      return Number.isFinite(n) ? (n / 100) * base : undefined;
+    }
+    const n = Number(trimmed.replace(/px$/i, ''));
+    return Number.isFinite(n) ? n : undefined;
+  }
+
   private async _toggleRecording(): Promise<void> {
     if (!this._player) return;
     try {
       if (this._recording) {
-        await this._player.stopRecording();
+        await this._player.stopCompositeRecording();
         this._recording = false;
+        this.recordingactive = false;
       } else {
-        await this._player.startRecording();
+        const source = this._recordingSource();
+        if (!source) {
+          throw new Error('No video or canvas surface available for composite recording');
+        }
+        const watermarks = await this._buildCompositeWatermarks(source);
+        const opts: CompositeRecordingOptions = {
+          source,
+          filename: 'recording',
+          ...(watermarks !== undefined ? { watermarks } : {}),
+        };
+        await this._player.startCompositeRecording(opts);
         this._recording = true;
+        this.recordingactive = true;
       }
       this._recordButton.textContent = this._recording
         ? getMessage(this._locale, 'recordStop')
@@ -753,6 +917,24 @@ export class CheetahPlayerElement extends HTMLElement {
       this._recordButton.setAttribute('aria-label', this._recordButton.textContent);
     } catch (cause) {
       this._recording = false;
+      this.recordingactive = false;
+    }
+  }
+
+  private async _toggleDownload(): Promise<void> {
+    if (!this._player) return;
+    try {
+      if (this._player.downloadActive) {
+        await this._player.stopDownload();
+      } else {
+        const url = this.download;
+        if (!url) {
+          throw new Error('No download URL set on the player element');
+        }
+        await this._player.startDownload({ url, filename: 'download' });
+      }
+    } catch (cause) {
+      // Download failures are emitted by the player as error events.
     }
   }
 

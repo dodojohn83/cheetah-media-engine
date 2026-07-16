@@ -101,4 +101,93 @@ describe('CheetahPlayerElement', () => {
 
     expect(svg?.children.length).toBe(0);
   });
+
+  it('reflects recordingactive attribute and dispatches recordingprogress events', () => {
+    const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+    container.appendChild(el);
+
+    const listeners = new Map<string, (event: CheetahPlayerEvent<'compositeRecording'>) => void>();
+    const fakePlayer = {
+      addEventListener: <T extends string>(type: T, fn: (event: CheetahPlayerEvent<'compositeRecording'>) => void) => {
+        listeners.set(type, fn);
+      },
+      removeEventListener: () => {},
+      startCompositeRecording: () => Promise.resolve(),
+      stopCompositeRecording: () => Promise.resolve({ blob: new Blob(['x']) } as unknown as import('@cheetah-media/web').CompositeRecordingResult),
+    } as unknown as CheetahPlayer;
+
+    (el as unknown as { _player: CheetahPlayer })._player = fakePlayer;
+    (el as unknown as { _bindPlayer: () => void })._bindPlayer();
+
+    const recordingListener = listeners.get('compositeRecording');
+    expect(recordingListener).toBeDefined();
+
+    let progressFired = false;
+    el.addEventListener('recordingprogress', () => {
+      progressFired = true;
+    });
+
+    recordingListener!({
+      type: 'compositeRecording',
+      playerId: 'test',
+      epoch: 1,
+      sequence: 1,
+      timestamp: Date.now(),
+      details: { active: true, progress: { bytesWritten: 100, durationMs: 50, state: 'recording' } },
+    } as CheetahPlayerEvent<'compositeRecording'>);
+
+    expect(el.recordingactive).toBe(true);
+    expect(el.hasAttribute('recordingactive')).toBe(true);
+    expect(progressFired).toBe(true);
+  });
+
+  it('dispatches downloadprogress events and toggles the download button', async () => {
+    const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+    el.setAttribute('download', 'https://example.com/video.mp4');
+    container.appendChild(el);
+
+    const listeners = new Map<string, (event: CheetahPlayerEvent<'download'>) => void>();
+    let downloadActive = false;
+    const fakePlayer = {
+      addEventListener: <T extends string>(type: T, fn: (event: CheetahPlayerEvent<'download'>) => void) => {
+        listeners.set(type, fn);
+      },
+      removeEventListener: () => {},
+      get downloadActive() {
+        return downloadActive;
+      },
+      startDownload: () => {
+        downloadActive = true;
+        return Promise.resolve();
+      },
+      stopDownload: () => {
+        downloadActive = false;
+        return Promise.resolve();
+      },
+    } as unknown as CheetahPlayer;
+
+    (el as unknown as { _player: CheetahPlayer })._player = fakePlayer;
+    (el as unknown as { _bindPlayer: () => void })._bindPlayer();
+
+    const downloadListener = listeners.get('download');
+    expect(downloadListener).toBeDefined();
+
+    let progressFired = false;
+    el.addEventListener('downloadprogress', () => {
+      progressFired = true;
+    });
+
+    await (el as unknown as { _toggleDownload: () => Promise<void> })._toggleDownload();
+    downloadListener!({
+      type: 'download',
+      playerId: 'test',
+      epoch: 1,
+      sequence: 1,
+      timestamp: Date.now(),
+      details: { active: true, progress: { bytesWritten: 1024, state: 'downloading' } },
+    } as CheetahPlayerEvent<'download'>);
+
+    expect(progressFired).toBe(true);
+    expect(downloadActive).toBe(true);
+  });
 });

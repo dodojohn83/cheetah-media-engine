@@ -20,18 +20,37 @@
   - 下载失败映射为 `CheetahMediaError`；仅允许 `http:`/`https:` URL。
 - 测试：Vitest 覆盖启动/停止/暂停/续传/错误、transform 过滤、HTTP 错误、非 http URL 拒绝、播放器事件。
 
-待 51b/51c：
+已完成（随 51b PR 补齐）：
 
 - `packages/components/src/player-element.ts`：`download` 属性/按钮与 `downloadprogress` 事件。
+- 下载按钮仅在设置 `download` 属性时显示；点击调用 `startDownload({ url, filename })` / `stopDownload()`。
+- `download` 事件映射为 `downloadprogress` CustomEvent，包含 `progress`、`completed`、`error`。
+
+待 51c：
+
 - HLS 子片段拼接复用 `HlsClient`；加密流 transform 示例。
 
 ### 2.2 51b — 合成录制
 
-- `packages/runtime/src/media/composite-recorder.ts`：在 `MediaStream`/`Canvas` 或 `MediaRecorder` 基础上合成带水印、截图、字幕/元数据的 MP4/FLV/WebM 片段；复用 002/WP-29 的 `FrameStepRecorder` 与 `SnapshotEncoder`。
+已实现：
+
+- `packages/runtime/src/video/composite-recorder.ts`：基于 `HTMLCanvasElement.captureStream()` + `MediaRecorder` 的合成录制器。
+  - `CompositeRecorder` 支持 `start`/`pause`/`resume`/`stop`。
+  - 每一帧通过 `requestAnimationFrame` 将 source（`HTMLVideoElement`/`HTMLCanvasElement`/`ImageData`/image）绘制到内部 canvas，并叠加文字/图片水印。
+  - 支持单个 `watermark` 或多个 `watermarks` 同时叠加。
+  - 复用 `packages/runtime/src/video/recorder.ts` 的 `startRecording` 作为 `MediaRecorder` 后端。
+  - `BlobStreamSink` 将 `WritableStream<Uint8Array>` 汇聚为最终 `Blob`。
+  - 输入校验：拒绝尺寸为 0 或过大的 source，捕获 `MediaRecorder` 错误并抛出 `RendererError`。
 - `packages/web/src/player.ts`：
-  - `startCompositeRecording(options)` / `stopCompositeRecording()`。
-  - `compositeRecordingActive` 属性。
-- `packages/components/src/player-element.ts`：录制按钮、`recordingactive` 属性与 `recordingprogress` 事件。
+  - `startCompositeRecording(options)` / `pauseCompositeRecording()` / `resumeCompositeRecording()` / `stopCompositeRecording()`。
+  - `compositeRecordingActive` 只读属性。
+  - 通过 `compositeRecording` 事件对外报告进度；`stopCompositeRecording()` 返回 `{ blob, mimeType, durationMs, bytes }`。
+  - 设置 `filename` 时通过 `URL.createObjectURL` + 临时 `<a>` 触发浏览器下载，1 分钟后 `revokeObjectURL`。
+- `packages/components/src/player-element.ts`：
+  - 录制按钮使用合成录制 API，源取自 `slot="surface"` 的 video/canvas。
+  - `recordingactive` boolean 属性/attribute，由 `compositeRecording` 事件同步。
+  - `recordingprogress` CustomEvent 对外暴露进度/结果/错误。
+  - 水印从 `watermarks` 属性解析，text/image 类型按百分比位置映射为像素坐标后传入 `CompositeRecorder`。
 - 完成定义：录制 1 秒后输出非空 Blob；暂停后继续不丢帧；带文字/图片水印的合成帧正确叠加水印。
 
 ### 2.3 51c — VR/AI 扩展入口
@@ -70,5 +89,5 @@
 
 - [x] 51a 范围文档
 - [x] 51a 实现与 PR
-- [ ] 51b 实现与 PR
+- [x] 51b 实现与 PR（待合并）
 - [ ] 51c 实现与 PR

@@ -130,6 +130,12 @@ export {
   type SnapshotResult,
   type ColorSpaceInfo,
   RendererError,
+  CompositeRecorder,
+  type CompositeRecordingOptions,
+  type CompositeRecordingResult,
+  type CompositeRecordingProgress,
+  type CompositeRecordingState,
+  type CompositeWatermark,
 } from './video';
 
 export {
