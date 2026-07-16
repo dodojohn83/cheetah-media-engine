@@ -61,8 +61,10 @@ impl H264ParameterSetCache {
         let sps_rbsp = unescape_rbsp(&sps_nal[1..]);
         let parsed = Sps::parse(&sps_rbsp).ok()?;
 
-        let sps_for_config = unescape_rbsp(sps_nal);
-        let pps_for_config = unescape_rbsp(pps_nal);
+        // AvcC records store the raw NAL bytes (header + RBSP with EPB intact);
+        // H264CodecConfig::parse will unescape them when reading.
+        let sps_for_config = sps_nal.to_vec();
+        let pps_for_config = pps_nal.to_vec();
 
         let cfg = H264CodecConfig {
             configuration_version: 1,

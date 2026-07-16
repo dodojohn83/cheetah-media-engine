@@ -289,8 +289,8 @@ impl AnnexBDemuxer {
         let seq = SequenceNumber::new(self.sequence);
         self.sequence += 1;
         let time = MediaTime::from_pts_dts(
-            Timestamp::new(self.sequence as i64),
-            Timestamp::new(self.sequence as i64),
+            Timestamp::new(seq.get() as i64),
+            Timestamp::new(seq.get() as i64),
             self.config.timebase,
         );
         let mut packet = MediaPacket::new(

@@ -118,6 +118,66 @@ fn avcc_config_is_valid() {
 }
 
 #[test]
+fn avcc_config_preserves_emulation_prevention_bytes() {
+    // Append an EPB sequence to the SPS NAL. The AvcC record must store the
+    // raw NAL bytes (with EPB intact) so downstream decoders can unescape
+    // them exactly once. The protected value 0x02 is chosen so the wire
+    // sequence does not form a start code.
+    let mut sps_with_epb = sps();
+    sps_with_epb.extend_from_slice(&[0x00, 0x00, 0x03, 0x02]);
+
+    let data = make_annexb(&[sps_with_epb.clone(), pps(), idr()]);
+    let mut demuxer = AnnexBDemuxer::new(default_config());
+    demuxer.push(&data);
+
+    let track = match demuxer.next_event().unwrap().unwrap() {
+        AnnexbEvent::Track(t) => t,
+        _ => panic!("expected Track"),
+    };
+
+    if let CodecConfig::AvcC(bytes) = &track.codec_config {
+        let cfg = H264CodecConfig::parse(bytes).unwrap();
+        assert_eq!(cfg.sps_list[0], sps_with_epb);
+        assert!(cfg.width > 0);
+        assert!(cfg.height > 0);
+    } else {
+        panic!("expected AvcC config");
+    }
+}
+
+#[test]
+fn packet_sequence_and_timestamp_match() {
+    let data = make_annexb(&[sps(), pps(), idr()]);
+    let mut demuxer = AnnexBDemuxer::new(default_config());
+    demuxer.push(&data);
+    demuxer.end().unwrap();
+
+    let packets: Vec<_> = collect_events(&mut demuxer)
+        .into_iter()
+        .filter_map(|e| match e {
+            AnnexbEvent::Packet(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+
+    for (i, packet) in packets.iter().enumerate() {
+        assert_eq!(packet.sequence.get(), i as u64);
+        assert_eq!(
+            packet.time.pts.map(|t| t.ticks()),
+            Some(i as i64),
+            "pts mismatch at sequence {}",
+            i
+        );
+        assert_eq!(
+            packet.time.dts.map(|t| t.ticks()),
+            Some(i as i64),
+            "dts mismatch at sequence {}",
+            i
+        );
+    }
+}
+
+#[test]
 fn split_push_works() {
     let data = make_annexb(&[sps(), pps(), idr()]);
     let mut demuxer = AnnexBDemuxer::new(default_config());
