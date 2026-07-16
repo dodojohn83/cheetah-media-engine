@@ -891,9 +891,6 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private async cleanupIntercom(): Promise<void> {
     const capture = this._intercomCapture;
     this._intercomCapture = undefined;
-    this._intercomPacketizer = undefined;
-    this._intercomSend = undefined;
-    this._intercomError = undefined;
     if (capture) {
       try {
         await capture.stop();
@@ -901,6 +898,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
         // stop() may fail if the capture was never running; ignore.
       }
     }
+    this._intercomPacketizer = undefined;
+    this._intercomSend = undefined;
+    this._intercomError = undefined;
   }
 
   private handleIntercomPacket(packet: IntercomPacket): void {
