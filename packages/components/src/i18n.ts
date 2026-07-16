@@ -23,7 +23,19 @@ export type MessageKey =
   | 'playing'
   | 'paused'
   | 'stopping'
-  | 'destroyed';
+  | 'destroyed'
+  | 'ptzTitle'
+  | 'ptzUp'
+  | 'ptzDown'
+  | 'ptzLeft'
+  | 'ptzRight'
+  | 'ptzZoomIn'
+  | 'ptzZoomOut'
+  | 'ptzPresetSet'
+  | 'ptzPresetCall'
+  | 'ptzPresetDelete'
+  | 'ptzStop'
+  | 'ptzPresetNumber';
 
 const messages: Record<string, Record<MessageKey, string>> = {
   en: {
@@ -52,6 +64,18 @@ const messages: Record<string, Record<MessageKey, string>> = {
     paused: 'Paused',
     stopping: 'Stopping',
     destroyed: 'Destroyed',
+    ptzTitle: 'PTZ',
+    ptzUp: 'Up',
+    ptzDown: 'Down',
+    ptzLeft: 'Left',
+    ptzRight: 'Right',
+    ptzZoomIn: 'Zoom in',
+    ptzZoomOut: 'Zoom out',
+    ptzPresetSet: 'Set preset',
+    ptzPresetCall: 'Call preset',
+    ptzPresetDelete: 'Delete preset',
+    ptzStop: 'Stop',
+    ptzPresetNumber: 'Preset number',
   },
   zh: {
     play: '播放',
@@ -79,6 +103,18 @@ const messages: Record<string, Record<MessageKey, string>> = {
     paused: '已暂停',
     stopping: '停止中',
     destroyed: '已销毁',
+    ptzTitle: '云台',
+    ptzUp: '上',
+    ptzDown: '下',
+    ptzLeft: '左',
+    ptzRight: '右',
+    ptzZoomIn: '变焦放大',
+    ptzZoomOut: '变焦缩小',
+    ptzPresetSet: '设置预置位',
+    ptzPresetCall: '调用预置位',
+    ptzPresetDelete: '删除预置位',
+    ptzStop: '停止',
+    ptzPresetNumber: '预置位编号',
   },
 };
 

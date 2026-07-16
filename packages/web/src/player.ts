@@ -6,6 +6,7 @@ import {
   type MetricsSnapshot,
   type WorkerErrorPayload,
 } from '@cheetah-media/runtime';
+import { createGb28181PtzCmd, type PtzCommand } from './ptz';
 
 export interface MemoryDescriptor {
   readonly region: number;
@@ -69,7 +70,8 @@ export type CheetahPlayerEventType =
   | 'stats'
   | 'warning'
   | 'error'
-  | 'recording';
+  | 'recording'
+  | 'ptz';
 
 /** Base event emitted to application listeners. */
 export interface CheetahPlayerEvent<T extends CheetahPlayerEventType = CheetahPlayerEventType> {
@@ -197,6 +199,7 @@ export interface CheetahPlayer {
   pause(): void;
   frameStep(direction: 'forward' | 'backward', keyframeOnly?: boolean): Promise<void>;
   pauseDisplay(keepConnection?: boolean): Promise<void>;
+  ptz(command: import('./ptz').PtzCommand): Promise<void>;
   seek(timeMs: number): Promise<void>;
   setPlaybackRate(rate: number): Promise<void>;
   stop(): Promise<void>;
@@ -706,6 +709,19 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       await this.runtime.pauseDisplay(keepConnection);
     } catch (cause) {
       throw new CheetahMediaError(6999, 'pause-display', 'Pause display failed', { cause, recoverable: true });
+    }
+  }
+
+  async ptz(command: PtzCommand): Promise<void> {
+    this.guardDestroyed();
+    try {
+      const ptzCmd = createGb28181PtzCmd(command);
+      this.emit('ptz', { ptzCmd, action: command.action, speeds: command.speeds, protocol: 'gb28181' });
+    } catch (cause) {
+      throw new CheetahMediaError(6999, 'ptz', cause instanceof Error ? cause.message : 'PTZ command failed', {
+        cause,
+        recoverable: true,
+      });
     }
   }
 

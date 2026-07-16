@@ -187,6 +187,19 @@ describe('web sdk', () => {
     await expect(player.pauseDisplay(false)).resolves.toBeUndefined();
   });
 
+  it('ptz generates a GB28181 command and emits a ptz event', async () => {
+    const player = playerWithMock();
+    await player.load('http://example.com/test.flv');
+    let received: CheetahPlayerEvent<'ptz'> | undefined;
+    player.addEventListener('ptz', (event) => {
+      received = event as CheetahPlayerEvent<'ptz'>;
+    });
+    await player.ptz({ action: 'up', speeds: { vertical: 16 } });
+    expect(received).toBeDefined();
+    expect(received?.details?.ptzCmd).toMatch(/^[0-9A-F]{16}$/);
+    expect(received?.details?.action).toBe('up');
+  });
+
   it('seek is rejected when no active stream', async () => {
     const player = playerWithMock();
     await expect(player.seek(0)).rejects.toBeInstanceOf(CheetahMediaError);
