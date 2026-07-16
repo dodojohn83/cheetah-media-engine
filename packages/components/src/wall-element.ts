@@ -18,9 +18,27 @@ const LAYOUT_COLUMNS: Record<number, number> = {
   16: 4,
 };
 
-function parseLayout(value: string | null): number {
+type WallLayout = number | 'custom';
+
+function parseLayout(value: string | null): WallLayout {
+  if (value === 'custom') return 'custom';
   const n = value ? Number(value) : 1;
   return LAYOUT_COLUMNS[n] !== undefined ? n : 1;
+}
+
+function parseDataGrid(value: string | null): { col: number; row: number; colSpan: number; rowSpan: number } | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as { col?: number; row?: number; colSpan?: number; rowSpan?: number };
+    const col = Number(parsed.col);
+    const row = Number(parsed.row);
+    if (!Number.isFinite(col) || col < 1 || !Number.isFinite(row) || row < 1) return undefined;
+    const colSpan = Math.max(1, Math.floor(Number(parsed.colSpan) || 1));
+    const rowSpan = Math.max(1, Math.floor(Number(parsed.rowSpan) || 1));
+    return { col, row, colSpan, rowSpan };
+  } catch {
+    return undefined;
+  }
 }
 
 function parseResolution(value: string | null): { width: number; height: number } {
@@ -43,13 +61,14 @@ export class CheetahWallElement extends HTMLElement {
   private _registeredIds = new Set<string>();
   private _resizeObserver: ResizeObserver | undefined;
   private _mutationObserver: MutationObserver | undefined;
+  private _dragSource: CheetahWallCellElement | undefined;
 
-  get layout(): number {
+  get layout(): WallLayout {
     return parseLayout(this.getAttribute('layout'));
   }
 
-  set layout(value: number) {
-    if (LAYOUT_COLUMNS[value] !== undefined) {
+  set layout(value: WallLayout) {
+    if (value === 'custom' || LAYOUT_COLUMNS[value] !== undefined) {
       this.setAttribute('layout', String(value));
     }
   }
@@ -73,6 +92,11 @@ export class CheetahWallElement extends HTMLElement {
   }
 
   connectedCallback(): void {
+    this.addEventListener('dblclick', this._onDblClick);
+    this.addEventListener('dragstart', this._onDragStart);
+    this.addEventListener('dragover', this._onDragOver);
+    this.addEventListener('drop', this._onDrop);
+
     if (!this.shadowRoot) {
       const shadow = this.attachShadow({ mode: 'open' });
       const style = document.createElement('style');
@@ -113,6 +137,10 @@ export class CheetahWallElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    this.removeEventListener('dblclick', this._onDblClick);
+    this.removeEventListener('dragstart', this._onDragStart);
+    this.removeEventListener('dragover', this._onDragOver);
+    this.removeEventListener('drop', this._onDrop);
     this._disconnectObservers();
     if (this._budget) {
       this._budget = undefined;
@@ -140,7 +168,7 @@ export class CheetahWallElement extends HTMLElement {
     }
   }
 
-  setLayout(layout: 1 | 4 | 9 | 16): void {
+  setLayout(layout: 1 | 4 | 9 | 16 | 'custom'): void {
     this.layout = layout;
   }
 
@@ -163,7 +191,7 @@ export class CheetahWallElement extends HTMLElement {
     return undefined;
   }
 
-  getStats(): { cells: number; layout: number; selected?: string | undefined; fullscreen?: string | undefined } {
+  getStats(): { cells: number; layout: WallLayout; selected?: string | undefined; fullscreen?: string | undefined } {
     return {
       cells: this._cells().length,
       layout: this.layout,
@@ -227,14 +255,13 @@ export class CheetahWallElement extends HTMLElement {
     if (!this._budget) return;
     const cells = this._cells();
     const visibleIds = new Set<string>();
-    const layout = this.layout;
     const fullscreen = this.fullscreenCell;
 
     for (const [i, cell] of cells.entries()) {
       const id = cell.cellId ?? `cell-${i}`;
       if (cell.cellId !== id) cell.cellId = id;
       visibleIds.add(id);
-      const visible = !fullscreen ? i < layout : cell.cellId === fullscreen;
+      const visible = !fullscreen ? this._isVisibleInLayout(i, cell) : cell.cellId === fullscreen;
       const demand = this._cellDemand(cell, i, visible);
       if (this._registeredIds.has(id)) {
         this._budget.updateCell(demand);
@@ -295,11 +322,10 @@ export class CheetahWallElement extends HTMLElement {
   private _updateCellVisibility(): void {
     if (!this._budget) return;
     const cells = this._cells();
-    const layout = this.layout;
     const fullscreen = this.fullscreenCell;
     for (const [i, cell] of cells.entries()) {
       const id = cell.cellId ?? `cell-${i}`;
-      const visible = !fullscreen ? i < layout : cell.cellId === fullscreen;
+      const visible = !fullscreen ? this._isVisibleInLayout(i, cell) : cell.cellId === fullscreen;
       this._budget.setVisible(id, visible);
     }
   }
@@ -307,20 +333,114 @@ export class CheetahWallElement extends HTMLElement {
   private _updatePriorities(): void {
     if (!this._budget) return;
     const cells = this._cells();
-    const layout = this.layout;
     const fullscreen = this.fullscreenCell;
     const selected = this.selectedCell;
     for (const [i, cell] of cells.entries()) {
       const id = cell.cellId ?? `cell-${i}`;
       const isFullscreen = fullscreen === cell.cellId;
       const isSelected = selected === cell.cellId;
-      const visible = !fullscreen ? i < layout : isFullscreen;
+      const visible = !fullscreen ? this._isVisibleInLayout(i, cell) : isFullscreen;
       let priority = i + 1;
       if (isFullscreen) priority = 0;
       else if (isSelected) priority = 1;
       this._budget.setVisible(id, visible);
       this._budget.setPriority(id, priority);
     }
+  }
+
+  private _isVisibleInLayout(index: number, cell: CheetahWallCellElement): boolean {
+    const layout = this.layout;
+    if (layout === 'custom') {
+      return parseDataGrid(cell.getAttribute('data-grid')) !== undefined;
+    }
+    return index < layout;
+  }
+
+  private _onDblClick = (event: MouseEvent): void => {
+    const cell = this._cellFromEventTarget(event.target);
+    if (!cell || !cell.cellId) return;
+    event.stopPropagation();
+    this.fullscreenCell = this.fullscreenCell === cell.cellId ? undefined : cell.cellId;
+  };
+
+  private _onDragStart = (event: DragEvent): void => {
+    if (this.layout === 'custom' || this.fullscreenCell) return;
+    const cell = this._cellFromEventTarget(event.target);
+    if (!cell || !cell.cellId) return;
+    this._dragSource = cell;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', cell.cellId);
+    }
+  };
+
+  private _onDragOver = (event: DragEvent): void => {
+    if (!this._dragSource) return;
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  };
+
+  private _onDrop = (event: DragEvent): void => {
+    event.preventDefault();
+    const source = this._dragSource;
+    this._dragSource = undefined;
+    if (!source || !source.cellId) return;
+
+    const target = this._cellFromEventTarget(event.target);
+    if (!target || !target.cellId || target === source || !this.contains(target)) return;
+
+    const oldIndex = this._cellIndex(source);
+    const insertBefore = this._shouldInsertBefore(event, target);
+    if (insertBefore) {
+      this.insertBefore(source, target);
+    } else {
+      this.insertBefore(source, target.nextSibling);
+    }
+    const newIndex = this._cellIndex(source);
+
+    this.dispatchEvent(
+      new CustomEvent('wall:reorder', {
+        detail: { cellId: source.cellId, oldIndex, newIndex },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  };
+
+  private _cellFromEventTarget(target: EventTarget | null): CheetahWallCellElement | undefined {
+    if (!(target instanceof Element)) return undefined;
+    let el: Element | null = target;
+    while (el) {
+      if (el.tagName.toLowerCase() === 'cheetah-wall-cell' && this.contains(el)) {
+        return el as CheetahWallCellElement;
+      }
+      const root = el.getRootNode();
+      if (root instanceof ShadowRoot && root.host) {
+        el = root.host;
+      } else {
+        el = el.parentElement;
+      }
+    }
+    return undefined;
+  }
+
+  private _cellIndex(cell: HTMLElement): number {
+    return this._cells().findIndex((c) => c === cell);
+  }
+
+  private _shouldInsertBefore(event: DragEvent, target: HTMLElement): boolean {
+    if (typeof target.getBoundingClientRect !== 'function') return true;
+    const rect = target.getBoundingClientRect();
+    const x = event.clientX;
+    const y = event.clientY;
+    const left = x - rect.left;
+    const right = rect.right - x;
+    const top = y - rect.top;
+    const bottom = rect.bottom - y;
+    const min = Math.min(left, right, top, bottom);
+    return min === left || min === top;
   }
 
   private _applyAllocations(allocations: ReadonlyMap<string, CellAllocation>): void {
@@ -339,23 +459,69 @@ export class CheetahWallElement extends HTMLElement {
     const grid = this.shadowRoot.querySelector('.grid') as HTMLElement | null;
     if (!grid) return;
     const fullscreen = this.fullscreenCell;
-    const cols = fullscreen ? 1 : (LAYOUT_COLUMNS[this.layout] ?? 1);
+    const cells = this._cells();
+
+    if (this.layout === 'custom') {
+      this._applyCustomGrid(grid, cells, fullscreen);
+      return;
+    }
+
+    const layout = this.layout;
+    const cols = fullscreen ? 1 : (LAYOUT_COLUMNS[layout] ?? 1);
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gridTemplateRows = `repeat(${cols}, 1fr)`;
-    const cells = this._cells();
     for (const [i, cell] of cells.entries()) {
       const el = cell as HTMLElement;
       if (fullscreen) {
         el.style.display = cell.getAttribute('cell-id') === fullscreen ? 'block' : 'none';
         el.style.gridColumn = '';
         el.style.gridRow = '';
-      } else if (i < this.layout) {
+        el.removeAttribute('draggable');
+      } else if (this._isVisibleInLayout(i, cell)) {
         el.style.display = 'block';
         el.style.gridColumn = '';
         el.style.gridRow = '';
+        el.setAttribute('draggable', 'true');
       } else {
         el.style.display = 'none';
+        el.removeAttribute('draggable');
       }
+    }
+  }
+
+  private _applyCustomGrid(grid: HTMLElement, cells: CheetahWallCellElement[], fullscreen: string | undefined): void {
+    let maxCol = 0;
+    let maxRow = 0;
+    for (const cell of cells) {
+      const g = parseDataGrid(cell.getAttribute('data-grid'));
+      if (!g) continue;
+      maxCol = Math.max(maxCol, g.col + g.colSpan - 1);
+      maxRow = Math.max(maxRow, g.row + g.rowSpan - 1);
+    }
+    if (maxCol === 0) maxCol = 1;
+    if (maxRow === 0) maxRow = 1;
+
+    grid.style.gridTemplateColumns = `repeat(${maxCol}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${maxRow}, 1fr)`;
+
+    for (const cell of cells) {
+      const el = cell as HTMLElement;
+      el.removeAttribute('draggable');
+      const id = cell.cellId;
+      if (fullscreen && id !== fullscreen) {
+        el.style.display = 'none';
+        el.style.gridColumn = '';
+        el.style.gridRow = '';
+        continue;
+      }
+      const g = parseDataGrid(cell.getAttribute('data-grid'));
+      if (!g) {
+        el.style.display = 'none';
+        continue;
+      }
+      el.style.display = 'block';
+      el.style.gridColumn = `${g.col} / span ${g.colSpan}`;
+      el.style.gridRow = `${g.row} / span ${g.rowSpan}`;
     }
   }
 }
