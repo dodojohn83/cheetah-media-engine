@@ -213,6 +213,30 @@ describe('WebRtcTransport', () => {
     });
   });
 
+  it('reports a peer connection failure mid-stream', async () => {
+    installMocks();
+    const errors: { code: number }[] = [];
+    let endCount = 0;
+
+    const transport = new WebRtcTransport({ url: 'https://example.com/webrtc' });
+    transport.start(
+      () => { /* no-op */ },
+      (error) => { errors.push(error); },
+      () => { endCount += 1; },
+    );
+
+    await vi.waitFor(() => expect(currentPc!.channel?.readyState).toBe('open'));
+
+    currentPc!.connectionState = 'failed';
+    currentPc!.onconnectionstatechange?.call(currentPc, new Event('connectionstatechange'));
+
+    await vi.waitFor(() => {
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.code).toBe(TransportErrorCode.WebRtcConnectionFailed);
+      expect(endCount).toBe(1);
+    });
+  });
+
   it('can be stopped before negotiation completes', async () => {
     installMocks({ openChannel: false });
     const errors: { code: number }[] = [];

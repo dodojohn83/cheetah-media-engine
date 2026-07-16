@@ -113,7 +113,13 @@ export class WebRtcTransport implements Transport {
     }
 
     this.run(Ctor, onChunk).catch((err) => {
-      this.finish(this.toError(err));
+      const error = this.toError(err);
+      try {
+        this.pc?.close();
+      } catch {
+        // close() can throw if already closed; ignore.
+      }
+      this.finish(error);
     });
   }
 
@@ -157,10 +163,10 @@ export class WebRtcTransport implements Transport {
       throw new WebRtcError(TransportErrorCode.Canceled, 'Transport stopped');
     }
 
-    await this.waitForChannelClose(this.pc, this.channel);
+    const closeError = await this.waitForChannelClose(this.pc, this.channel);
 
     this.pc.close();
-    this.finish();
+    this.finish(closeError);
   }
 
   private attachMessageHandler(
@@ -199,7 +205,10 @@ export class WebRtcTransport implements Transport {
       };
       channel.onclose = () => {
         done(() => {
-          if (this.stopped) {
+          // A close that follows pc.close() or stop() should resolve so the
+          // caller can report the underlying error; reject only when the data
+          // channel closes unexpectedly while the peer connection is still up.
+          if (this.stopped || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
             resolve();
           } else {
             reject(new WebRtcError(TransportErrorCode.WebRtcDataChannelFailed, 'Data channel closed before open'));
@@ -214,29 +223,50 @@ export class WebRtcTransport implements Transport {
           done(() => reject(new WebRtcError(TransportErrorCode.WebRtcConnectionFailed, 'Peer connection failed')));
         }
         if (pc.connectionState === 'closed') {
-          done(() => {
-            if (this.stopped) {
-              resolve();
-            } else {
-              reject(new WebRtcError(TransportErrorCode.WebRtcConnectionFailed, 'Peer connection closed before open'));
-            }
-          });
+          // Always resolve on a clean close; the caller (run) will report any
+          // underlying error from the operation that caused the close.
+          done(() => resolve());
         }
       };
     });
   }
 
-  private waitForChannelClose(pc: RTCPeerConnection, channel: RTCDataChannel): Promise<void> {
+  private waitForChannelClose(pc: RTCPeerConnection, channel: RTCDataChannel): Promise<TransportError | undefined> {
     return new Promise((resolve) => {
-      if (this.stopped || channel.readyState === 'closed' || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-        resolve();
+      const closeWith = (error?: TransportError) => {
+        channel.onclose = null;
+        pc.onconnectionstatechange = null;
+        resolve(error);
+      };
+
+      if (this.stopped) {
+        closeWith();
         return;
       }
+      if (pc.connectionState === 'failed') {
+        closeWith(makeError(TransportErrorCode.WebRtcConnectionFailed, 'Peer connection failed', true));
+        return;
+      }
+      if (channel.readyState === 'closed' || pc.connectionState === 'closed') {
+        closeWith();
+        return;
+      }
+
       const maybeClose = () => {
-        if (this.stopped || channel.readyState === 'closed' || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-          resolve();
+        if (this.stopped) {
+          closeWith();
+          return;
+        }
+        if (pc.connectionState === 'failed') {
+          closeWith(makeError(TransportErrorCode.WebRtcConnectionFailed, 'Peer connection failed', true));
+          return;
+        }
+        if (channel.readyState === 'closed' || pc.connectionState === 'closed') {
+          closeWith();
+          return;
         }
       };
+
       channel.onclose = () => {
         maybeClose();
       };
