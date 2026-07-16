@@ -56,6 +56,7 @@ export class WebTransportTransport implements Transport {
   private started = false;
   private stopped = false;
   private ended = false;
+  private closed = false;
   private bytesRead = 0;
   private maxBytes: number;
   private onError?: (error: TransportError) => void;
@@ -148,6 +149,10 @@ export class WebTransportTransport implements Transport {
       }
     }
 
+    // The WebTransport session must be explicitly closed; reaching end-of-
+    // stream on the incoming readable does not release the network session.
+    await this.closeTransport();
+
     this.finish();
   }
 
@@ -194,8 +199,14 @@ export class WebTransportTransport implements Transport {
     // Closing the transport terminates pending stream reads cleanly; do not
     // release reader locks while a read is in flight, which would reject with
     // a TypeError and be reported as a transport failure.
-    this.transport?.close().catch(() => {
+    this.closeTransport().catch(() => {
       // close() can reject if already closed; ignore.
     });
+  }
+
+  private async closeTransport(): Promise<void> {
+    if (!this.transport || this.closed) return;
+    this.closed = true;
+    await this.transport.close();
   }
 }

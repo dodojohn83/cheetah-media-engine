@@ -76,7 +76,8 @@ describe('WebTransportTransport', () => {
     expect(chunks).toHaveLength(2);
     expect(chunks[0]).toEqual(new Uint8Array([0x01]));
     expect(chunks[1]).toEqual(new Uint8Array([0x02, 0x03]));
-    expect(closeCalled).toBe(false);
+    // The transport is explicitly closed when the incoming streams finish.
+    expect(closeCalled).toBe(true);
   });
 
   it('reports an error when WebTransport is unavailable', async () => {
