@@ -122,3 +122,12 @@ corepack pnpm exec playwright test
 - `no_std + alloc` 编译通过（`default-features = false`）。
 - 无 `todo!()`/`unimplemented()`；对外部输入无 `unwrap()`/`expect()`。
 - 测试覆盖 golden 正常流、参数集变更、start code 边界、畸形输入、空包、大 NAL 切片和 fuzz regression。
+
+## 10. Phase 4 执行记录
+
+| WP | 状态 | 分支/PR | 备注 |
+| --- | --- | --- | --- |
+| 36 | 已完成 | `wp/16-engine-state-machine` | Phase 4 计划文档与基线 |
+| 37 | 已完成 | `wp/37-h264-annexb-demuxer` → #38 | H.264 Annex-B 解复用与 AvcC 配置 |
+| 38 | 已完成 | `wp/38-h265-annexb-demuxer` | H.265 Annex-B 解复用与 HvcC 配置 |
+| 39 | 待开始 | — | MPEG-PS 容器解复用 |

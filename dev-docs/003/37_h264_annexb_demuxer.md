@@ -53,13 +53,13 @@ impl AnnexBDemuxer {
 
 ## 4. 完成定义
 
-- [ ] `cargo fmt --all --check` 通过。
-- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` 通过。
-- [ ] `cargo test --workspace --all-features` 通过。
-- [ ] `cargo test --workspace --no-default-features` 通过。
-- [ ] `cargo build --workspace --target wasm32-unknown-unknown --no-default-features` 通过。
-- [ ] `cargo deny check` 通过。
-- [ ] 测试覆盖：
+- [x] `cargo fmt --all --check` 通过。
+- [x] `cargo clippy --workspace --all-targets --all-features -- -D warnings` 通过。
+- [x] `cargo test --workspace --all-features` 通过。
+- [x] `cargo test --workspace --no-default-features` 通过。
+- [x] `cargo build --workspace --target wasm32-unknown-unknown --no-default-features` 通过。
+- [x] `cargo deny check` 通过。
+- [x] 测试覆盖：
   - golden 正常 H.264 Annex-B 流（生成的 fixture）产生正确 Track 和 Packet 数量；
   - SPS/PPS 变更触发新的 `Track` 事件；
   - 3 字节与 4 字节 start code 边界、跨包切片、首个 start code 前的前导零；

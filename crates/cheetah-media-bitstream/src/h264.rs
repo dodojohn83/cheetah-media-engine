@@ -485,22 +485,7 @@ impl H264CodecConfig {
     }
 }
 
-/// Remove H.264 emulation prevention three bytes (`0x00 0x00 0x03`) from RBSP.
-pub fn unescape_rbsp(data: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(data.len());
-    let mut i = 0;
-    while i < data.len() {
-        if i + 2 < data.len() && data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x03 {
-            out.push(0x00);
-            out.push(0x00);
-            i += 3;
-        } else {
-            out.push(data[i]);
-            i += 1;
-        }
-    }
-    out
-}
+pub use crate::rbsp::unescape_rbsp;
 
 #[cfg(test)]
 mod tests {

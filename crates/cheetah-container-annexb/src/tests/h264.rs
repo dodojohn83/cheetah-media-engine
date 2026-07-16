@@ -1,61 +1,9 @@
-//! Integration tests for the Annex-B demuxer.
-
-use alloc::vec;
-use alloc::vec::Vec;
 use cheetah_media_bitstream::h264::H264CodecConfig;
-use cheetah_media_types::{CodecConfig, CodecId, TimeBase, TrackId};
+use cheetah_media_types::{CodecConfig, CodecId};
 
-use crate::{
-    AnnexBConfig, AnnexBDemuxer, AnnexbEvent,
-    demuxer::{find_start_code, nal_payload},
-};
-
-fn sps() -> Vec<u8> {
-    // Valid Baseline profile SPS that cheetah-media-bitstream can parse.
-    vec![
-        0x67, 0x42, 0x00, 0x1e, 0xf8, 0x20, 0x10, 0xe2, 0x44, 0x89, 0x12, 0x80,
-    ]
-}
-
-fn pps() -> Vec<u8> {
-    vec![0x68, 0xce, 0x3c, 0x80]
-}
-
-fn idr() -> Vec<u8> {
-    vec![0x65, 0x88, 0x80, 0x80, 0x80]
-}
-
-fn non_idr() -> Vec<u8> {
-    vec![0x41, 0x9a, 0x24, 0x04]
-}
-
-fn make_annexb(nals: &[Vec<u8>]) -> Vec<u8> {
-    let mut out = Vec::new();
-    for (i, nal) in nals.iter().enumerate() {
-        if i % 2 == 0 {
-            out.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        } else {
-            out.extend_from_slice(&[0x00, 0x00, 0x01]);
-        }
-        out.extend_from_slice(nal);
-    }
-    out
-}
-
-fn default_config() -> AnnexBConfig {
-    let mut cfg = AnnexBConfig::h264(TrackId::new(1).unwrap(), TimeBase::DEFAULT);
-    cfg.max_buffer_bytes = 4096;
-    cfg.max_nal_size_bytes = 4096;
-    cfg
-}
-
-fn collect_events(demuxer: &mut AnnexBDemuxer) -> Vec<AnnexbEvent> {
-    let mut events = Vec::new();
-    while let Some(event) = demuxer.next_event().unwrap() {
-        events.push(event);
-    }
-    events
-}
+use crate::demuxer::{find_start_code, nal_payload};
+use crate::tests::{collect_events, default_config, idr, make_annexb, non_idr, pps, sps};
+use crate::{AnnexBDemuxer, AnnexbEvent};
 
 #[test]
 fn demuxer_emits_track_and_packets() {
@@ -241,7 +189,7 @@ fn malformed_input_is_rejected() {
 #[test]
 fn unsupported_codec_errors() {
     let mut cfg = default_config();
-    cfg.codec = CodecId::H265;
+    cfg.codec = CodecId::Aac;
     let mut demuxer = AnnexBDemuxer::new(cfg);
     demuxer.push(&[0x00, 0x00, 0x00, 0x01, 0x40, 0x01]);
     assert!(matches!(
@@ -320,6 +268,37 @@ fn emulation_prevention_not_treated_as_start_code() {
         })
         .any(|p| p.flags.is_keyframe && p.payload.as_ref() == nal_with_epb.as_slice());
     assert!(found_packet);
+}
+
+#[test]
+fn emulation_prevention_preserved_across_nal_boundary() {
+    // First NAL ends with an EPB sequence (00 00 03 00) and is immediately
+    // followed by a 3-byte start code. The protected 0x00 must remain in the
+    // first NAL payload and must not be consumed as part of the next start code.
+    let mut nal1 = idr();
+    nal1.extend_from_slice(&[0x00, 0x00, 0x03, 0x00]);
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data.extend_from_slice(&nal1);
+    data.extend_from_slice(&[0x00, 0x00, 0x01]);
+    data.extend_from_slice(&non_idr());
+
+    let mut demuxer = AnnexBDemuxer::new(default_config());
+    demuxer.push(&data);
+    demuxer.end().unwrap();
+
+    let packets: Vec<_> = collect_events(&mut demuxer)
+        .into_iter()
+        .filter_map(|e| match e {
+            AnnexbEvent::Packet(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(packets.len(), 2);
+    assert_eq!(packets[0].payload.as_ref(), nal1.as_slice());
+    assert_eq!(packets[1].payload.as_ref(), non_idr().as_slice());
 }
 
 #[test]
