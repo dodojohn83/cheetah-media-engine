@@ -206,6 +206,19 @@ impl MpegPsDemuxer {
             total
         };
 
+        // Private/reserved stream ids (0xBF, 0xF0-0xFE) do not carry the standard
+        // PES optional header; the payload follows PES_packet_length directly.
+        if is_private_stream(code) {
+            if pes_end > 6 {
+                let payload = self.buffer[6..pes_end].to_vec();
+                let item = MetadataItem::pes_private(u32::from(code), payload);
+                self.pending_events
+                    .push_back(MpegPsEvent::Metadata(alloc::vec![item]));
+            }
+            self.buffer.drain(0..pes_end);
+            return Ok(true);
+        }
+
         if pes_end < 9 {
             self.buffer.drain(0..pes_end);
             return Ok(true);
@@ -227,14 +240,7 @@ impl MpegPsDemuxer {
         let payload = self.buffer[header.header_size..pes_end].to_vec();
         let media_time = MediaTime::new(header.pts, header.dts, None, TimeBase::TS_90K);
 
-        if is_private_stream(code) {
-            let mut item = MetadataItem::pes_private(u32::from(code), payload);
-            if let Some(ts) = media_time.pts_ms() {
-                item = item.with_timestamp(ts);
-            }
-            self.pending_events
-                .push_back(MpegPsEvent::Metadata(alloc::vec![item]));
-        } else if is_video_stream(code) {
+        if is_video_stream(code) {
             self.video
                 .process_payload(&payload, media_time, &mut self.pending_events)?;
         } else if is_audio_stream(code) {

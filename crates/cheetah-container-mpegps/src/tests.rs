@@ -18,18 +18,14 @@ fn make_video_pes(payload: &[u8]) -> Vec<u8> {
     make_video_pes_with_pts(payload, 0)
 }
 
-fn make_private_pes_with_pts(payload: &[u8], pts: u64) -> Vec<u8> {
+fn make_private_pes(payload: &[u8]) -> Vec<u8> {
     let mut pes = Vec::new();
     pes.extend_from_slice(&[0x00, 0x00, 0x01, 0xBF]); // private_stream_2
 
-    let header_and_payload_len = 3 + 5 + payload.len();
-    pes.push((header_and_payload_len >> 8) as u8);
-    pes.push((header_and_payload_len & 0xFF) as u8);
-
-    pes.push(0x81); // marker bits + flags
-    pes.push(0x80); // PTS present
-    pes.push(0x05); // header_data_length
-    pes.extend_from_slice(&encode_pts(pts));
+    // Private stream_2 has no PES optional header; PES_packet_data_byte
+    // follows PES_packet_length immediately.
+    pes.push((payload.len() >> 8) as u8);
+    pes.push((payload.len() & 0xFF) as u8);
     pes.extend_from_slice(payload);
     pes
 }
@@ -449,7 +445,7 @@ fn build_adts_frame(sample_rate: u32, channels: u8, raw_len: usize) -> Vec<u8> {
 #[test]
 fn demuxer_extracts_private_stream_metadata() {
     let payload = b"overlay-coords";
-    let pes = make_private_pes_with_pts(payload, 90000); // 1 second
+    let pes = make_private_pes(payload);
     let mut demuxer = MpegPsDemuxer::new(MpegPsConfig::h264());
     demuxer.push(&pes);
     demuxer.end().unwrap();
@@ -465,5 +461,6 @@ fn demuxer_extracts_private_stream_metadata() {
     assert_eq!(metadata[0].source, MetadataSource::PesPrivate);
     assert_eq!(metadata[0].key, 0xBF);
     assert_eq!(metadata[0].value, payload);
-    assert_eq!(metadata[0].timestamp_ms, Some(1000));
+    // Private stream_2 has no PES optional header, so no timestamp is extracted.
+    assert_eq!(metadata[0].timestamp_ms, None);
 }
