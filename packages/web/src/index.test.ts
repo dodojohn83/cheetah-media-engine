@@ -354,12 +354,23 @@ describe('web sdk', () => {
   });
 
   describe('download', () => {
-    function makeStream(chunks: Uint8Array[], closeWhenDone = true) {
+    function makeStream(chunks: Uint8Array[], signal: AbortSignal | undefined, closeOnDone = true) {
       let index = 0;
       return new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (signal) {
+            signal.addEventListener('abort', () => {
+              try {
+                controller.close();
+              } catch {
+                // already closed
+              }
+            }, { once: true });
+          }
+        },
         pull(controller) {
           if (index >= chunks.length) {
-            if (closeWhenDone) controller.close();
+            if (closeOnDone) controller.close();
             return;
           }
           if (controller.desiredSize !== null && controller.desiredSize <= 0) return;
@@ -375,7 +386,18 @@ describe('web sdk', () => {
     beforeEach(() => {
       vi.stubGlobal(
         'fetch',
-        vi.fn(async () => new Response(makeStream([new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])]))),
+        vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+          const headers = init?.headers ? new Headers(init.headers) : new Headers();
+          const range = headers.get('Range');
+          const signal = init?.signal ?? undefined;
+          if (range) {
+            const start = Number.parseInt(range.replace('bytes=', ''), 10);
+            return new Response(makeStream([new Uint8Array([start + 1, start + 2, start + 3])], signal), {
+              status: 206,
+            });
+          }
+          return new Response(makeStream([new Uint8Array([1, 2])], signal));
+        }),
       );
     });
 
@@ -386,8 +408,13 @@ describe('web sdk', () => {
     it('downloads a stream through the player', async () => {
       const player = playerWithMock();
       const result = await player.startDownload({ url: 'https://example.com/video.mp4' });
-      expect(result.bytesWritten).toBe(5);
+      expect(result.bytesWritten).toBe(2);
       expect(player.downloadActive).toBe(false);
+    });
+
+    it('rejects malformed download URLs with a media error', async () => {
+      const player = playerWithMock();
+      await expect(player.startDownload({ url: 'not-a-url' })).rejects.toBeInstanceOf(CheetahMediaError);
     });
 
     it('rejects non-http download URLs', async () => {
@@ -402,7 +429,44 @@ describe('web sdk', () => {
       const events: CheetahPlayerEvent<'download'>[] = [];
       player.addEventListener('download', (event) => events.push(event as CheetahPlayerEvent<'download'>));
       await player.startDownload({ url: 'https://example.com/video.mp4' });
-      expect(events.length).toBeGreaterThanOrEqual(2);
+      expect(events.length).toBeGreaterThanOrEqual(1);
+    });
+
+    describe('resume', () => {
+      beforeEach(() => {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+            const headers = init?.headers ? new Headers(init.headers) : new Headers();
+            const range = headers.get('Range');
+            const signal = init?.signal ?? undefined;
+            if (range) {
+              const start = Number.parseInt(range.replace('bytes=', ''), 10);
+              return new Response(makeStream([new Uint8Array([start + 1, start + 2, start + 3])], signal), {
+                status: 206,
+              });
+            }
+            return new Response(makeStream([new Uint8Array([1, 2])], signal, false));
+          }),
+        );
+      });
+
+      it('resumes a paused download into the same sink', async () => {
+        const player = playerWithMock();
+        let paused = false;
+        player.addEventListener('download', (event: CheetahPlayerEvent<'download'>) => {
+          const progress = (event.details as { progress?: { bytesWritten: number } }).progress;
+          if (!paused && progress && progress.bytesWritten >= 2) {
+            paused = true;
+            player.pauseDownload();
+          }
+        });
+        const first = await player.startDownload({ url: 'https://example.com/video.mp4' });
+        expect(first.bytesWritten).toBe(2);
+
+        const result = await player.resumeDownload({ url: 'https://example.com/video.mp4' });
+        expect(result.bytesWritten).toBe(5);
+      });
     });
   });
 });

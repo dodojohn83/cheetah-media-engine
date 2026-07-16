@@ -535,6 +535,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private _intercomError: ((error: Error) => void) | undefined;
   private _downloadController: StreamDownloader | undefined;
   private _lastDownloadOptions: DownloadOptions | undefined;
+  private _downloadSink: DownloadSink | undefined;
 
   constructor(
     config: PlayerConfig,
@@ -941,13 +942,19 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (this._downloadController) {
       throw new CheetahMediaError(6002, 'sdk', 'Download already active', { recoverable: true });
     }
-    const url = new URL(options.url);
+    let url: URL;
+    try {
+      url = new URL(options.url);
+    } catch {
+      throw new CheetahMediaError(7001, 'download', 'Invalid download URL', { recoverable: false });
+    }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       throw new CheetahMediaError(7001, 'download', 'Only http/https downloads are supported', { recoverable: false });
     }
 
-    this._lastDownloadOptions = options;
     const sink = options.sink ?? new BlobSink();
+    this._downloadSink = sink;
+    this._lastDownloadOptions = { ...options, sink };
     const controller = new StreamDownloader();
     this._downloadController = controller;
     const runtimeOptions: RuntimeDownloadOptions = {
@@ -992,7 +999,8 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       throw new CheetahMediaError(6002, 'sdk', 'No paused download to resume', { recoverable: true });
     }
     const url = options?.url ?? base.url;
-    const sink = options?.sink ?? base.sink ?? new BlobSink();
+    const sink = options?.sink ?? this._downloadSink ?? new BlobSink();
+    this._downloadSink = sink;
     const runtimeOptions: RuntimeDownloadOptions = {
       url,
       sink,
@@ -1032,6 +1040,8 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this.guardDestroyed();
     await this._downloadController?.stop();
     this._downloadController = undefined;
+    this._downloadSink = undefined;
+    this._lastDownloadOptions = undefined;
   }
 
   private async cleanupIntercom(): Promise<void> {
