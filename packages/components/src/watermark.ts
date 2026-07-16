@@ -116,6 +116,7 @@ function parseWatermark(item: Record<string, unknown>): Watermark | undefined {
   const content = parseString(item.content);
 
   if (!type || !VALID_TYPES.has(type) || !content) return undefined;
+  if (type === 'image' && isDangerousUrl(content)) return undefined;
 
   const common = {
     ...base,

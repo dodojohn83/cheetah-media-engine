@@ -45,6 +45,19 @@ describe('parseWatermarks', () => {
     expect(result![0]!).toMatchObject({ type: 'text', content: 'ok', x: 0, y: 0 });
     expect(result![1]!).toMatchObject({ type: 'text', content: 'out', x: 100, opacity: 0 });
   });
+
+  it('rejects image watermarks with dangerous URLs', () => {
+    const result = parseWatermarks(
+      JSON.stringify([
+        { type: 'image', content: 'javascript:alert(1)' },
+        { type: 'image', content: 'data:text/html,<script>alert(1)</script>' },
+        { type: 'image', content: 'data:image/png;base64,abc' },
+      ]),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result![0]!).toMatchObject({ type: 'image', content: 'data:image/png;base64,abc' });
+  });
 });
 
 describe('createWatermarkOverlay', () => {
