@@ -1,6 +1,7 @@
 import { createPlayer, type CheetahPlayer, type CheetahPlayerEvent } from '@cheetah-media/web';
 import { detectLocale, getMessage, type MessageKey } from './i18n';
 import { styles } from './styles';
+import { createWatermarkOverlay, parseWatermarks, type Watermark, type WatermarkOverlay } from './watermark';
 
 const OBSERVED_ATTRIBUTES = [
   'src',
@@ -14,6 +15,7 @@ const OBSERVED_ATTRIBUTES = [
   'stats-interval',
   'max-event-history',
   'on-disconnect',
+  'watermarks',
 ] as const;
 
 type ObservedAttribute = (typeof OBSERVED_ATTRIBUTES)[number];
@@ -53,6 +55,7 @@ export class CheetahPlayerElement extends HTMLElement {
   private _autoplayButton!: HTMLButtonElement;
   private _status!: HTMLDivElement;
   private _liveRegion!: HTMLDivElement;
+  private _watermarkOverlay!: WatermarkOverlay;
 
   get src(): string | undefined {
     return this.getAttribute('src') ?? undefined;
@@ -150,6 +153,18 @@ export class CheetahPlayerElement extends HTMLElement {
     else this.setAttribute('max-event-history', String(value));
   }
 
+  get watermarks(): Watermark[] {
+    return parseWatermarks(this.getAttribute('watermarks')) ?? [];
+  }
+
+  set watermarks(value: Watermark[]) {
+    if (!Array.isArray(value) || value.length === 0) {
+      this.removeAttribute('watermarks');
+    } else {
+      this.setAttribute('watermarks', JSON.stringify(value));
+    }
+  }
+
   get onDisconnect(): 'stop' | 'destroy' {
     const value = this.getAttribute('on-disconnect');
     return value === 'destroy' ? 'destroy' : 'stop';
@@ -157,6 +172,10 @@ export class CheetahPlayerElement extends HTMLElement {
 
   set onDisconnect(value: 'stop' | 'destroy') {
     this.setAttribute('on-disconnect', value);
+  }
+
+  setWatermarks(watermarks: Watermark[]): void {
+    this.watermarks = watermarks;
   }
 
   get player(): CheetahPlayer | undefined {
@@ -253,6 +272,11 @@ export class CheetahPlayerElement extends HTMLElement {
       // Controls visibility is handled entirely by CSS via :host([controls]).
       return;
     }
+
+    if (name === 'watermarks') {
+      this._updateWatermarks();
+      return;
+    }
   }
 
   private _buildShadowRoot(): void {
@@ -287,6 +311,9 @@ export class CheetahPlayerElement extends HTMLElement {
     this._overlay.appendChild(this._autoplayButton);
 
     shadow.appendChild(this._overlay);
+
+    this._watermarkOverlay = createWatermarkOverlay();
+    shadow.appendChild(this._watermarkOverlay.root);
 
     const controls = document.createElement('div');
     controls.className = 'controls';
@@ -614,6 +641,10 @@ export class CheetahPlayerElement extends HTMLElement {
 
   private _hideOverlay(): void {
     this._overlay.classList.remove('active');
+  }
+
+  private _updateWatermarks(): void {
+    this._watermarkOverlay.setWatermarks(this.watermarks);
   }
 
   private _announce(text: string): void {

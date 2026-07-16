@@ -7,5 +7,6 @@ Web Components and reference UI for the Cheetah media engine.
 - Single-window player component.
 - 1/4/9/16 grid component.
 - Advanced wall interactions: double-click a cell for local fullscreen, drag-and-drop reordering, and irregular `data-grid` layouts.
+- Local watermark overlay (`<cheetah-player watermarks="...">`) supporting text, image and HTML with tiling, motion and ghost effects.
 - PTZ control panel component (`<cheetah-ptz-panel>`) with GB28181 command generation.
 - Accessibility and theme scaffolding.

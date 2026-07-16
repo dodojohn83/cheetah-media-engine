@@ -3,9 +3,10 @@ import { CheetahPlayerElement } from './player-element';
 import { CheetahPtzPanelElement } from './ptz-panel-element';
 import { CheetahWallCellElement } from './wall-cell-element';
 import { CheetahWallElement } from './wall-element';
+import type { Watermark, TextWatermark, ImageWatermark, HtmlWatermark } from './watermark';
 
 export { createPlayer, CheetahPlayerElement, CheetahPtzPanelElement, CheetahWallElement, CheetahWallCellElement };
-export type { CheetahPlayer, PlayerConfig };
+export type { CheetahPlayer, PlayerConfig, Watermark, TextWatermark, ImageWatermark, HtmlWatermark };
 
 export interface PlayerComponentOptions extends PlayerConfig {
   workerUrl?: string;

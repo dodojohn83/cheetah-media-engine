@@ -1,0 +1,142 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { createWatermarkOverlay, parseWatermarks, type TextWatermark, type ImageWatermark, type HtmlWatermark } from './watermark';
+
+describe('parseWatermarks', () => {
+  it('returns undefined for empty or invalid input', () => {
+    expect(parseWatermarks(null)).toBeUndefined();
+    expect(parseWatermarks('')).toBeUndefined();
+    expect(parseWatermarks('not-json')).toBeUndefined();
+    expect(parseWatermarks('{}')).toBeUndefined();
+  });
+
+  it('parses a valid watermark list', () => {
+    const result = parseWatermarks(
+      JSON.stringify([
+        { type: 'text', content: 'hello', x: 10, y: 20, opacity: 0.5, dynamic: true },
+        { type: 'image', content: 'data:image/png;base64,', tile: true },
+        { type: 'html', content: '<b>warn</b>', ghost: true },
+      ]),
+    );
+
+    expect(result).toHaveLength(3);
+    expect(result![0]!).toMatchObject({ type: 'text', content: 'hello', x: 10, y: 20, opacity: 0.5, dynamic: true });
+    expect(result![1]!).toMatchObject({ type: 'image', content: 'data:image/png;base64,', tile: true });
+    expect(result![2]!).toMatchObject({ type: 'html', content: '<b>warn</b>', ghost: true });
+  });
+
+  it('drops malformed entries and clamps values', () => {
+    const result = parseWatermarks(
+      JSON.stringify([
+        { type: 'text', content: 'ok' },
+        { type: 'unknown', content: 'bad' },
+        { type: 'text', content: '' },
+        { type: 'text', content: 'out', x: 150, opacity: -1 },
+      ]),
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result![0]!).toMatchObject({ type: 'text', content: 'ok', x: 0, y: 0 });
+    expect(result![1]!).toMatchObject({ type: 'text', content: 'out', x: 100, opacity: 0 });
+  });
+});
+
+describe('createWatermarkOverlay', () => {
+  let overlay: ReturnType<typeof createWatermarkOverlay>;
+
+  beforeEach(() => {
+    overlay = createWatermarkOverlay();
+  });
+
+  it('creates a watermark layer root', () => {
+    expect(overlay.root.className).toBe('watermark-layer');
+    expect(overlay.root.getAttribute('part')).toBe('watermark-layer');
+  });
+
+  it('renders text watermarks', () => {
+    overlay.setWatermarks([{ type: 'text', content: 'hello', x: 10, y: 20 }]);
+    const items = overlay.root.querySelectorAll('.watermark-item');
+    expect(items.length).toBe(1);
+    expect(items[0]!.textContent).toBe('hello');
+    expect((items[0] as HTMLElement).style.left).toBe('10%');
+    expect((items[0] as HTMLElement).style.top).toBe('20%');
+  });
+
+  it('renders image watermarks', () => {
+    overlay.setWatermarks([{ type: 'image', content: 'http://example.com/w.png', width: '120px' }]);
+    const items = overlay.root.querySelectorAll('.watermark-item');
+    expect(items.length).toBe(1);
+    expect(items[0]!.tagName.toLowerCase()).toBe('img');
+    expect((items[0] as HTMLImageElement).src).toBe('http://example.com/w.png');
+    expect((items[0] as HTMLElement).style.width).toBe('120px');
+  });
+
+  it('renders html watermarks', () => {
+    overlay.setWatermarks([{ type: 'html', content: '<span class="mark">X</span>' }]);
+    const items = overlay.root.querySelectorAll('.watermark-item');
+    expect(items.length).toBe(1);
+    expect(items[0]!.innerHTML).toBe('<span class="mark">X</span>');
+  });
+
+  it('applies opacity, rotation, dynamic and ghost classes', () => {
+    overlay.setWatermarks([
+      { type: 'text', content: 'mark', opacity: 0.4, rotation: 45, dynamic: true, ghost: true },
+    ]);
+    const item = overlay.root.querySelector('.watermark-item') as HTMLElement;
+    expect(item.style.opacity).toBe('0.4');
+    expect(item.style.transform).toBe('rotate(45deg)');
+    expect(item.classList.contains('watermark-dynamic')).toBe(true);
+    expect(item.classList.contains('watermark-ghost')).toBe(true);
+  });
+
+  it('renders tiled watermarks with repeated items', () => {
+    overlay.setWatermarks([{ type: 'text', content: ' tiled', tile: true }]);
+    const containers = overlay.root.querySelectorAll('.watermark-tile-container');
+    expect(containers.length).toBe(1);
+    const tiles = containers[0]!.querySelectorAll('.watermark-tile-item');
+    expect(tiles.length).toBe(12);
+  });
+
+  it('clears previous watermarks when set again', () => {
+    overlay.setWatermarks([{ type: 'text', content: 'first' }]);
+    expect(overlay.root.querySelectorAll('.watermark-item').length).toBe(1);
+    overlay.setWatermarks([{ type: 'text', content: 'second' }]);
+    const items = overlay.root.querySelectorAll('.watermark-item');
+    expect(items.length).toBe(1);
+    expect(items[0]!.textContent).toBe('second');
+  });
+
+  it('clears all watermarks on clear()', () => {
+    overlay.setWatermarks([{ type: 'text', content: 'first' }]);
+    overlay.clear();
+    expect(overlay.root.querySelectorAll('.watermark-item').length).toBe(0);
+  });
+});
+
+describe('Watermark type compatibility', () => {
+  it('accepts discriminated text watermark with font and color', () => {
+    const wm: TextWatermark = {
+      type: 'text',
+      content: 'hello',
+      font: '16px sans-serif',
+      color: '#ff0000',
+      x: 50,
+      y: 50,
+      opacity: 0.5,
+      rotation: 30,
+      tile: false,
+      dynamic: true,
+      ghost: false,
+    };
+    expect(wm.type).toBe('text');
+  });
+
+  it('accepts image watermark', () => {
+    const wm: ImageWatermark = { type: 'image', content: 'data:image/png,', x: 0, y: 0 };
+    expect(wm.type).toBe('image');
+  });
+
+  it('accepts html watermark', () => {
+    const wm: HtmlWatermark = { type: 'html', content: '<p>warning</p>', opacity: 0.3, ghost: true };
+    expect(wm.type).toBe('html');
+  });
+});
