@@ -24,6 +24,15 @@ describe('detectCapabilities()', () => {
     expect(report.reasons).toContain('webtransport-api');
     (globalThis as unknown as { WebTransport?: unknown }).WebTransport = original;
   });
+
+  it('reports webRtc support when the API is present', () => {
+    const original = (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection;
+    (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection = class {};
+    const report = detectCapabilities();
+    expect(report.webRtc).toBe(true);
+    expect(report.reasons).toContain('webrtc-api');
+    (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection = original;
+  });
 });
 
 describe('probeCapabilities()', () => {
@@ -59,6 +68,20 @@ describe('probeCapabilities()', () => {
     expect(report.reasons).toContain('webtransport-supported');
     (globalThis as unknown as { WebTransport?: unknown }).WebTransport = original;
   });
+
+  it('probes webRtc details without network', async () => {
+    const original = (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection;
+    function MockRTCPeerConnection() { /* no-op */ }
+    MockRTCPeerConnection.prototype.createDataChannel = function () { return undefined; };
+    MockRTCPeerConnection.prototype.createEncodedStreams = function () { return { readable: new ReadableStream(), writable: new WritableStream() }; };
+    (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection = MockRTCPeerConnection as unknown as typeof globalThis.RTCPeerConnection;
+    const report = await probeCapabilities();
+    expect(report.details.webRtc.peerConnection).toBe(true);
+    expect(report.details.webRtc.dataChannel).toBe(true);
+    expect(report.details.webRtc.insertableStreams).toBe(true);
+    expect(report.reasons).toContain('webrtc-supported');
+    (globalThis as unknown as { RTCPeerConnection?: unknown }).RTCPeerConnection = original;
+  });
 });
 
 describe('CapabilityCache', () => {
@@ -86,6 +109,7 @@ describe('CapabilityCache', () => {
         wasm: { simd: false, threads: false, sharedMemory: false, memoryLimitPages: 0 },
         renderer: { webgpu: false, webgl2: false, canvas2d: false, videoFrame: false, preferredPixelFormat: undefined },
         webTransport: { datagrams: false, incomingUnidirectionalStreams: false, incomingBidirectionalStreams: false, byob: false },
+        webRtc: { peerConnection: false, dataChannel: false, insertableStreams: false, getUserMedia: false },
       },
     } satisfies ProbedCapabilityReport;
 
@@ -110,6 +134,7 @@ describe('CapabilityCache', () => {
         wasm: { simd: false, threads: false, sharedMemory: false, memoryLimitPages: 0 },
         renderer: { webgpu: false, webgl2: false, canvas2d: false, videoFrame: false, preferredPixelFormat: undefined },
         webTransport: { datagrams: false, incomingUnidirectionalStreams: false, incomingBidirectionalStreams: false, byob: false },
+        webRtc: { peerConnection: false, dataChannel: false, insertableStreams: false, getUserMedia: false },
       },
     } satisfies ProbedCapabilityReport;
 

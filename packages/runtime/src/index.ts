@@ -50,6 +50,7 @@ export { createRuntime, type EngineRuntime, type RuntimeOptions } from './runtim
 export {
   createTransport,
   FetchTransport,
+  WebRtcTransport,
   WebSocketTransport,
   WebTransportTransport,
   TransportErrorCode,

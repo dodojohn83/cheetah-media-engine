@@ -19,11 +19,12 @@ export type Protocol =
   | 'http-mpegps'
   | 'ws-mpegps'
   | 'webtransport'
+  | 'webrtc'
   | 'hls'
   | 'll-hls';
 export type Backend = 'webcodecs' | 'mse' | 'wasm-threads-simd' | 'wasm-simd' | 'wasm-baseline';
 export type Renderer = 'webgpu' | 'webgl2' | 'canvas2d';
-export type TransportMode = 'fetch' | 'websocket' | 'webtransport';
+export type TransportMode = 'fetch' | 'websocket' | 'webtransport' | 'webrtc';
 export type LatencyTarget = 'realtime' | 'low' | 'normal';
 
 export interface TrackProfile {
@@ -136,6 +137,7 @@ function canMseContainer(request: PlanRequest): boolean {
     case 'http-mpegps':
     case 'ws-mpegps':
     case 'webtransport':
+    case 'webrtc':
       return false;
     default:
       return false;
@@ -146,6 +148,7 @@ function protocolRequiresDemux(protocol: Protocol): boolean {
   // MPEG-PS is a container and must be demuxed before any browser decoder.
   // Annex-B is already an elementary stream, so it can be fed to a decoder
   // after NAL boundaries are identified.
+  // WebRTC data channel in this skeleton carries raw Annex-B bytes.
   return protocol === 'http-mpegps' || protocol === 'ws-mpegps';
 }
 
@@ -286,6 +289,8 @@ function chooseTransport(request: PlanRequest): TransportMode {
       return 'websocket';
     case 'webtransport':
       return 'webtransport';
+    case 'webrtc':
+      return 'webrtc';
     case 'http-flv':
     case 'http-fmp4':
     case 'http-annexb':

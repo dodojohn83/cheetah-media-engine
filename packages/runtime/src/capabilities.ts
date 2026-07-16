@@ -28,6 +28,8 @@ export interface CapabilityReport {
   readonly videoFrame: boolean;
   /** `true` when `WebTransport` global is present. */
   readonly webTransport: boolean;
+  /** `true` when `RTCPeerConnection` global is present. */
+  readonly webRtc: boolean;
   /** `true` when the `WebAssembly` global is present and a small Memory can be created. */
   readonly wasm: boolean;
 
@@ -59,6 +61,12 @@ export interface ProbeDetails {
     readonly incomingUnidirectionalStreams: boolean;
     readonly incomingBidirectionalStreams: boolean;
     readonly byob: boolean;
+  };
+  readonly webRtc: {
+    readonly peerConnection: boolean;
+    readonly dataChannel: boolean;
+    readonly insertableStreams: boolean;
+    readonly getUserMedia: boolean;
   };
 }
 
@@ -140,6 +148,54 @@ function hasByobReaderSupport(): boolean {
   return typeof (globalThis as unknown as { ReadableStreamBYOBReader?: unknown }).ReadableStreamBYOBReader !== 'undefined';
 }
 
+function hasWebRtcSupport(): boolean {
+  if (!hasGlobal('RTCPeerConnection')) return false;
+  const ctor = getGlobal<typeof globalThis.RTCPeerConnection>('RTCPeerConnection');
+  if (typeof ctor !== 'function') return false;
+  try {
+    return 'prototype' in ctor;
+  } catch {
+    return false;
+  }
+}
+
+function probeWebRtc(): ProbeDetails['webRtc'] {
+  const result = {
+    peerConnection: false,
+    dataChannel: false,
+    insertableStreams: false,
+    getUserMedia: false,
+  };
+  const ctor = getGlobal<typeof globalThis.RTCPeerConnection>('RTCPeerConnection');
+  if (typeof ctor !== 'function') return result;
+  result.peerConnection = true;
+
+  const proto = ctor.prototype as unknown as Record<string, unknown>;
+  if (proto) {
+    const hasMethod = (name: string): boolean => {
+      try {
+        return typeof proto[name] === 'function';
+      } catch {
+        return false;
+      }
+    };
+    result.dataChannel = hasMethod('createDataChannel');
+    result.insertableStreams = hasMethod('createEncodedStreams') || hasMethod('encodedInsertableStreams');
+  }
+
+  const nav = globalThis as unknown as {
+    navigator?: {
+      getUserMedia?: unknown;
+      mediaDevices?: { getUserMedia?: unknown };
+    };
+  };
+  if (typeof nav.navigator?.getUserMedia === 'function' || typeof nav.navigator?.mediaDevices?.getUserMedia === 'function') {
+    result.getUserMedia = true;
+  }
+
+  return result;
+}
+
 function hasWasmSupport(): boolean {
   if (!hasGlobal('WebAssembly')) return false;
   try {
@@ -180,6 +236,7 @@ export function detectCapabilities(): CapabilityReport {
   const canvas2d = hasGlobal('HTMLCanvasElement');
   const videoFrame = hasGlobal('VideoFrame');
   const webTransport = hasWebTransportSupport();
+  const webRtc = hasWebRtcSupport();
   const wasm = hasWasmSupport();
 
   const reasons: string[] = [];
@@ -195,6 +252,7 @@ export function detectCapabilities(): CapabilityReport {
   if (webgl2) reasons.push('webgl2');
   if (canvas2d) reasons.push('canvas2d');
   if (webTransport) reasons.push('webtransport-api');
+  if (webRtc) reasons.push('webrtc-api');
 
   return {
     secureContext,
@@ -212,6 +270,7 @@ export function detectCapabilities(): CapabilityReport {
     canvas2d,
     videoFrame,
     webTransport,
+    webRtc,
     wasm,
     fingerprint: computeFingerprint(),
     timestamp: performance.now(),
@@ -387,6 +446,7 @@ export async function probeCapabilities(): Promise<ProbedCapabilityReport> {
   const wasmSharedMemory = probeWasmSharedMemory();
   const renderer = probeRenderer();
   const webTransport = probeWebTransport();
+  const webRtc = probeWebRtc();
 
   const webCodecsMap: Record<string, boolean> = {};
   for (const [codec, supported] of Object.entries(webCodecsVideo)) {
@@ -402,6 +462,9 @@ export async function probeCapabilities(): Promise<ProbedCapabilityReport> {
   if (Object.values(mse).some(Boolean)) reasons.push('mse-codec-supported');
   if (webTransport.incomingUnidirectionalStreams || webTransport.datagrams) {
     reasons.push('webtransport-supported');
+  }
+  if (webRtc.peerConnection || webRtc.dataChannel) {
+    reasons.push('webrtc-supported');
   }
 
   return {
@@ -419,6 +482,7 @@ export async function probeCapabilities(): Promise<ProbedCapabilityReport> {
       },
       renderer,
       webTransport,
+      webRtc,
     },
   };
 }

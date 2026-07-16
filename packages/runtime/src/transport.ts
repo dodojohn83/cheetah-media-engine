@@ -3,8 +3,8 @@
  *
  * The transport layer is agnostic to container formats; it only delivers
  * byte chunks and metadata to the caller. It supports HTTP(S) fetch,
- * WebSocket binary streaming and WebTransport unidirectional streams,
- * with backpressure and bounded retry policies.
+ * WebSocket binary streaming, WebTransport unidirectional streams and
+ * WebRTC data channels, with backpressure and bounded retry policies.
  */
 
 import {
@@ -17,7 +17,9 @@ import {
   validateUrl,
 } from './transport-common';
 
+import { WebRtcTransport } from './webrtc';
 import { WebTransportTransport } from './webtransport';
+export { WebRtcTransport } from './webrtc';
 export { WebTransportTransport } from './webtransport';
 export {
   type Chunk,
@@ -340,10 +342,13 @@ export class WebSocketTransport implements Transport {
  */
 export function createTransport(
   config: TransportConfig,
-  mode?: 'fetch' | 'websocket' | 'webtransport',
+  mode?: 'fetch' | 'websocket' | 'webtransport' | 'webrtc',
 ): Transport {
   if (mode === 'webtransport') {
     return new WebTransportTransport(config);
+  }
+  if (mode === 'webrtc') {
+    return new WebRtcTransport(config);
   }
   if (mode === 'websocket') {
     return new WebSocketTransport(config as WebSocketConfig);

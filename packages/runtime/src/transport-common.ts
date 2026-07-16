@@ -48,6 +48,10 @@ export const TransportErrorCode = {
   WebSocketClosed: 7009,
   WebTransportNotSupported: 7010,
   WebTransportClosed: 7011,
+  WebRtcNotSupported: 7012,
+  WebRtcSignalingFailed: 7013,
+  WebRtcConnectionFailed: 7014,
+  WebRtcDataChannelFailed: 7015,
 } as const;
 
 export function makeError(

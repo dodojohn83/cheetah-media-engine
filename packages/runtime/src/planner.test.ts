@@ -19,6 +19,7 @@ function makeCaps(overrides: Partial<ProbedCapabilityReport> = {}): ProbedCapabi
     canvas2d: true,
     videoFrame: true,
     webTransport: true,
+    webRtc: true,
     wasm: true,
     fingerprint: 'test',
     timestamp: 0,
@@ -59,6 +60,12 @@ function makeCaps(overrides: Partial<ProbedCapabilityReport> = {}): ProbedCapabi
         incomingUnidirectionalStreams: true,
         incomingBidirectionalStreams: false,
         byob: false,
+      },
+      webRtc: {
+        peerConnection: true,
+        dataChannel: true,
+        insertableStreams: false,
+        getUserMedia: false,
       },
     },
   };
@@ -301,6 +308,24 @@ describe('plan()', () => {
 
     expect(result.primary.transport).toBe('webtransport');
     expect(result.primary.videoBackend).toBe('webcodecs');
+  });
+
+  it('selects webrtc mode for the webrtc protocol', () => {
+    const request: PlanRequest = {
+      protocol: 'webrtc',
+      tracks: [
+        { kind: 'video', codec: 'h264', width: 640, height: 360 },
+        { kind: 'audio', codec: 'aac', sampleRate: 48000, channels: 2 },
+      ],
+      latencyTarget: 'realtime',
+      isolation: true,
+    };
+    const result = plan(request, makeCaps());
+
+    expect(result.primary.transport).toBe('webrtc');
+    expect(result.primary.videoBackend).toBe('webcodecs');
+    expect(result.primary.audioBackend).toBe('webcodecs');
+    expect(result.candidates.every((c) => c.videoBackend !== 'mse' && c.audioBackend !== 'mse')).toBe(true);
   });
 });
 

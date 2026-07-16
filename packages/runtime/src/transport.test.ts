@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createTransport, FetchTransport, WebSocketTransport, WebTransportTransport, TransportErrorCode } from './transport';
+import { createTransport, FetchTransport, WebRtcTransport, WebSocketTransport, WebTransportTransport, TransportErrorCode } from './transport';
 
 class CloseEvent extends Event {
   public readonly code: number;
@@ -398,5 +398,10 @@ describe('createTransport', () => {
   it('selects WebSocketTransport when mode is websocket', () => {
     const transport = createTransport({ url: 'https://example.com/stream' }, 'websocket');
     expect(transport).toBeInstanceOf(WebSocketTransport);
+  });
+
+  it('selects WebRtcTransport when mode is webrtc', () => {
+    const transport = createTransport({ url: 'https://example.com/stream' }, 'webrtc');
+    expect(transport).toBeInstanceOf(WebRtcTransport);
   });
 });
