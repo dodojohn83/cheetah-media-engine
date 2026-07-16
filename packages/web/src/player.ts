@@ -496,6 +496,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private listeners = new Map<CheetahPlayerEventType, Set<EventListener>>();
   private metricRegistry = new MetricRegistry();
   private _intercomActive = false;
+  private _intercomStarting = false;
   private _intercomCapture: MicrophoneCapture | undefined;
   private _intercomPacketizer: IntercomPacketizer | undefined;
   private _intercomSend: ((packet: IntercomPacket) => void) | undefined;
@@ -790,6 +791,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (this.destroyed) return;
     this.destroyed = true;
     this._intercomActive = false;
+    this._intercomStarting = false;
     await this.cleanupIntercom().catch(() => undefined);
     this._state = 'destroyed';
     this.listeners.clear();
@@ -842,13 +844,14 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async startIntercom(options: IntercomOptions): Promise<void> {
     this.guardDestroyed();
-    if (this._intercomActive) {
+    if (this._intercomActive || this._intercomStarting) {
       throw new CheetahMediaError(6002, 'sdk', 'Intercom already active', { recoverable: true });
     }
     if (options.codec === 'opus') {
       throw new CheetahMediaError(6003, 'sdk', 'Opus intercom is not supported in this version', { recoverable: true });
     }
 
+    this._intercomStarting = true;
     const encoder = options.codec === 'g711a' ? 'alaw' : 'mulaw';
     const payloadType = options.payloadType ?? (encoder === 'alaw' ? 8 : 0);
 
@@ -872,9 +875,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       this._intercomActive = true;
       this.emit('intercom', { active: true, codec: encoder });
     } catch (cause) {
-      this.cleanupIntercom();
+      this._intercomStarting = false;
+      await this.cleanupIntercom();
       const message = cause instanceof Error ? cause.message : String(cause);
       throw new CheetahMediaError(6999, 'intercom', `Intercom start failed: ${message}`, { cause, recoverable: true });
+    } finally {
+      this._intercomStarting = false;
     }
   }
 
