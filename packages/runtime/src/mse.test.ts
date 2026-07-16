@@ -471,6 +471,28 @@ describe('MseBackend', () => {
     expect(video.playbackRate).toBe(1);
     vi.useRealTimers();
   });
+
+  it('stopping during seek does not restart the live control timer', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const video = new MockHTMLVideoElement();
+    const backend = new MseBackend(ctx, makeOptions({ videoElement: video, liveControlIntervalMs: 10 }));
+    await backend.configure();
+    const sb = getSourceBuffer();
+    sb.setBuffered([[0, 10]]);
+
+    const seekPromise = backend.seek(5000);
+    await flushMicrotasks(2);
+    await backend.stop();
+
+    // Let the pending seek timeout fire.
+    vi.advanceTimersByTime(6000);
+    await expect(seekPromise).rejects.toThrow('Seeked event timeout');
+
+    // Advance far enough that a restarted live control timer would have fired.
+    vi.advanceTimersByTime(1000);
+    expect(video.playbackRate).toBe(1);
+    vi.useRealTimers();
+  });
 });
 
 async function flushMicrotasks(count = 10): Promise<void> {

@@ -449,7 +449,9 @@ export class MseBackend implements MediaBackend {
         if (timer) clearTimeout(timer);
         this.videoElement.removeEventListener('seeked', onSeeked);
         this.videoElement.removeEventListener('error', onError);
-        this.startLiveControl();
+        if (!this.stopped && !this.closing && !this.errored) {
+          this.startLiveControl();
+        }
       };
       this.videoElement.addEventListener('seeked', onSeeked);
       this.videoElement.addEventListener('error', onError);
