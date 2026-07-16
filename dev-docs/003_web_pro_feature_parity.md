@@ -132,4 +132,4 @@ corepack pnpm exec playwright test
 | 38 | 已完成 | `wp/38-h265-annexb-demuxer` → #39 | H.265 Annex-B 解复用与 HvcC 配置 |
 | 39 | 已完成 | `wp/39-mpegps-demuxer` → #40 | MPEG-PS 容器解复用 |
 | 40 | 已完成（40a + 40b） | `wp/40b-wasm-demuxer-bindings` → #42 | 40a planner 路由；40b WASM demuxer 绑定 |
-| 41 | 进行中 | `wp/41-webtransport-skeleton` | WebTransport transport 骨架与 capability 探测 |
+| 41 | 已完成 | `wp/41-webtransport-skeleton` → #43 | WebTransport transport 骨架与 capability 探测 |

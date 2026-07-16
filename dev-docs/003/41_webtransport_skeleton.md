@@ -61,17 +61,18 @@
 
 ## 4. 完成定义
 
-- `corepack pnpm typecheck` 通过。
-- `corepack pnpm test` 通过。
-- `corepack pnpm build` 通过。
-- 新增文件保持在 500 行以内（超出 800 必须拆分）。
-- 无 `todo!()` / `unimplemented!()` / 空 provider。
-- 不对 `WebTransport` API 调用做 `any` 类型逃逸；提供最小 TypeScript 声明。
-- 探测逻辑不发起真实网络请求，避免 CI/测试不稳定。
+- [x] `corepack pnpm typecheck` 通过。
+- [x] `corepack pnpm test` 通过。
+- [x] `corepack pnpm build` 通过。
+- [x] 新增文件保持在 500 行以内（超出 800 必须拆分）。
+- [x] 无 `todo!()` / `unimplemented!()` / 空 provider。
+- [x] 不对 `WebTransport` API 调用做 `any` 类型逃逸；提供最小 TypeScript 声明。
+- [x] 探测逻辑不发起真实网络请求，避免 CI/测试不稳定。
+- [x] PR 通过 CI/Devin Review 并合并。
 
 ## 5. 后续
 
 - WP-42 WebRTC transport 骨架。
 - 在播放器集成阶段把 `WebTransportTransport` 与 `RawStreamBackend` 或 `WebCodecs` 管线对接。
 
-PR: `wp/41-webtransport-skeleton` → `wp/16-engine-state-machine`.
+PR: `wp/41-webtransport-skeleton` → `wp/16-engine-state-machine` (#43).
