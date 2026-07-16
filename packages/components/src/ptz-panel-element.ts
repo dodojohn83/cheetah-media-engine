@@ -286,12 +286,13 @@ export class CheetahPtzPanelElement extends HTMLElement {
       };
 
       const target = this._resolveTarget();
-      const ptzMethod =
-        target === undefined
-          ? undefined
-          : (target as unknown as { ptz?: (cmd: PtzCommand) => Promise<void> | void }).ptz;
-      if (target !== undefined && typeof ptzMethod === 'function') {
-        void Promise.resolve(ptzMethod.call(target, command)).catch(() => undefined);
+      if (target !== undefined) {
+        const targetWithPlayer = target as unknown as { player?: { ptz?: (cmd: PtzCommand) => Promise<void> | void } };
+        const player = targetWithPlayer.player;
+        const ptzMethod = player?.ptz ?? (target as unknown as { ptz?: (cmd: PtzCommand) => Promise<void> | void }).ptz;
+        if (typeof ptzMethod === 'function') {
+          void Promise.resolve(ptzMethod.call(player ?? target, command)).catch(() => undefined);
+        }
       }
 
       this.dispatchEvent(
@@ -316,6 +317,7 @@ export class CheetahPtzPanelElement extends HTMLElement {
 
   private _onKeyDown = (event: KeyboardEvent): void => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (this._isEditingTarget(event)) return;
 
     const map: Record<string, PtzAction | undefined> = {
       ArrowUp: 'up',
@@ -332,4 +334,20 @@ export class CheetahPtzPanelElement extends HTMLElement {
     event.preventDefault();
     this._send(action);
   };
+
+  private _isEditingTarget(event: KeyboardEvent): boolean {
+    const target = (event.composedPath()[0] ?? event.target) as EventTarget | undefined;
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName.toLowerCase();
+    if (tag === 'textarea' || tag === 'select') return true;
+    if (tag === 'input') {
+      const type = (target as HTMLInputElement).type;
+      if (type === 'button' || type === 'submit' || type === 'reset' || type === 'checkbox' || type === 'radio') {
+        return false;
+      }
+      return true;
+    }
+    if (target.isContentEditable) return true;
+    return false;
+  }
 }

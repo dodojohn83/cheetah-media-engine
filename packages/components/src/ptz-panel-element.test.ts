@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createGb28181PtzCmd } from '@cheetah-media/web';
 import { CheetahPtzPanelElement, type PtzEventDetail } from './ptz-panel-element';
 
@@ -121,5 +121,36 @@ describe('CheetahPtzPanelElement', () => {
 
     el.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowRight', bubbles: true }));
     expect(detail?.action).toBe('right');
+  });
+
+  it('does not dispatch ptz events when the preset number input is focused', () => {
+    const el = document.createElement('cheetah-ptz-panel') as CheetahPtzPanelElement;
+    container.appendChild(el);
+
+    let detail: PtzEventDetail | undefined;
+    el.addEventListener('ptz', (event) => {
+      detail = (event as CustomEvent).detail as PtzEventDetail;
+    });
+
+    const input = el.shadowRoot?.querySelector('input[part="preset-number"]') as HTMLInputElement | null;
+    input?.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowUp', bubbles: true, composed: true }));
+    expect(detail).toBeUndefined();
+  });
+
+  it('forwards commands to a target player through its player.ptz method', () => {
+    const target = document.createElement('div');
+    const ptzMock = vi.fn().mockResolvedValue(undefined);
+    (target as unknown as { player: { ptz: typeof ptzMock } }).player = { ptz: ptzMock };
+    target.id = 'ptz-target';
+    container.appendChild(target);
+
+    const el = document.createElement('cheetah-ptz-panel') as CheetahPtzPanelElement;
+    el.target = '#ptz-target';
+    container.appendChild(el);
+
+    const up = el.shadowRoot?.querySelector('[part="ptz-up"]') as HTMLButtonElement | null;
+    up?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+
+    expect(ptzMock).toHaveBeenCalledOnce();
   });
 });
