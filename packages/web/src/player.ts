@@ -1091,7 +1091,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   private async cleanupIntercom(): Promise<void> {
