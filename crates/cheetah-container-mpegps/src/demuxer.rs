@@ -372,6 +372,7 @@ impl MpegPsDemuxer {
                     if keep > 0 {
                         self.video_es_base_offset += keep;
                         self.video_es_buffer.drain(0..keep);
+                        self.prune_video_es_chunks();
                     }
                     break;
                 }
@@ -380,6 +381,7 @@ impl MpegPsDemuxer {
             if start_pos > 0 {
                 self.video_es_base_offset += start_pos;
                 self.video_es_buffer.drain(0..start_pos);
+                self.prune_video_es_chunks();
                 continue;
             }
 
@@ -410,6 +412,7 @@ impl MpegPsDemuxer {
 
             self.video_es_base_offset += next_start;
             self.video_es_buffer.drain(0..next_start);
+            self.prune_video_es_chunks();
         }
 
         if self.video_es_buffer.len() > self.config.max_buffer_bytes {
@@ -454,6 +457,19 @@ impl MpegPsDemuxer {
             .iter()
             .rfind(|(o, _)| *o <= offset)
             .map(|(_, t)| *t)
+    }
+
+    /// Drop chunks that start before the current ES buffer window, keeping the
+    /// most recent chunk whose offset is at or before the window start in case
+    /// it still spans into the active buffer.
+    fn prune_video_es_chunks(&mut self) {
+        if let Some(idx) = self
+            .video_es_chunks
+            .iter()
+            .rposition(|(o, _)| *o <= self.video_es_base_offset)
+        {
+            self.video_es_chunks.drain(0..idx);
+        }
     }
 
     fn emit_video_nal(&mut self, nal: Vec<u8>, media_time: MediaTime) -> Result<(), MpegPsError> {
