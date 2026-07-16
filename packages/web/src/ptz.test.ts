@@ -79,4 +79,13 @@ describe('createGb28181PtzCmd', () => {
     expect(() => createGb28181PtzCmd({ action: 'stop', channel: 256 })).toThrow('channel');
     expect(() => createGb28181PtzCmd({ action: 'unknown' as unknown as PtzCommand['action'] })).toThrow('Unsupported');
   });
+
+  it('rejects inherited Object.prototype names as actions', () => {
+    expect(() =>
+      createGb28181PtzCmd({ action: 'toString' as unknown as PtzCommand['action'] }),
+    ).toThrow('Unsupported');
+    expect(() =>
+      createGb28181PtzCmd({ action: 'constructor' as unknown as PtzCommand['action'] }),
+    ).toThrow('Unsupported');
+  });
 });

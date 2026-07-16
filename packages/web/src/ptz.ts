@@ -81,6 +81,14 @@ function checksum(bytes: Uint8Array): number {
   return sum & 0xff;
 }
 
+function isMoveAction(action: string): action is PtzMoveAction {
+  return Object.prototype.hasOwnProperty.call(MOVE_CODES, action);
+}
+
+function isPresetAction(action: string): action is PtzPresetAction {
+  return Object.prototype.hasOwnProperty.call(PRESET_CODES, action);
+}
+
 /**
  * Generate an 8-byte GB28181 PTZCmd as an upper-case hex string.
  *
@@ -107,22 +115,22 @@ export function createGb28181PtzCmd(command: PtzCommand): string {
   buf[1] = 0x0f;
   buf[2] = address;
 
-  if (action in MOVE_CODES) {
+  if (isMoveAction(action)) {
     const horizontal = clampByte(speeds.horizontal);
     const vertical = clampByte(speeds.vertical);
     const zoom = clampByte(speeds.zoom);
 
-    buf[3] = MOVE_CODES[action as PtzMoveAction];
+    buf[3] = MOVE_CODES[action];
     buf[4] = horizontal;
     buf[5] = vertical;
     // GB28181 only uses the top 4 bits of the zoom byte; low nibble is 0.
     buf[6] = zoom & 0xf0;
-  } else if (action in PRESET_CODES) {
+  } else if (isPresetAction(action)) {
     const point = clampByte(presetPoint);
     if (point === 0) {
       throw new Error(`presetPoint is required for ${action} and must be 1~255`);
     }
-    buf[3] = PRESET_CODES[action as PtzPresetAction];
+    buf[3] = PRESET_CODES[action];
     buf[4] = 0x00;
     buf[5] = point;
     buf[6] = 0x00;
