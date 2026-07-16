@@ -133,4 +133,4 @@ corepack pnpm exec playwright test
 | 39 | 已完成 | `wp/39-mpegps-demuxer` → #40 | MPEG-PS 容器解复用 |
 | 40 | 已完成（40a + 40b） | `wp/40b-wasm-demuxer-bindings` → #42 | 40a planner 路由；40b WASM demuxer 绑定 |
 | 41 | 已完成 | `wp/41-webtransport-skeleton` → #43 | WebTransport transport 骨架与 capability 探测 |
-| 42 | 进行中 | `wp/42-webrtc-transport` | WebRTC H.264/H.265 signaling/transport 骨架 |
+| 42 | 已完成 | `wp/42-webrtc-transport` → #44 | WebRTC H.264/H.265 signaling/transport 骨架 |

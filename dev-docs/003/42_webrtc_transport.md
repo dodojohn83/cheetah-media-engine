@@ -78,13 +78,13 @@
 
 ## 4. 完成定义
 
-- [ ] `corepack pnpm typecheck` 通过。
-- [ ] `corepack pnpm test` 通过。
-- [ ] `corepack pnpm build` 通过。
-- [ ] 新增文件保持在 500 行以内（超出 800 必须拆分）。
-- [ ] 无 `todo!()` / `unimplemented!()` / 空 provider。
-- [ ] 信令失败、ICE 失败、数据通道关闭均通过 `onError`/`onEnd` 回调报告，不抛未捕获异常。
-- [ ] 探测逻辑不发起真实 ICE/SDP 网络请求，避免 CI 不稳定。
+- [x] `corepack pnpm typecheck` 通过。
+- [x] `corepack pnpm test` 通过。
+- [x] `corepack pnpm build` 通过。
+- [x] 新增文件保持在 500 行以内（`webrtc.ts` 约 340 行，`webrtc.test.ts` 约 260 行）。
+- [x] 无 `todo!()` / `unimplemented!()` / 空 provider。
+- [x] 信令失败、ICE 失败、数据通道关闭均通过 `onError`/`onEnd` 回调报告，不抛未捕获异常。
+- [x] 探测逻辑不发起真实 ICE/SDP 网络请求，避免 CI 不稳定。
 
 ## 5. 后续
 
@@ -92,4 +92,4 @@
 - 在支持 Insertable Streams 的浏览器中支持 `RTCRtpReceiver.createEncodedStreams()` 获取原始 H.264/H.265 NAL，作为数据通道之外的第二条 WebRTC 输入路径。
 - 与 `dodojohn83/cheetah-signaling` 的 WHIP/WHEP 信令端点对齐 offer/answer 交换格式。
 
-PR: `wp/42-webrtc-transport` → `wp/16-engine-state-machine`.
+PR: `wp/42-webrtc-transport` → `wp/16-engine-state-machine` (#44).
