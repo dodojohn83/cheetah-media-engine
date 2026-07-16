@@ -129,5 +129,5 @@ corepack pnpm exec playwright test
 | --- | --- | --- | --- |
 | 36 | 已完成 | `wp/16-engine-state-machine` | Phase 4 计划文档与基线 |
 | 37 | 已完成 | `wp/37-h264-annexb-demuxer` → #38 | H.264 Annex-B 解复用与 AvcC 配置 |
-| 38 | 已完成 | `wp/38-h265-annexb-demuxer` | H.265 Annex-B 解复用与 HvcC 配置 |
-| 39 | 待开始 | — | MPEG-PS 容器解复用 |
+| 38 | 已完成 | `wp/38-h265-annexb-demuxer` → #39 | H.265 Annex-B 解复用与 HvcC 配置 |
+| 39 | 进行中 | `wp/39-mpegps-demuxer` | MPEG-PS 容器解复用 |
