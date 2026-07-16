@@ -40,6 +40,9 @@ pub const fn is_pack_start_code(code: u8) -> bool {
 
 /// True if `code` is a system-level start code that should be skipped rather
 /// than treated as a PES packet.
+///
+/// `0xBF` (private_stream_2) is intentionally excluded; it is routed through
+/// the PES path and emitted as metadata.
 pub const fn is_system_start_code(code: u8) -> bool {
-    matches!(code, 0xBB | 0xBC | 0xBE | 0xBF)
+    matches!(code, 0xBB | 0xBC | 0xBE)
 }

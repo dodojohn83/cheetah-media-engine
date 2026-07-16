@@ -1,6 +1,6 @@
 //! Public types for the MPEG-2 Program Stream demuxer.
 
-use cheetah_media_types::{CodecId, MediaPacket, TrackInfo};
+use cheetah_media_types::{CodecId, MediaPacket, MetadataItem, TrackInfo};
 
 /// Default maximum input buffer size in bytes.
 pub(crate) const DEFAULT_MAX_BUFFER_SIZE: usize = 32 * 1024 * 1024;
@@ -62,6 +62,8 @@ pub enum MpegPsEvent {
     Track(TrackInfo),
     /// A compressed media packet.
     Packet(MediaPacket<'static>),
+    /// Metadata extracted from PES private streams.
+    Metadata(Vec<MetadataItem>),
     /// End of stream.
     Eof,
 }

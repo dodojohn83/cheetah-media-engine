@@ -1,6 +1,6 @@
 //! MPEG-PS demuxer tests.
 
-use cheetah_media_types::{CodecId, TrackKind};
+use cheetah_media_types::{CodecId, MetadataItem, MetadataSource, TrackKind};
 
 use crate::{MpegPsConfig, MpegPsDemuxer, MpegPsError, MpegPsEvent};
 
@@ -16,6 +16,22 @@ fn encode_pts(pts: u64) -> [u8; 5] {
 
 fn make_video_pes(payload: &[u8]) -> Vec<u8> {
     make_video_pes_with_pts(payload, 0)
+}
+
+fn make_private_pes_with_pts(payload: &[u8], pts: u64) -> Vec<u8> {
+    let mut pes = Vec::new();
+    pes.extend_from_slice(&[0x00, 0x00, 0x01, 0xBF]); // private_stream_2
+
+    let header_and_payload_len = 3 + 5 + payload.len();
+    pes.push((header_and_payload_len >> 8) as u8);
+    pes.push((header_and_payload_len & 0xFF) as u8);
+
+    pes.push(0x81); // marker bits + flags
+    pes.push(0x80); // PTS present
+    pes.push(0x05); // header_data_length
+    pes.extend_from_slice(&encode_pts(pts));
+    pes.extend_from_slice(payload);
+    pes
 }
 
 fn make_video_pes_with_pts(payload: &[u8], pts: u64) -> Vec<u8> {
@@ -428,4 +444,26 @@ fn build_adts_frame(sample_rate: u32, channels: u8, raw_len: usize) -> Vec<u8> {
     let mut frame = header.build();
     frame.extend_from_slice(&vec![0; raw_len]);
     frame
+}
+
+#[test]
+fn demuxer_extracts_private_stream_metadata() {
+    let payload = b"overlay-coords";
+    let pes = make_private_pes_with_pts(payload, 90000); // 1 second
+    let mut demuxer = MpegPsDemuxer::new(MpegPsConfig::h264());
+    demuxer.push(&pes);
+    demuxer.end().unwrap();
+
+    let mut metadata: Vec<MetadataItem> = Vec::new();
+    for event in collect_events(&mut demuxer) {
+        if let MpegPsEvent::Metadata(items) = event {
+            metadata.extend(items);
+        }
+    }
+
+    assert_eq!(metadata.len(), 1);
+    assert_eq!(metadata[0].source, MetadataSource::PesPrivate);
+    assert_eq!(metadata[0].key, 0xBF);
+    assert_eq!(metadata[0].value, payload);
+    assert_eq!(metadata[0].timestamp_ms, Some(1000));
 }

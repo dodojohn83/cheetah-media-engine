@@ -1,5 +1,5 @@
 use cheetah_media_bitstream::h265::H265CodecConfig;
-use cheetah_media_types::{CodecConfig, CodecId};
+use cheetah_media_types::{CodecConfig, CodecId, MetadataItem, MetadataSource};
 
 use crate::tests::{
     collect_events, h265_config, h265_idr, h265_non_idr, h265_pps, h265_sps, h265_vps, make_annexb,
@@ -136,4 +136,27 @@ fn hevc_emulation_prevention_not_treated_as_start_code() {
         })
         .any(|p| p.flags.is_keyframe && p.payload.as_ref() == nal_with_epb.as_slice());
     assert!(found_packet);
+}
+
+#[test]
+fn demuxer_extracts_h265_sei_metadata() {
+    // H.265 SEI NAL (type 39) with payload_type=4, size=5, "hello".
+    // Two-byte NAL header: forbidden 0, nal_type=39, layer_id=0, temporal_id=1.
+    let sei = vec![0x4e, 0x01, 0x04, 0x05, b'h', b'e', b'l', b'l', b'o'];
+    let data = make_annexb(&[h265_vps(), h265_sps(), h265_pps(), sei, h265_idr()]);
+    let mut demuxer = AnnexBDemuxer::new(h265_config());
+    demuxer.push(&data);
+    demuxer.end().unwrap();
+
+    let mut metadata: Vec<MetadataItem> = Vec::new();
+    for event in collect_events(&mut demuxer) {
+        if let AnnexbEvent::Metadata(items) = event {
+            metadata.extend(items);
+        }
+    }
+
+    assert_eq!(metadata.len(), 1);
+    assert_eq!(metadata[0].source, MetadataSource::Sei);
+    assert_eq!(metadata[0].key, 4);
+    assert_eq!(metadata[0].value, b"hello");
 }

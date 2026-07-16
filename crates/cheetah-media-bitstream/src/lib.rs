@@ -10,8 +10,10 @@ pub mod h264;
 pub mod h265;
 pub mod mp3;
 pub mod rbsp;
+pub mod sei;
 
 pub use rbsp::unescape_rbsp;
+pub use sei::{SeiError, SeiMessage, parse_sei};
 
 pub use aac::{AdtsHeader, AudioSpecificConfig};
 pub use bit::{BitCursor, BitError};

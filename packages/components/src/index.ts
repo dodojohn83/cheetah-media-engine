@@ -4,9 +4,10 @@ import { CheetahPtzPanelElement } from './ptz-panel-element';
 import { CheetahWallCellElement } from './wall-cell-element';
 import { CheetahWallElement } from './wall-element';
 import type { Watermark, TextWatermark, ImageWatermark, HtmlWatermark } from './watermark';
+import type { MetadataShape } from './metadata-overlay';
 
 export { createPlayer, CheetahPlayerElement, CheetahPtzPanelElement, CheetahWallElement, CheetahWallCellElement };
-export type { CheetahPlayer, PlayerConfig, Watermark, TextWatermark, ImageWatermark, HtmlWatermark };
+export type { CheetahPlayer, PlayerConfig, Watermark, TextWatermark, ImageWatermark, HtmlWatermark, MetadataShape };
 
 export interface PlayerComponentOptions extends PlayerConfig {
   workerUrl?: string;

@@ -3,7 +3,7 @@
 use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 
-use cheetah_media_types::{MediaTime, TimeBase};
+use cheetah_media_types::{MediaTime, MetadataItem, TimeBase};
 
 use crate::error::MpegPsError;
 use crate::pack::{is_pack_start_code, is_system_start_code, parse_pack_header};
@@ -140,7 +140,7 @@ impl MpegPsDemuxer {
             }
         } else if is_system_start_code(code) {
             self.skip_system_packet()
-        } else if is_video_stream(code) || is_audio_stream(code) || code == 0xBD {
+        } else if is_video_stream(code) || is_audio_stream(code) || is_private_stream(code) {
             self.process_pes(code)
         } else {
             // Unrecognized start code; skip it and continue.
@@ -227,10 +227,17 @@ impl MpegPsDemuxer {
         let payload = self.buffer[header.header_size..pes_end].to_vec();
         let media_time = MediaTime::new(header.pts, header.dts, None, TimeBase::TS_90K);
 
-        if is_video_stream(code) {
+        if is_private_stream(code) {
+            let mut item = MetadataItem::pes_private(u32::from(code), payload);
+            if let Some(ts) = media_time.pts_ms() {
+                item = item.with_timestamp(ts);
+            }
+            self.pending_events
+                .push_back(MpegPsEvent::Metadata(alloc::vec![item]));
+        } else if is_video_stream(code) {
             self.video
                 .process_payload(&payload, media_time, &mut self.pending_events)?;
-        } else if is_audio_stream(code) || code == 0xBD {
+        } else if is_audio_stream(code) {
             self.audio
                 .process_payload(&payload, media_time, &mut self.pending_events)?;
         }
@@ -238,6 +245,16 @@ impl MpegPsDemuxer {
         self.buffer.drain(0..pes_end);
         Ok(true)
     }
+}
+
+/// True if `stream_id` indicates a private PES stream.
+///
+/// 0xBD (private_stream_1) is excluded here because many existing streams use it
+/// for audio (AC3/AAC); those continue to be routed through the audio path.
+/// 0xBF (private_stream_2) and the reserved 0xF0-0xFE range are treated as
+/// generic private data/metadata.
+const fn is_private_stream(stream_id: u8) -> bool {
+    stream_id == 0xBF || (stream_id >= 0xF0 && stream_id <= 0xFE)
 }
 
 #[cfg(test)]

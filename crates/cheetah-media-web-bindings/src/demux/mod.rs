@@ -18,7 +18,7 @@ mod demux_event;
 
 pub use demux_event::{DemuxEvent, DemuxEventKind};
 
-use demux_arena::{packet_event, track_event};
+use demux_arena::{metadata_event, packet_event, track_event};
 
 static INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -60,6 +60,7 @@ pub struct AnnexBDemuxer {
     inner: InnerAnnexBDemuxer,
     arena: MemoryArena,
     last_data: Option<Handle>,
+    last_metadata: Option<Handle>,
     last_config: Option<Handle>,
     errored: bool,
 }
@@ -86,6 +87,7 @@ impl AnnexBDemuxer {
             inner: InnerAnnexBDemuxer::new(config),
             arena: MemoryArena::new(next_instance_id()),
             last_data: None,
+            last_metadata: None,
             last_config: None,
             errored: false,
         })
@@ -111,6 +113,7 @@ impl AnnexBDemuxer {
         self.inner.reset();
         self.arena = MemoryArena::new(next_instance_id());
         self.last_data = None;
+        self.last_metadata = None;
         self.last_config = None;
         self.errored = false;
     }
@@ -140,6 +143,15 @@ impl AnnexBDemuxer {
                     }
                 }
             }
+            Ok(Some(AnnexbEvent::Metadata(items))) => {
+                match metadata_event(&mut self.arena, items, &mut self.last_metadata) {
+                    Ok(event) => Some(event),
+                    Err(e) => {
+                        self.errored = true;
+                        Some(DemuxEvent::error(9001, e.as_str()))
+                    }
+                }
+            }
             Ok(Some(AnnexbEvent::Eof)) => Some(DemuxEvent::eof()),
             Ok(None) => None,
             Err(e) => {
@@ -157,6 +169,7 @@ pub struct MpegPsDemuxer {
     inner: InnerMpegPsDemuxer,
     arena: MemoryArena,
     last_data: Option<Handle>,
+    last_metadata: Option<Handle>,
     last_config: Option<Handle>,
     errored: bool,
 }
@@ -184,6 +197,7 @@ impl MpegPsDemuxer {
             inner: InnerMpegPsDemuxer::new(config),
             arena: MemoryArena::new(next_instance_id()),
             last_data: None,
+            last_metadata: None,
             last_config: None,
             errored: false,
         })
@@ -209,6 +223,7 @@ impl MpegPsDemuxer {
         self.inner.reset();
         self.arena = MemoryArena::new(next_instance_id());
         self.last_data = None;
+        self.last_metadata = None;
         self.last_config = None;
         self.errored = false;
     }
@@ -231,6 +246,15 @@ impl MpegPsDemuxer {
             }
             Ok(Some(MpegPsEvent::Packet(packet))) => {
                 match packet_event(&mut self.arena, packet, &mut self.last_data) {
+                    Ok(event) => Some(event),
+                    Err(e) => {
+                        self.errored = true;
+                        Some(DemuxEvent::error(9001, e.as_str()))
+                    }
+                }
+            }
+            Ok(Some(MpegPsEvent::Metadata(items))) => {
+                match metadata_event(&mut self.arena, items, &mut self.last_metadata) {
                     Ok(event) => Some(event),
                     Err(e) => {
                         self.errored = true;
