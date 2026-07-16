@@ -92,14 +92,18 @@ export class CheetahPtzPanelElement extends HTMLElement {
     const speedRow = document.createElement('div');
     speedRow.className = 'ptz-row';
     const speedLabel = document.createElement('label');
-    speedLabel.textContent = 'Speed';
+    const speedLabelText = getMessage(this._locale, 'ptzSpeed');
+    speedLabel.textContent = speedLabelText;
     const speedInput = document.createElement('input');
     speedInput.type = 'range';
+    speedInput.id = 'ptz-speed';
     speedInput.min = '0';
     speedInput.max = '255';
     speedInput.value = String(this.speed);
     speedInput.setAttribute('part', 'speed-slider');
     speedInput.name = 'speed';
+    speedInput.setAttribute('aria-label', speedLabelText);
+    speedLabel.htmlFor = speedInput.id;
     speedInput.addEventListener('input', () => {
       this.speed = Number(speedInput.value);
     });

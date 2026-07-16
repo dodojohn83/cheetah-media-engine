@@ -60,6 +60,18 @@ describe('CheetahPtzPanelElement', () => {
     expect(detail?.ptzCmd).toMatch(/^[0-9A-F]{16}$/);
   });
 
+  it('localizes and labels the speed slider', () => {
+    const el = document.createElement('cheetah-ptz-panel') as CheetahPtzPanelElement;
+    container.appendChild(el);
+
+    const slider = el.shadowRoot?.querySelector('input[part="speed-slider"]') as HTMLInputElement | null;
+    const label = el.shadowRoot?.querySelector('label[for="ptz-speed"]') as HTMLLabelElement | null;
+    expect(slider).toBeTruthy();
+    expect(slider?.getAttribute('aria-label')).toBeTruthy();
+    expect(label).toBeTruthy();
+    expect(label?.textContent).toBe('Speed');
+  });
+
   it('reflects speed attribute and slider value changes', () => {
     const el = document.createElement('cheetah-ptz-panel') as CheetahPtzPanelElement;
     el.speed = 200;

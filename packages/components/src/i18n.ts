@@ -35,7 +35,8 @@ export type MessageKey =
   | 'ptzPresetCall'
   | 'ptzPresetDelete'
   | 'ptzStop'
-  | 'ptzPresetNumber';
+  | 'ptzPresetNumber'
+  | 'ptzSpeed';
 
 const messages: Record<string, Record<MessageKey, string>> = {
   en: {
@@ -76,6 +77,7 @@ const messages: Record<string, Record<MessageKey, string>> = {
     ptzPresetDelete: 'Delete preset',
     ptzStop: 'Stop',
     ptzPresetNumber: 'Preset number',
+    ptzSpeed: 'Speed',
   },
   zh: {
     play: '播放',
@@ -115,6 +117,7 @@ const messages: Record<string, Record<MessageKey, string>> = {
     ptzPresetDelete: '删除预置位',
     ptzStop: '停止',
     ptzPresetNumber: '预置位编号',
+    ptzSpeed: '速度',
   },
 };
 
