@@ -117,6 +117,21 @@ describe('createWatermarkOverlay', () => {
     expect(tiles.length).toBe(12);
   });
 
+  it('wraps each tiled image in a cell so object-fit: contain applies', () => {
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    overlay.setWatermarks([{ type: 'image', content: dataUrl, tile: true }]);
+    const containers = overlay.root.querySelectorAll('.watermark-tile-container');
+    expect(containers.length).toBe(1);
+    const cells = containers[0]!.querySelectorAll('.watermark-tile-item');
+    expect(cells.length).toBe(12);
+    for (const cell of Array.from(cells)) {
+      const img = cell.querySelector('img');
+      expect(img).not.toBeNull();
+      expect(cell.classList.contains('watermark-tile-item')).toBe(true);
+      expect(img!.classList.contains('watermark-tile-item')).toBe(false);
+    }
+  });
+
   it('clears previous watermarks when set again', () => {
     overlay.setWatermarks([{ type: 'text', content: 'first' }]);
     expect(overlay.root.querySelectorAll('.watermark-item').length).toBe(1);

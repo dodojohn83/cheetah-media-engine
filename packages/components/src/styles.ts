@@ -191,6 +191,10 @@ export const styles = /*css*/ `
     text-overflow: ellipsis;
   }
 
+  .watermark-tile-item > .watermark-item {
+    position: static;
+  }
+
   .watermark-tile-item img {
     max-width: 100%;
     max-height: 100%;

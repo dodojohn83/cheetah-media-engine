@@ -406,9 +406,19 @@ function createTiledContainer(watermark: Watermark, index: number): HTMLDivEleme
 
   const tileCount = 12;
   for (let i = 0; i < tileCount; i += 1) {
+    const cell = document.createElement('div');
+    cell.className = 'watermark-tile-item';
     const tile = createWatermarkItem(watermark, index);
-    tile.classList.add('watermark-tile-item');
-    wrapper.appendChild(tile);
+    if (watermark.dynamic) {
+      tile.classList.remove('watermark-dynamic');
+      cell.classList.add('watermark-dynamic');
+    }
+    if (watermark.ghost) {
+      tile.classList.remove('watermark-ghost');
+      cell.classList.add('watermark-ghost');
+    }
+    cell.appendChild(tile);
+    wrapper.appendChild(cell);
   }
 
   return wrapper;
