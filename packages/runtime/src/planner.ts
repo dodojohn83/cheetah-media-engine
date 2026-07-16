@@ -9,7 +9,17 @@
 
 import type { CapabilityReport, ProbedCapabilityReport, ProbeDetails } from './capabilities';
 
-export type Protocol = 'http-flv' | 'ws-flv' | 'http-fmp4' | 'ws-fmp4' | 'hls' | 'll-hls';
+export type Protocol =
+  | 'http-flv'
+  | 'ws-flv'
+  | 'http-fmp4'
+  | 'ws-fmp4'
+  | 'http-annexb'
+  | 'ws-annexb'
+  | 'http-mpegps'
+  | 'ws-mpegps'
+  | 'hls'
+  | 'll-hls';
 export type Backend = 'webcodecs' | 'mse' | 'wasm-threads-simd' | 'wasm-simd' | 'wasm-baseline';
 export type Renderer = 'webgpu' | 'webgl2' | 'canvas2d';
 export type TransportMode = 'fetch' | 'websocket';
@@ -111,7 +121,7 @@ function codecHasMseSupport(caps: CapabilityReport, codec: string): boolean {
 
 function canMseContainer(request: PlanRequest): boolean {
   // MSE directly supports fMP4/MP4 containers. HLS with fMP4 segments is fine.
-  // FLV and raw TS require demux/remux before MSE in this engine.
+  // FLV, raw Annex-B and MPEG-PS require demux/remux before MSE in this engine.
   switch (request.protocol) {
     case 'http-fmp4':
     case 'ws-fmp4':
@@ -120,10 +130,21 @@ function canMseContainer(request: PlanRequest): boolean {
       return true;
     case 'http-flv':
     case 'ws-flv':
+    case 'http-annexb':
+    case 'ws-annexb':
+    case 'http-mpegps':
+    case 'ws-mpegps':
       return false;
     default:
       return false;
   }
+}
+
+function protocolRequiresDemux(protocol: Protocol): boolean {
+  // MPEG-PS is a container and must be demuxed before any browser decoder.
+  // Annex-B is already an elementary stream, so it can be fed to a decoder
+  // after NAL boundaries are identified.
+  return protocol === 'http-mpegps' || protocol === 'ws-mpegps';
 }
 
 function wasmMemoryOk(caps: CapabilityReport, budget: PlanRequest['budget']): boolean {
@@ -176,6 +197,9 @@ function backendSupportsCodec(
   switch (backend) {
     case 'webcodecs':
       if (!caps.webCodecs) return { supported: false, reason: 'WebCodecs API unavailable' };
+      if (protocolRequiresDemux(request.protocol)) {
+        return { supported: false, reason: `WebCodecs cannot demux ${request.protocol}` };
+      }
       if (!codecHasWebCodecsSupport(caps, codec)) {
         return { supported: false, reason: `WebCodecs does not support ${track.codec}` };
       }
@@ -255,9 +279,13 @@ function chooseTransport(request: PlanRequest): TransportMode {
   switch (request.protocol) {
     case 'ws-flv':
     case 'ws-fmp4':
+    case 'ws-annexb':
+    case 'ws-mpegps':
       return 'websocket';
     case 'http-flv':
     case 'http-fmp4':
+    case 'http-annexb':
+    case 'http-mpegps':
     case 'hls':
     case 'll-hls':
       return 'fetch';
