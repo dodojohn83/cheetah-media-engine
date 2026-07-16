@@ -116,7 +116,7 @@ function parseWatermark(item: Record<string, unknown>): Watermark | undefined {
   const content = parseString(item.content);
 
   if (!type || !VALID_TYPES.has(type) || !content) return undefined;
-  if (type === 'image' && isDangerousUrl(content)) return undefined;
+  if (type === 'image' && !isAllowedUrl(content, 'src')) return undefined;
 
   const common = {
     ...base,
@@ -207,16 +207,28 @@ const ALLOWED_ATTRIBUTES = new Set<string>([
   'width',
 ]);
 
-function isDangerousUrl(value: string): boolean {
+type UrlContext = 'href' | 'src' | 'style-url';
+
+function extractScheme(value: string): string | undefined {
   // Browsers ignore tabs, newlines and control characters inside a URL scheme,
-  // so normalize them before checking the scheme prefix.
-  const normalized = value.replace(/[\x00-\x20]/g, '').toLowerCase();
-  if (normalized.startsWith('javascript:') || normalized.startsWith('vbscript:')) return true;
-  if (
-    normalized.startsWith('data:text/html') ||
-    normalized.startsWith('data:image/svg+xml')
-  ) {
-    return true;
+  // so normalize them before extracting the scheme.
+  const normalized = value.replace(/[\x00-\x20]/g, '');
+  const match = normalized.match(/^([a-z][a-z0-9+.-]*):/i);
+  return match?.[1]?.toLowerCase();
+}
+
+function isAllowedUrl(value: string, context: UrlContext): boolean {
+  const scheme = extractScheme(value);
+  if (!scheme) return true; // relative or protocol-relative URL
+
+  if (scheme === 'http' || scheme === 'https') return true;
+  if (context === 'href' && (scheme === 'mailto' || scheme === 'tel')) return true;
+  if (scheme === 'data') {
+    const lower = value.replace(/[\x00-\x20]/g, '').toLowerCase();
+    if (lower.startsWith('data:image/')) {
+      return !lower.startsWith('data:image/svg+xml');
+    }
+    return false;
   }
   return false;
 }
@@ -226,13 +238,7 @@ const DANGEROUS_STYLE_VALUE_PATTERN = /expression\s*\(|behaviour\s*\(|vbscript:|
 const URL_VALUE_PATTERN = /url\s*\(\s*["']?([^\)"']+)["']?\s*\)/gi;
 
 function styleUrlIsSafe(url: string): boolean {
-  const trimmed = url.trim().toLowerCase();
-  return !(
-    trimmed.startsWith('javascript:') ||
-    trimmed.startsWith('vbscript:') ||
-    trimmed.startsWith('data:text/html') ||
-    trimmed.startsWith('data:image/svg+xml')
-  );
+  return isAllowedUrl(url, 'style-url');
 }
 
 /**
@@ -276,7 +282,7 @@ function sanitizeAttribute(name: string, value: string): string | undefined {
   const lowerName = name.toLowerCase();
   if (lowerName.startsWith('on')) return undefined;
   if (!ALLOWED_ATTRIBUTES.has(lowerName)) return undefined;
-  if ((lowerName === 'href' || lowerName === 'src') && isDangerousUrl(value)) return undefined;
+  if ((lowerName === 'href' || lowerName === 'src') && !isAllowedUrl(value, lowerName)) return undefined;
   if (lowerName === 'style') {
     return sanitizeStyle(value);
   }
