@@ -207,6 +207,72 @@ fn audio_aac_pes_emits_track_and_packets() {
     assert_eq!(packets, 1);
 }
 
+#[test]
+fn audio_aac_multiple_frames_increase_timestamps() {
+    let frame_a = build_adts_frame(44100, 2, 7);
+    let frame_b = build_adts_frame(44100, 2, 7);
+    let payload = [frame_a.as_slice(), frame_b.as_slice()].concat();
+
+    let mut pes = Vec::new();
+    pes.extend_from_slice(&[0x00, 0x00, 0x01, 0xBD]);
+    let payload_len = 3 + 5 + payload.len();
+    pes.push((payload_len >> 8) as u8);
+    pes.push((payload_len & 0xFF) as u8);
+    pes.push(0x80);
+    pes.push(0x80);
+    pes.push(0x05);
+    pes.extend_from_slice(&[0x21, 0x00, 0x01, 0x00, 0x01]);
+    pes.extend_from_slice(&payload);
+
+    let mut demuxer = MpegPsDemuxer::new(MpegPsConfig::h264());
+    demuxer.push(&pes);
+    demuxer.end().unwrap();
+
+    let packets: Vec<_> = collect_events(&mut demuxer)
+        .into_iter()
+        .filter_map(|e| match e {
+            MpegPsEvent::Packet(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(packets.len(), 2);
+    let duration = 1024i64 * 90_000 / 44100;
+    assert_eq!(packets[0].time.pts.map(|t| t.ticks()), Some(0));
+    assert_eq!(packets[1].time.pts.map(|t| t.ticks()), Some(duration));
+}
+
+#[test]
+fn unbounded_video_pes_flushes_at_eof() {
+    // Unbounded video PES (packet_length == 0) with no trailing boundary.
+    let mut data = Vec::new();
+    data.extend_from_slice(&[0x00, 0x00, 0x01, 0xBA]); // pack start
+    data.extend_from_slice(&[0x44, 0x00, 0x04, 0x00, 0x04, 0x01, 0x86, 0x66, 0xCF, 0xF8]);
+    data.extend_from_slice(&[0x00, 0x00, 0x01, 0xE0, 0x00, 0x00]); // unbounded video PES
+    data.push(0x81);
+    data.push(0x80);
+    data.push(0x05);
+    data.extend_from_slice(&[0x21, 0x00, 0x01, 0x00, 0x01]); // PTS = 0
+    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01, 0x09]); // access unit delimiter
+
+    let mut demuxer = MpegPsDemuxer::new(MpegPsConfig::h264());
+    demuxer.push(&data);
+    demuxer.end().unwrap();
+
+    let packets: Vec<_> = collect_events(&mut demuxer)
+        .into_iter()
+        .filter_map(|e| match e {
+            MpegPsEvent::Packet(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        !packets.is_empty(),
+        "unbounded video PES should flush at EOF"
+    );
+}
+
 fn build_adts_frame(sample_rate: u32, channels: u8, raw_len: usize) -> Vec<u8> {
     use cheetah_media_bitstream::aac::AdtsHeader;
 

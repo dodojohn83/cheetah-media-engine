@@ -258,7 +258,11 @@ impl MpegPsDemuxer {
                             max: self.config.max_buffer_bytes,
                         });
                     }
-                    return Ok(false);
+                    if self.ended && self.buffer.len() >= 6 {
+                        self.buffer.len()
+                    } else {
+                        return Ok(false);
+                    }
                 }
             }
         } else {
@@ -376,6 +380,8 @@ impl MpegPsDemuxer {
         let track_id = TrackId::new(AUDIO_TRACK_ID).expect("audio track id 2 is valid");
 
         let mut offset = 0;
+        let mut pts = media_time.pts;
+        let mut dts = media_time.dts;
         while offset < payload.len() {
             let header = match AdtsHeader::parse(&payload[offset..]) {
                 Ok(h) => h,
@@ -401,8 +407,8 @@ impl MpegPsDemuxer {
             let duration_ticks = (u64::from(header.samples_per_frame) * 90_000
                 / u64::from(header.sampling_frequency)) as i64;
             let packet_time = MediaTime::new(
-                media_time.pts,
-                media_time.dts,
+                pts,
+                dts,
                 Some(Timestamp::new(duration_ticks)),
                 TimeBase::TS_90K,
             );
@@ -418,6 +424,8 @@ impl MpegPsDemuxer {
             self.pending_events.push_back(MpegPsEvent::Packet(packet));
 
             offset += frame_len;
+            pts = pts.map(|p| Timestamp::new(p.ticks() + duration_ticks));
+            dts = dts.map(|d| Timestamp::new(d.ticks() + duration_ticks));
         }
         Ok(())
     }
