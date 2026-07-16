@@ -29,6 +29,18 @@
 - 测试覆盖 TS PES private data 提取与边界（无 private flag、private stream payload）。
 - 测试覆盖 Web 组件 overlay 渲染与清空。
 
+## 5. 状态
+
+- 已完成；PR 见 `wp/49-sei-metadata` → #51。
+- 实现摘要：
+  - `cheetah-media-bitstream/src/sei.rs` 新增有界 SEI 解析器，支持 `0xFF` 延续字节、单/多消息、截断/畸形输入、上限保护。
+  - `cheetah-media-types/src/metadata.rs` 新增 `MetadataSource` / `MetadataItem`。
+  - `AnnexbEvent::Metadata`、`MpegPsEvent::Metadata`、`TsEvent::Metadata` 在对应 demuxer 中投递 SEI / PES private stream metadata。
+  - `cheetah-media-web-bindings` 新增 `DemuxEventKind::Metadata` 与 `MemoryArena` 紧凑二进制编码。
+  - `packages/web/src/player.ts` 新增 `'metadata'` 事件类型与 `MetadataItem` / `MetadataEventDetails`。
+  - `packages/components/src/metadata-overlay.ts` 解析 JSON payload 并在 `.overlay-svg` 渲染 `line` / `rect` / `circle` / `polygon` / `text`；每次 metadata 事件替换旧 overlay，空列表清空。
+  - 测试覆盖 SEI 解析边界、H.264/H.265 SEI metadata、MPEG-PS/TS private stream metadata、WASM 事件编码、Web 组件 overlay 渲染/清空。
+
 ## 4. 边界
 
 - 本 WP 只提取和投递 metadata；AI 分析/检测在后续 WP 作为扩展点。

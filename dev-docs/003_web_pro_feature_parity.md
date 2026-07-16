@@ -140,4 +140,4 @@ corepack pnpm exec playwright test
 | 46 | 已完成 | `wp/46-advanced-wall` -> #48 | 双击局部全屏、拖拽排序、不规则布局 |
 | 47 | 已完成 | `wp/47-watermark` -> #49 | 局部文字/图片/HTML 水印、平铺/动态/幽灵水印；Devin Review 修复并通过 CI |
 | 48 | 已完成 | `wp/48-crypto-transforms` -> #50 | SM4 / XOR / AES-128-CBC 解密 transform；Devin Review 修复 buffer drain 后通过 CI |
-| 49 | 进行中 | `wp/49-sei-metadata` | SEI 提取、TS PES private data、服务端坐标 overlay |
+| 49 | 已完成 | `wp/49-sei-metadata` -> #51 | SEI 提取、TS PES private data、服务端坐标 overlay |
