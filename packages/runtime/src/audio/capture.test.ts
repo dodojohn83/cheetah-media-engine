@@ -34,6 +34,7 @@ interface TestEnv {
   fakeWorkletNode: AudioWorkletNodeLike;
   fakeSource: { connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> };
   fakeStream: { getAudioTracks: ReturnType<typeof vi.fn> };
+  fakeTrack: { stop: ReturnType<typeof vi.fn> };
 }
 
 function createTestEnv(sampleRate = 8000): TestEnv {
@@ -42,8 +43,9 @@ function createTestEnv(sampleRate = 8000): TestEnv {
     connect: vi.fn(),
     disconnect: vi.fn(),
   };
+  const fakeTrack = { stop: vi.fn() };
   const fakeStream = {
-    getAudioTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+    getAudioTracks: vi.fn().mockReturnValue([fakeTrack]),
   };
   const getUserMedia = vi.fn().mockResolvedValue(fakeStream as unknown as MediaStream) as unknown as GetUserMedia;
 
@@ -70,6 +72,7 @@ function createTestEnv(sampleRate = 8000): TestEnv {
     fakeWorkletNode,
     fakeSource,
     fakeStream,
+    fakeTrack,
   };
 }
 
@@ -151,6 +154,22 @@ describe('MicrophoneCapture', () => {
     await expect(capture.start()).rejects.toBeInstanceOf(CaptureError);
     const error = onError.mock.calls[0]?.[0] as CaptureError;
     expect(error?.code).toBe('not-supported');
+  });
+
+  it('releases the microphone stream when start fails after getUserMedia', async () => {
+    const env = createTestEnv();
+    env.audioContext.audioWorklet.addModule = vi.fn().mockRejectedValue(new Error('addModule failed'));
+
+    const capture = new MicrophoneCapture({
+      audioContext: env.audioContext,
+      workletNodeCtor: env.workletNodeCtor,
+      getUserMedia: env.getUserMedia,
+    });
+
+    await expect(capture.start()).rejects.toBeInstanceOf(CaptureError);
+    expect(env.fakeTrack.stop).toHaveBeenCalled();
+    // Injected audioContext must not be closed by the capture.
+    expect(env.audioContext.close).not.toHaveBeenCalled();
   });
 
   it('emits A-law packets when configured', async () => {

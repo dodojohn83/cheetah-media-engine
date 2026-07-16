@@ -262,9 +262,11 @@ export class MicrophoneCapture {
 
       this.state = 'running';
     } catch (err) {
+      await this.cleanup(false);
+      const captureError = err instanceof CaptureError ? err : new CaptureError('capture-failed', String(err));
       this.state = 'error';
-      this.callbacks.onError?.(err instanceof CaptureError ? err : new CaptureError('unknown', String(err)));
-      throw err;
+      this.callbacks.onError?.(captureError);
+      throw captureError;
     } finally {
       this.startPromise = undefined;
     }
@@ -280,7 +282,7 @@ export class MicrophoneCapture {
         try {
           await promise;
         } catch {
-          // Start failed; resources are already released.
+          // Start failed; doStart's catch block has already released resources.
         }
       }
       if (this.getState() === 'error') {
@@ -294,45 +296,51 @@ export class MicrophoneCapture {
     }
 
     this.state = 'stopping';
+    await this.cleanup(true);
+    this.state = 'idle';
+  }
 
-    this.workletNode?.disconnect();
-    if (this.workletNode) {
-      this.workletNode.port.onmessage = null;
-      this.workletNode = undefined;
+  private async cleanup(flush: boolean): Promise<void> {
+    const worklet = this.workletNode;
+    this.workletNode = undefined;
+    worklet?.disconnect();
+    if (worklet) {
+      worklet.port.onmessage = null;
     }
-    this.sourceNode?.disconnect();
-    this.sourceNode = undefined;
 
-    if (this.stream) {
-      for (const track of this.stream.getAudioTracks()) {
+    const source = this.sourceNode;
+    this.sourceNode = undefined;
+    source?.disconnect();
+
+    const stream = this.stream;
+    this.stream = undefined;
+    if (stream) {
+      for (const track of stream.getAudioTracks()) {
         track.stop();
       }
-      this.stream = undefined;
     }
 
-    if (this.audioContext && !this.options.audioContext) {
-      try {
-        await this.audioContext.close();
-      } catch {
-        // close() may fail if the context was already closed; ignore.
-      }
-    }
-    this.audioContext = undefined;
-
-    // Flush any leftover samples from the resampler.
-    if (this.resampler) {
+    if (flush && this.resampler) {
       const flushed = this.resampler.flush();
       const out = flushed[0];
       if (out) {
         this.appendResampled(out);
       }
-      this.resampler = undefined;
+      this.emitFullFrames();
     }
 
-    // Emit any final full frame still pending.
-    this.emitFullFrames();
+    const ctx = this.audioContext;
+    this.audioContext = undefined;
+    if (ctx && !this.options.audioContext) {
+      try {
+        await ctx.close();
+      } catch {
+        // close() may fail if the context was already closed; ignore.
+      }
+    }
 
-    this.state = 'idle';
+    this.resampler = undefined;
+    this.pending = new Float32Array(0);
   }
 
   private classifyMediaError(err: unknown): string {
