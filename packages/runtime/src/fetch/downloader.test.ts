@@ -187,6 +187,61 @@ describe('StreamDownloader', () => {
     expect(requestedRanges[1]).toBe('bytes=4-');
   });
 
+  it('resumes from a pause before any bytes without requiring 206', async () => {
+    let shouldPause = false;
+    const dl = new StreamDownloader();
+    const sink = { write: () => undefined, close: vi.fn() };
+
+    function makeSignalStream(signal?: AbortSignal) {
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (signal) {
+            signal.addEventListener('abort', () => {
+              try {
+                controller.close();
+              } catch {
+                // already closed
+              }
+            }, { once: true });
+          }
+        },
+        pull(controller) {
+          if (shouldPause) {
+            shouldPause = false;
+            dl.pause();
+            return;
+          }
+          controller.enqueue(new Uint8Array([1, 2]));
+          controller.close();
+        },
+      });
+    }
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const headers = init?.headers ? new Headers(init.headers) : new Headers();
+        const range = headers.get('Range');
+        const signal = init?.signal ?? undefined;
+        if (range) {
+          return new Response(new Uint8Array([3, 4]), { status: 206 });
+        }
+        return new Response(makeSignalStream(signal), { status: 200 });
+      }),
+    );
+
+    const start = dl.start({ url: 'https://example.com/early-pause', sink });
+    shouldPause = true;
+    const startResult = await start;
+    expect(startResult.bytesWritten).toBe(0);
+    expect(dl.progress.state).toBe('paused');
+
+    const resumeResult = await dl.resume({ url: 'https://example.com/early-pause', sink });
+    expect(resumeResult.bytesWritten).toBe(2);
+    expect(dl.progress.state).toBe('completed');
+    expect(sink.close).toHaveBeenCalledTimes(1);
+  });
+
   it('stop aborts a running download', async () => {
     const dl = new StreamDownloader();
     const start = dl.start({

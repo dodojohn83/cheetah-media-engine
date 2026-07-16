@@ -188,7 +188,7 @@ export class StreamDownloader {
       );
     }
 
-    if (isResume && response.status !== 206) {
+    if (isResume && this.bytesReceived > 0 && response.status !== 206) {
       throw makeError(TransportErrorCode.HttpStatus, 'Server does not support byte-range resume', false);
     }
 

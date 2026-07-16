@@ -984,7 +984,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
     try {
       const result = await controller.start(runtimeOptions);
-      if (sink instanceof BlobSink && options.filename) {
+      if (controller.progress.state === 'completed' && sink instanceof BlobSink && options.filename) {
         this.saveBlob(sink.getBlob(), options.filename);
       }
       return result;
@@ -1039,7 +1039,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
     try {
       const result = await this._downloadController.resume(runtimeOptions);
-      if (sink instanceof BlobSink && (options?.filename ?? base.filename)) {
+      if (
+        this._downloadController.progress.state === 'completed' &&
+        sink instanceof BlobSink &&
+        (options?.filename ?? base.filename)
+      ) {
         this.saveBlob(sink.getBlob(), options?.filename ?? base.filename!);
       }
       return result;

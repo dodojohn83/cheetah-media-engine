@@ -438,6 +438,28 @@ describe('web sdk', () => {
       );
     });
 
+    it('does not save a partial file when a download is paused', async () => {
+      const player = playerWithMock();
+      const saveBlob = vi.spyOn(player as unknown as { saveBlob: () => void }, 'saveBlob');
+      let paused = false;
+      player.addEventListener('download', (event: CheetahPlayerEvent<'download'>) => {
+        const progress = (event.details as { progress?: { bytesWritten: number } }).progress;
+        if (!paused && progress && progress.bytesWritten >= 2) {
+          paused = true;
+          player.pauseDownload();
+        }
+      });
+      const result = await player.startDownload({
+        url: 'https://example.com/video.mp4',
+        filename: 'video.mp4',
+      });
+      expect(result.bytesWritten).toBe(2);
+      expect(player.downloadProgress?.state).toBe('paused');
+      expect(saveBlob).not.toHaveBeenCalled();
+      saveBlob.mockRestore();
+      await player.stopDownload();
+    });
+
     it('emits download progress events', async () => {
       const player = playerWithMock();
       const events: CheetahPlayerEvent<'download'>[] = [];
