@@ -1,0 +1,11 @@
+language = "C"
+cpp_compat = true
+include_guard = "CHEETAH_MEDIA_H"
+style = "type"
+
+[export]
+include = ["CheetahPlayer", "CheetahResult"]
+
+[enum]
+rename_variants = "ScreamingSnakeCase"
+prefix_with_name = false

@@ -175,6 +175,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cheetah-media-c-bindings"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-engine",
+]
+
+[[package]]
 name = "cheetah-media-core"
 version = "0.1.0"
 dependencies = [

@@ -9,19 +9,19 @@
 - `crates/cheetah-media-c-bindings/Cargo.toml`：
   - `crate-type = ["cdylib", "staticlib", "rlib"]`。
   - `license.workspace = true`；`edition.workspace = true`；`rust-version.workspace = true`。
-  - 依赖 `cheetah-media-abi` 和 `cheetah-media-engine`（std）。
-  - `[lints.rust]` 设置 `unsafe_code = "deny"`（C ABI 边界需要 `unsafe`，但禁止其它位置）。
+  - 依赖 `cheetah-media-engine`（std）。
+  - `[lints.rust]` 设置 `unsafe_code = "deny"`；FFI 函数局部使用 `#[allow(unsafe_code)]` 并写 `SAFETY` 注释。
 - `crates/cheetah-media-c-bindings/src/lib.rs`：
   - 公开 `CheetahPlayer` opaque 类型（Rust struct 对 C 隐藏，以 `*mut CheetahPlayer` 暴露）。
-  - `cheetah_player_create()` / `cheetah_player_destroy()`。
-  - `cheetah_player_version()` 返回引擎版本字符串（生命周期归调用方或全局静态，文档说明）。
-  - 稳定的 `CheetahResult` 错误码（`Ok = 0`, `NullPtr`, `InvalidState`, `InvalidData`, `NotSupported` 等）。
-  - 所有字符串使用 `*const c_char` / `usize` length，显式指定 UTF-8；所有输出字符串指向调用方提供 buffer，避免跨语言所有权争议。
-- `crates/cheetah-media-c-bindings/build.rs`（可选）或 `scripts/generate-c-header.sh`：
-  - 使用 `cbindgen` 生成 `include/cheetah_media.h`。
-  - CI 中校验生成文件与源码一致，防止 header 漂移。
+  - `cheetah_player_create()` / `cheetah_player_destroy()`（destroy 接收 `*mut *mut` 并将句柄置空）。
+  - `cheetah_player_version()` / `cheetah_player_version_length()`。
+  - `cheetah_player_state()` 返回当前状态字符串。
+  - 稳定的 `CheetahResult` 错误码（`Ok = 0`, `NullPtr`, `InvalidState`, `InvalidData`, `NotSupported`, `InternalError`）。
+  - 所有字符串使用 `*const c_char` 指向静态/引擎字符串；跨语言所有权不转移。
+- `crates/cheetah-media-c-bindings/cbindgen.toml` + `include/cheetah_media.h`：
+  - 使用 `cbindgen` 生成 C 头文件；CI 中校验生成文件与源码一致，防止 header 漂移。
 - `crates/cheetah-media-c-bindings/README.md`：说明职责、允许依赖、禁止依赖、feature、公共入口。
-- `crates/cheetah-media-c-bindings/tests/`：
+- `src/lib.rs` 内 `#[cfg(test)]`：
   - Rust `#[test]` 验证 FFI create/destroy round-trip、null 输入返回错误、double-destroy 安全、version 字符串非空。
 
 ## 3. 非交付物
@@ -40,14 +40,21 @@ typedef enum CheetahResult {
   CheetahResult_InvalidState = 2,
   CheetahResult_InvalidData = 3,
   CheetahResult_NotSupported = 4,
+  CheetahResult_InternalError = 5,
 } CheetahResult;
 
 typedef struct CheetahPlayer CheetahPlayer;
 
-CheetahResult cheetah_player_create(CheetahPlayer **player);
-CheetahResult cheetah_player_destroy(CheetahPlayer *player);
+int cheetah_player_create(CheetahPlayer **player);
+int cheetah_player_destroy(CheetahPlayer **player);
 const char *cheetah_player_version(void);
+uintptr_t cheetah_player_version_length(void);
+const char *cheetah_player_state(const CheetahPlayer *player);
 ```
+
+说明：
+- `cheetah_player_destroy` 接收 `CheetahPlayer**` 并在内部置为 `NULL`，使同址重复调用安全。
+- `cheetah_player_state` 返回当前播放器状态字符串（`idle`/`loading`/`playing` 等），生命周期随下次状态变更调用失效。
 
 ## 5. 完成定义
 
