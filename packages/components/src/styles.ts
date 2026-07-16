@@ -205,12 +205,20 @@ export const styles = /*css*/ `
     animation: watermark-ghost 3s ease-in-out infinite alternate;
   }
 
+  .watermark-item.watermark-dynamic.watermark-ghost {
+    animation: watermark-move 10s linear infinite, watermark-ghost 3s ease-in-out infinite alternate;
+  }
+
   .watermark-tile-item.watermark-dynamic {
-    animation: watermark-move 10s linear infinite;
+    animation: watermark-move-tile 10s linear infinite;
   }
 
   .watermark-tile-item.watermark-ghost {
     animation: watermark-ghost 3s ease-in-out infinite alternate;
+  }
+
+  .watermark-tile-item.watermark-dynamic.watermark-ghost {
+    animation: watermark-move-tile 10s linear infinite, watermark-ghost 3s ease-in-out infinite alternate;
   }
 
   @keyframes watermark-move {
@@ -219,6 +227,14 @@ export const styles = /*css*/ `
     50% { left: 80%; top: 80%; }
     75% { left: 0; top: 80%; }
     100% { left: 0; top: 0; }
+  }
+
+  @keyframes watermark-move-tile {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(80%, 0); }
+    50% { transform: translate(80%, 80%); }
+    75% { transform: translate(0, 80%); }
+    100% { transform: translate(0, 0); }
   }
 
   @keyframes watermark-ghost {
