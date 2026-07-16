@@ -94,6 +94,7 @@ export class CheetahWallElement extends HTMLElement {
   connectedCallback(): void {
     this.addEventListener('dblclick', this._onDblClick);
     this.addEventListener('dragstart', this._onDragStart);
+    this.addEventListener('dragend', this._onDragEnd);
     this.addEventListener('dragover', this._onDragOver);
     this.addEventListener('drop', this._onDrop);
 
@@ -139,6 +140,7 @@ export class CheetahWallElement extends HTMLElement {
   disconnectedCallback(): void {
     this.removeEventListener('dblclick', this._onDblClick);
     this.removeEventListener('dragstart', this._onDragStart);
+    this.removeEventListener('dragend', this._onDragEnd);
     this.removeEventListener('dragover', this._onDragOver);
     this.removeEventListener('drop', this._onDrop);
     this._disconnectObservers();
@@ -374,6 +376,10 @@ export class CheetahWallElement extends HTMLElement {
     }
   };
 
+  private _onDragEnd = (): void => {
+    this._dragSource = undefined;
+  };
+
   private _onDragOver = (event: DragEvent): void => {
     if (!this._dragSource) return;
     event.preventDefault();
@@ -490,6 +496,25 @@ export class CheetahWallElement extends HTMLElement {
   }
 
   private _applyCustomGrid(grid: HTMLElement, cells: CheetahWallCellElement[], fullscreen: string | undefined): void {
+    if (fullscreen) {
+      grid.style.gridTemplateColumns = '1fr';
+      grid.style.gridTemplateRows = '1fr';
+      for (const cell of cells) {
+        const el = cell as HTMLElement;
+        el.removeAttribute('draggable');
+        if (cell.cellId === fullscreen) {
+          el.style.display = 'block';
+          el.style.gridColumn = '1 / -1';
+          el.style.gridRow = '1 / -1';
+        } else {
+          el.style.display = 'none';
+          el.style.gridColumn = '';
+          el.style.gridRow = '';
+        }
+      }
+      return;
+    }
+
     let maxCol = 0;
     let maxRow = 0;
     for (const cell of cells) {
@@ -507,13 +532,6 @@ export class CheetahWallElement extends HTMLElement {
     for (const cell of cells) {
       const el = cell as HTMLElement;
       el.removeAttribute('draggable');
-      const id = cell.cellId;
-      if (fullscreen && id !== fullscreen) {
-        el.style.display = 'none';
-        el.style.gridColumn = '';
-        el.style.gridRow = '';
-        continue;
-      }
       const g = parseDataGrid(cell.getAttribute('data-grid'));
       if (!g) {
         el.style.display = 'none';

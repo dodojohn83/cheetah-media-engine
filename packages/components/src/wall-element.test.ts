@@ -242,4 +242,34 @@ describe('CheetahWallElement', () => {
 
     wall.remove();
   });
+
+  it('fills the whole wall when a custom-layout cell is double-clicked to fullscreen', async () => {
+    const wall = document.createElement('cheetah-wall') as CheetahWallElement;
+    wall.setAttribute('layout', 'custom');
+
+    const a = document.createElement('cheetah-wall-cell') as CheetahWallCellElement;
+    a.setAttribute('cell-id', 'a');
+    a.setAttribute('data-grid', JSON.stringify({ col: 1, row: 1, colSpan: 2, rowSpan: 2 }));
+    wall.appendChild(a);
+
+    const b = document.createElement('cheetah-wall-cell') as CheetahWallCellElement;
+    b.setAttribute('cell-id', 'b');
+    b.setAttribute('data-grid', JSON.stringify({ col: 3, row: 1 }));
+    wall.appendChild(b);
+
+    document.body.appendChild(wall);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    a.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const grid = wall.shadowRoot?.querySelector('.grid') as HTMLElement | undefined;
+    expect(grid?.style.gridTemplateColumns).toBe('1fr');
+    expect(grid?.style.gridTemplateRows).toBe('1fr');
+    expect((a as HTMLElement).style.gridColumn).toBe('1 / -1');
+    expect((a as HTMLElement).style.gridRow).toBe('1 / -1');
+    expect((b as HTMLElement).style.display).toBe('none');
+
+    wall.remove();
+  });
 });
