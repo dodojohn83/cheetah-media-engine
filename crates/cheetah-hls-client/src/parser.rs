@@ -21,7 +21,7 @@ pub fn parse(input: &str, base_uri: &str) -> Result<Playlist, HlsError> {
         return Err(HlsError::MissingExtM3u);
     }
 
-    if input.len() > MAX_LINE_LEN * MAX_LINES {
+    if (input.len() as u64) > (MAX_LINE_LEN as u64).saturating_mul(MAX_LINES as u64) {
         return Err(HlsError::LimitExceeded {
             limit: "playlist total size",
         });
