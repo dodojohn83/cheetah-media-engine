@@ -276,6 +276,7 @@ export interface CheetahPlayer {
   stopDownload(): Promise<void>;
   readonly downloadActive: boolean;
   readonly downloadProgress: import('@cheetah-media/runtime').DownloadProgress | undefined;
+  readonly downloadBlob: Blob | undefined;
 
   getStats(): PlayerStats;
   getMetrics(): MetricsSnapshot;
@@ -345,6 +346,14 @@ export class CheetahMediaError extends Error {
       message: this.message,
     };
   }
+}
+
+function errorMessageFromCause(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  if (cause && typeof cause === 'object' && 'message' in cause) {
+    return String((cause as { message: unknown }).message);
+  }
+  return String(cause);
 }
 
 const DEFAULT_LATENCY: Required<LatencyConfig> = {
@@ -568,6 +577,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   get downloadProgress(): DownloadProgress | undefined {
     return this._downloadController?.progress;
+  }
+
+  get downloadBlob(): Blob | undefined {
+    return this._downloadSink instanceof BlobSink ? this._downloadSink.getBlob() : undefined;
   }
 
   private nextSequence(): number {
@@ -971,9 +984,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
     try {
       const result = await controller.start(runtimeOptions);
+      if (sink instanceof BlobSink && options.filename) {
+        this.saveBlob(sink.getBlob(), options.filename);
+      }
       return result;
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessageFromCause(cause);
       throw new CheetahMediaError(6999, 'download', `Download failed: ${message}`, { cause, recoverable: true });
     } finally {
       if (this._downloadController === controller) {
@@ -1023,9 +1039,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
     try {
       const result = await this._downloadController.resume(runtimeOptions);
+      if (sink instanceof BlobSink && (options?.filename ?? base.filename)) {
+        this.saveBlob(sink.getBlob(), options?.filename ?? base.filename!);
+      }
       return result;
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessageFromCause(cause);
       throw new CheetahMediaError(6999, 'download', `Download resume failed: ${message}`, { cause, recoverable: true });
     } finally {
       if (this._downloadController) {
@@ -1057,6 +1076,18 @@ export class CheetahPlayerImpl implements CheetahPlayer {
         // stop() may fail if the download already completed; ignore.
       }
     }
+  }
+
+  private saveBlob(blob: Blob, filename: string): void {
+    if (typeof document === 'undefined') return;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   }
 
   private async cleanupIntercom(): Promise<void> {

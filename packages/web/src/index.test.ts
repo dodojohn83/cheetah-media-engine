@@ -410,6 +410,20 @@ describe('web sdk', () => {
       const result = await player.startDownload({ url: 'https://example.com/video.mp4' });
       expect(result.bytesWritten).toBe(2);
       expect(player.downloadActive).toBe(false);
+      expect(player.downloadBlob).toBeInstanceOf(Blob);
+      expect(player.downloadBlob?.size).toBe(2);
+    });
+
+    it('surfaces HTTP errors with a readable message', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response('error', { status: 500 })),
+      );
+      const player = playerWithMock();
+      await expect(player.startDownload({ url: 'https://example.com/video.mp4' })).rejects.toMatchObject({
+        stage: 'download',
+        message: expect.stringContaining('HTTP 500'),
+      });
     });
 
     it('rejects malformed download URLs with a media error', async () => {
