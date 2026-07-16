@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createPlayer,
   createPlayerWithRuntime,
@@ -351,5 +351,204 @@ describe('web sdk', () => {
     const player = playerWithMock();
     await expect(player.stopIntercom()).resolves.toBeUndefined();
     expect(player.intercomActive).toBe(false);
+  });
+
+  describe('download', () => {
+    function makeStream(chunks: Uint8Array[], signal: AbortSignal | undefined, closeOnDone = true) {
+      let index = 0;
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (signal) {
+            signal.addEventListener('abort', () => {
+              try {
+                controller.close();
+              } catch {
+                // already closed
+              }
+            }, { once: true });
+          }
+        },
+        pull(controller) {
+          if (index >= chunks.length) {
+            if (closeOnDone) controller.close();
+            return;
+          }
+          if (controller.desiredSize !== null && controller.desiredSize <= 0) return;
+          const chunk = chunks[index];
+          if (chunk) {
+            controller.enqueue(chunk);
+            index += 1;
+          }
+        },
+      });
+    }
+
+    beforeEach(() => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+          const headers = init?.headers ? new Headers(init.headers) : new Headers();
+          const range = headers.get('Range');
+          const signal = init?.signal ?? undefined;
+          if (range) {
+            const start = Number.parseInt(range.replace('bytes=', ''), 10);
+            return new Response(makeStream([new Uint8Array([start + 1, start + 2, start + 3])], signal), {
+              status: 206,
+            });
+          }
+          return new Response(makeStream([new Uint8Array([1, 2])], signal));
+        }),
+      );
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('downloads a stream through the player', async () => {
+      const player = playerWithMock();
+      const result = await player.startDownload({ url: 'https://example.com/video.mp4' });
+      expect(result.bytesWritten).toBe(2);
+      expect(player.downloadActive).toBe(false);
+      expect(player.downloadBlob).toBeInstanceOf(Blob);
+      expect(player.downloadBlob?.size).toBe(2);
+    });
+
+    it('surfaces HTTP errors with a readable message', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response('error', { status: 500 })),
+      );
+      const player = playerWithMock();
+      await expect(player.startDownload({ url: 'https://example.com/video.mp4' })).rejects.toMatchObject({
+        stage: 'download',
+        message: expect.stringContaining('HTTP 500'),
+      });
+    });
+
+    it('rejects malformed download URLs with a media error', async () => {
+      const player = playerWithMock();
+      await expect(player.startDownload({ url: 'not-a-url' })).rejects.toBeInstanceOf(CheetahMediaError);
+    });
+
+    it('rejects non-http download URLs', async () => {
+      const player = playerWithMock();
+      await expect(player.startDownload({ url: 'ftp://example.com/video.mp4' })).rejects.toBeInstanceOf(
+        CheetahMediaError,
+      );
+    });
+
+    it('does not save a partial file when a download is paused', async () => {
+      const player = playerWithMock();
+      const saveBlob = vi.spyOn(player as unknown as { saveBlob: () => void }, 'saveBlob');
+      let paused = false;
+      player.addEventListener('download', (event: CheetahPlayerEvent<'download'>) => {
+        const progress = (event.details as { progress?: { bytesWritten: number } }).progress;
+        if (!paused && progress && progress.bytesWritten >= 2) {
+          paused = true;
+          player.pauseDownload();
+        }
+      });
+      const result = await player.startDownload({
+        url: 'https://example.com/video.mp4',
+        filename: 'video.mp4',
+      });
+      expect(result.bytesWritten).toBe(2);
+      expect(player.downloadProgress?.state).toBe('paused');
+      expect(saveBlob).not.toHaveBeenCalled();
+      saveBlob.mockRestore();
+      await player.stopDownload();
+    });
+
+    it('emits download progress events', async () => {
+      const player = playerWithMock();
+      const events: CheetahPlayerEvent<'download'>[] = [];
+      player.addEventListener('download', (event) => events.push(event as CheetahPlayerEvent<'download'>));
+      await player.startDownload({ url: 'https://example.com/video.mp4' });
+      expect(events.length).toBeGreaterThanOrEqual(1);
+    });
+
+    describe('resume', () => {
+      beforeEach(() => {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+            const headers = init?.headers ? new Headers(init.headers) : new Headers();
+            const range = headers.get('Range');
+            const signal = init?.signal ?? undefined;
+            if (range) {
+              const start = Number.parseInt(range.replace('bytes=', ''), 10);
+              return new Response(makeStream([new Uint8Array([start + 1, start + 2, start + 3])], signal), {
+                status: 206,
+              });
+            }
+            return new Response(makeStream([new Uint8Array([1, 2])], signal, false));
+          }),
+        );
+      });
+
+      it('resumes a paused download into the same sink', async () => {
+        const player = playerWithMock();
+        let paused = false;
+        player.addEventListener('download', (event: CheetahPlayerEvent<'download'>) => {
+          const progress = (event.details as { progress?: { bytesWritten: number } }).progress;
+          if (!paused && progress && progress.bytesWritten >= 2) {
+            paused = true;
+            player.pauseDownload();
+          }
+        });
+        const first = await player.startDownload({ url: 'https://example.com/video.mp4' });
+        expect(first.bytesWritten).toBe(2);
+
+        const result = await player.resumeDownload({ url: 'https://example.com/video.mp4' });
+        expect(result.bytesWritten).toBe(5);
+      });
+    });
+
+    it('stops an active download when the player is destroyed', async () => {
+      function makeSlowStream(chunks: Uint8Array[], signal?: AbortSignal) {
+        let index = 0;
+        return new ReadableStream<Uint8Array>({
+          start(controller) {
+            if (signal) {
+              signal.addEventListener('abort', () => {
+                try {
+                  controller.close();
+                } catch {
+                  // already closed
+                }
+              }, { once: true });
+            }
+          },
+          pull(controller) {
+            if (index >= chunks.length) return;
+            const chunk = chunks[index];
+            if (chunk) {
+              controller.enqueue(chunk);
+              index += 1;
+            }
+          },
+        });
+      }
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+          const signal = init?.signal ?? undefined;
+          return Promise.resolve(new Response(makeSlowStream([new Uint8Array([1, 2])], signal)));
+        }),
+      );
+
+      const player = playerWithMock();
+      const sink = { write: vi.fn(), close: vi.fn() };
+      player.addEventListener('download', () => {
+        void player.destroy();
+      });
+      const start = player.startDownload({ url: 'https://example.com/video.mp4', sink });
+      await expect(start).rejects.toBeInstanceOf(CheetahMediaError);
+      expect(player.downloadActive).toBe(false);
+      expect(sink.write).toHaveBeenCalledTimes(1);
+      expect(sink.close).toHaveBeenCalled();
+    });
   });
 });

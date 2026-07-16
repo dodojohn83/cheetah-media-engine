@@ -52,6 +52,15 @@ export {
 export { MemoryArenaView } from './memory';
 export { createRuntime, type EngineRuntime, type RuntimeOptions } from './runtime';
 export {
+  BlobSink,
+  StreamDownloader,
+  type DownloadOptions,
+  type DownloadProgress,
+  type DownloadResult,
+  type DownloadSink,
+  type DownloadState,
+} from './fetch';
+export {
   createTransport,
   FetchTransport,
   WebRtcTransport,
