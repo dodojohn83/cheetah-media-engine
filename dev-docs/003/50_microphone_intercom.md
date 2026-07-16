@@ -51,4 +51,7 @@
 
 - 50a：已完成；PR 见 `wp/50a-g711-encoder`。
 - 50b：已完成；PR 见 `wp/50b-microphone-capture`。
-- 50c：待开始。
+- 50c：已完成；PR 见 `wp/50c-intercom-packetizer`。
+  - 实现 `packages/runtime/src/audio/intercom.ts`：将 `AudioPacket` 封装为 12 字节 RTP header + G.711 payload 的 `IntercomPacket`。
+  - `packages/web/src/player.ts` 新增 `startIntercom(options)` / `stopIntercom()` 与 `intercomActive` getter。
+  - Opus 路径返回稳定 `Unsupported`；传输层由调用方通过 `sendPacket` 回调注入。

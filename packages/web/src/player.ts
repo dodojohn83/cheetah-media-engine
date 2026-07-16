@@ -2,11 +2,16 @@ import {
   createRuntime,
   RUNTIME_VERSION,
   MetricRegistry,
+  MicrophoneCapture,
+  IntercomPacketizer,
+  CaptureError,
   type EngineRuntime,
   type MetricsSnapshot,
   type WorkerErrorPayload,
+  type AudioPacket,
 } from '@cheetah-media/runtime';
 import { createGb28181PtzCmd, type PtzCommand } from './ptz';
+import type { IntercomPacket } from '@cheetah-media/runtime';
 
 export interface MemoryDescriptor {
   readonly region: number;
@@ -72,7 +77,8 @@ export type CheetahPlayerEventType =
   | 'error'
   | 'recording'
   | 'ptz'
-  | 'metadata';
+  | 'metadata'
+  | 'intercom';
 
 /** A single metadata item extracted from a stream or injected by an external caller. */
 export interface MetadataItem {
@@ -203,10 +209,22 @@ export interface PlayerConfig {
 }
 
 /** Contract for all public player instances. */
+export interface IntercomOptions {
+  /** Audio codec for the outgoing packet stream. */
+  readonly codec?: 'g711a' | 'g711u' | 'opus';
+  /** Optional payload type override for the RTP-like header. */
+  readonly payloadType?: number;
+  /** Called for each produced intercom packet. The transport layer is supplied by the caller. */
+  readonly sendPacket: (packet: IntercomPacket) => void;
+  /** Optional callback for capture errors. */
+  readonly onError?: (error: Error) => void;
+}
+
 export interface CheetahPlayer {
   readonly id: string;
   readonly version: string;
   readonly state: PlayerState;
+  readonly intercomActive: boolean;
 
   load(url: string, options?: { isLive?: boolean }): Promise<void>;
   play(): void;
@@ -223,6 +241,9 @@ export interface CheetahPlayer {
   startRecording(options?: { mimeType?: string; filename?: string }): Promise<void>;
   stopRecording(): Promise<void>;
   switchVariant(variant: { bandwidth?: number; index?: number }): Promise<void>;
+
+  startIntercom(options: IntercomOptions): Promise<void>;
+  stopIntercom(): Promise<void>;
 
   getStats(): PlayerStats;
   getMetrics(): MetricsSnapshot;
@@ -474,6 +495,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private eventHistory: CheetahPlayerEvent[] = [];
   private listeners = new Map<CheetahPlayerEventType, Set<EventListener>>();
   private metricRegistry = new MetricRegistry();
+  private _intercomActive = false;
+  private _intercomCapture: MicrophoneCapture | undefined;
+  private _intercomPacketizer: IntercomPacketizer | undefined;
+  private _intercomSend: ((packet: IntercomPacket) => void) | undefined;
+  private _intercomError: ((error: Error) => void) | undefined;
 
   constructor(
     config: PlayerConfig,
@@ -494,6 +520,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   get state(): PlayerState {
     return this._state;
+  }
+
+  get intercomActive(): boolean {
+    return this._intercomActive;
   }
 
   private nextSequence(): number {
@@ -758,6 +788,8 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async destroy(): Promise<void> {
     if (this.destroyed) return;
+    await this.cleanupIntercom();
+    this._intercomActive = false;
     this.destroyed = true;
     this._state = 'destroyed';
     this.listeners.clear();
@@ -806,6 +838,82 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     } catch (cause) {
       throw new CheetahMediaError(6999, 'recording', 'Stop recording failed', { cause, recoverable: false });
     }
+  }
+
+  async startIntercom(options: IntercomOptions): Promise<void> {
+    this.guardDestroyed();
+    if (this._intercomActive) {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom already active', { recoverable: true });
+    }
+    if (options.codec === 'opus') {
+      throw new CheetahMediaError(6003, 'sdk', 'Opus intercom is not supported in this version', { recoverable: true });
+    }
+
+    const encoder = options.codec === 'g711a' ? 'alaw' : 'mulaw';
+    const payloadType = options.payloadType ?? (encoder === 'alaw' ? 8 : 0);
+
+    this._intercomSend = options.sendPacket;
+    this._intercomError = options.onError;
+    this._intercomPacketizer = new IntercomPacketizer({
+      payloadType,
+      onPacket: (packet) => this.handleIntercomPacket(packet),
+    });
+
+    this._intercomCapture = new MicrophoneCapture(
+      { encoder },
+      {
+        onPacket: (packet: AudioPacket) => this._intercomPacketizer?.push(packet),
+        onError: (error: CaptureError) => this.handleIntercomError(error),
+      },
+    );
+
+    try {
+      await this._intercomCapture.start();
+      this._intercomActive = true;
+      this.emit('intercom', { active: true, codec: encoder });
+    } catch (cause) {
+      this.cleanupIntercom();
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new CheetahMediaError(6999, 'intercom', `Intercom start failed: ${message}`, { cause, recoverable: true });
+    }
+  }
+
+  async stopIntercom(): Promise<void> {
+    this.guardDestroyed();
+    if (!this._intercomActive && !this._intercomCapture) {
+      return;
+    }
+    await this.cleanupIntercom();
+    this._intercomActive = false;
+    this.emit('intercom', { active: false });
+  }
+
+  private async cleanupIntercom(): Promise<void> {
+    const capture = this._intercomCapture;
+    this._intercomCapture = undefined;
+    this._intercomPacketizer = undefined;
+    this._intercomSend = undefined;
+    this._intercomError = undefined;
+    if (capture) {
+      try {
+        await capture.stop();
+      } catch {
+        // stop() may fail if the capture was never running; ignore.
+      }
+    }
+  }
+
+  private handleIntercomPacket(packet: IntercomPacket): void {
+    try {
+      this._intercomSend?.(packet);
+    } catch (error) {
+      this.handleIntercomError(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  private handleIntercomError(error: Error): void {
+    this.emit('error', { stage: 'intercom', message: error.message });
+    this._intercomError?.(error);
   }
 
   async switchVariant(variant: { bandwidth?: number; index?: number }): Promise<void> {

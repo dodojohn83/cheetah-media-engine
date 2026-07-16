@@ -82,6 +82,7 @@ export {
   type MemoryDescriptor,
   type PacketDescriptor,
   type FrameDescriptor,
+  type IntercomOptions,
   CheetahMediaError,
   AbiFeatureFlags,
   createPlayer,
