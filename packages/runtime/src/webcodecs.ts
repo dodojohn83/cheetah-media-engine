@@ -263,6 +263,7 @@ export class WebCodecsBackend implements MediaBackend {
   private frameStepResolver: (() => void) | undefined = undefined;
   private frameStepRejecter: ((error: Error) => void) | undefined = undefined;
   private frameStepKeyframeOnly = false;
+  private frameStepDecodeDispatched = false;
   private readonly maxVideoQueue: number;
   private videoInputQueue: {
     readonly data: Uint8Array;
@@ -374,14 +375,15 @@ export class WebCodecsBackend implements MediaBackend {
 
     const isKeyFrame = opts?.isKeyFrame ?? guessKeyFrame(data, this.videoConfig.codec);
 
-    // When a frame step is pending, decode the next matching chunk immediately
-    // and suppress all other output until the step resolves.
-    if (this.displayPaused && this.frameStepResolver) {
+    // When a frame step is pending, decode exactly one matching chunk and
+    // queue/drop any additional incoming chunks so the decoder stays in order.
+    if (this.displayPaused && this.frameStepResolver && !this.frameStepDecodeDispatched) {
       if (this.frameStepKeyframeOnly && !isKeyFrame) {
         // Drop non-keyframes while waiting for the next keyframe.
         this._metrics.droppedChunks += 1;
         return;
       }
+      this.frameStepDecodeDispatched = true;
       this.decodeVideoChunk(data, timestamp, isKeyFrame, opts?.duration);
       return;
     }
@@ -488,6 +490,13 @@ export class WebCodecsBackend implements MediaBackend {
     this.keepConnectionOnPause = keepConnection;
     if (!keepConnection) {
       // Stop decoding without tearing down the decoder objects.
+      if (this.frameStepRejecter) {
+        const rejecter = this.frameStepRejecter;
+        this.frameStepRejecter = undefined;
+        rejecter(new Error('Display paused without connection'));
+      }
+      this.frameStepResolver = undefined;
+      this.frameStepDecodeDispatched = false;
       this.videoInputQueue = [];
       this.videoDecoder?.reset();
       this.audioDecoder?.reset();
@@ -524,6 +533,7 @@ export class WebCodecsBackend implements MediaBackend {
         if (keyframeOnly && !entry.isKeyFrame) {
           continue;
         }
+        this.frameStepDecodeDispatched = true;
         this.decodeVideoChunk(entry.data, entry.timestamp, entry.isKeyFrame ?? false, entry.duration);
         return;
       }
@@ -569,6 +579,7 @@ export class WebCodecsBackend implements MediaBackend {
     }
     this.frameStepResolver = undefined;
     this.frameStepKeyframeOnly = false;
+    this.frameStepDecodeDispatched = false;
     this.videoInputQueue = [];
     this.generation += 1;
     this.pendingReconfigure = false;
@@ -605,6 +616,7 @@ export class WebCodecsBackend implements MediaBackend {
       this.frameStepResolver = undefined;
       this.frameStepRejecter = undefined;
       this.frameStepKeyframeOnly = false;
+      this.frameStepDecodeDispatched = false;
       const onVideoFrame = this.callbacks.onVideoFrame;
       if (onVideoFrame) {
         try {
