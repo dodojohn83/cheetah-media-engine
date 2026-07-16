@@ -99,7 +99,7 @@ export const styles = /*css*/ `
     opacity: 0;
     transition: opacity 150ms ease;
     pointer-events: none;
-    z-index: 2;
+    z-index: 3;
   }
 
   :host([controls]) .controls,
@@ -152,7 +152,7 @@ export const styles = /*css*/ `
   }
 
   .overlay {
-    z-index: 3;
+    z-index: 2;
   }
 
   .watermark-layer {

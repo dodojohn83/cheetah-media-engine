@@ -36,4 +36,14 @@ describe('CheetahPlayerElement', () => {
     expect(items?.length).toBe(1);
     expect(items?.[0]?.textContent).toBe('updated');
   });
+
+  it('keeps controls above the status overlay so they remain clickable', () => {
+    const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+    container.appendChild(el);
+    const controls = el.shadowRoot?.querySelector('.controls');
+    const overlay = el.shadowRoot?.querySelector('.overlay');
+    const styles = getComputedStyle(controls!);
+    const overlayStyles = getComputedStyle(overlay!);
+    expect(parseInt(styles.zIndex, 10)).toBeGreaterThan(parseInt(overlayStyles.zIndex, 10));
+  });
 });
