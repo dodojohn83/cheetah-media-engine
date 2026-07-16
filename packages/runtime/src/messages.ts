@@ -14,6 +14,8 @@ export type MessageType =
   | 'load'
   | 'play'
   | 'pause'
+  | 'frame-step'
+  | 'pause-display'
   | 'stop'
   | 'destroy'
   | 'config'
@@ -70,6 +72,16 @@ export interface SeekPayload {
 
 export interface SetPlaybackRatePayload {
   readonly rate: number;
+}
+
+export interface FrameStepPayload {
+  readonly direction: 'forward' | 'backward';
+  readonly keyframeOnly?: boolean;
+}
+
+export interface PauseDisplayPayload {
+  /** When true, keep the network/decoder alive while freezing the display. */
+  readonly keepConnection: boolean;
 }
 
 export interface PacketPayload {

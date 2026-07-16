@@ -135,3 +135,4 @@ corepack pnpm exec playwright test
 | 41 | 已完成 | `wp/41-webtransport-skeleton` → #43 | WebTransport transport 骨架与 capability 探测 |
 | 42 | 已完成 | `wp/42-webrtc-transport` → #44 | WebRTC H.264/H.265 signaling/transport 骨架 |
 | 43 | 已完成 | `wp/43-vod-seek-speed` → #45 | MP4/HLS 点播、seek、倍速；43a/43b/43c 全部通过完整矩阵 |
+| 44 | 已完成 | `wp/44-frame-step` -> #46 | 逐帧/暂停显示 API；MSE time-step、WebCodecs 前向步进/队列保持连接、FallbackController/Player 转发 |

@@ -257,6 +257,17 @@ export class WebCodecsBackend implements MediaBackend {
   private pendingReconfigure = false;
   private _pendingVideo = 0;
   private _pendingAudio = 0;
+  private displayPaused = false;
+  private keepConnectionOnPause = false;
+  private frameStepResolver: (() => void) | undefined = undefined;
+  private frameStepKeyframeOnly = false;
+  private readonly maxVideoQueue: number;
+  private videoInputQueue: {
+    readonly data: Uint8Array;
+    readonly timestamp: number;
+    readonly isKeyFrame?: boolean;
+    readonly duration?: number;
+  }[] = [];
   private _metrics: MutableMetrics = {
     decodedVideoFrames: 0,
     decodedAudioFrames: 0,
@@ -267,6 +278,7 @@ export class WebCodecsBackend implements MediaBackend {
     this.tracks = options.tracks;
     this.callbacks = options.callbacks;
     this.maxPending = options.maxPendingDecodes ?? 32;
+    this.maxVideoQueue = options.maxPendingDecodes ?? 32;
   }
 
   private totalPending(): number {
@@ -358,15 +370,58 @@ export class WebCodecsBackend implements MediaBackend {
   pushVideo(data: Uint8Array, timestamp: number, opts?: { isKeyFrame?: boolean; duration?: number }): void {
     if (this.stopped || this.closing || this.errored || !this.videoDecoder || !this.videoConfig) return;
 
+    const isKeyFrame = opts?.isKeyFrame ?? guessKeyFrame(data, this.videoConfig.codec);
+
+    // When a frame step is pending, decode the next matching chunk immediately
+    // and suppress all other output until the step resolves.
+    if (this.displayPaused && this.frameStepResolver) {
+      if (this.frameStepKeyframeOnly && !isKeyFrame) {
+        // Drop non-keyframes while waiting for the next keyframe.
+        this._metrics.droppedChunks += 1;
+        return;
+      }
+      this.decodeVideoChunk(data, timestamp, isKeyFrame, opts?.duration);
+      return;
+    }
+
+    // While display is paused, suppress decoding to freeze the output.
+    // When keepConnection is true we buffer a bounded window so that frame
+    // stepping can advance; otherwise incoming chunks are dropped.
+    if (this.displayPaused) {
+      if (this.keepConnectionOnPause) {
+        if (this.videoInputQueue.length >= this.maxVideoQueue) {
+          this._metrics.droppedChunks += 1;
+          this.videoInputQueue.shift();
+        }
+        const entry: { data: Uint8Array; timestamp: number; isKeyFrame: boolean; duration?: number } = {
+          data,
+          timestamp,
+          isKeyFrame,
+        };
+        if (opts?.duration !== undefined) {
+          entry.duration = opts.duration;
+        }
+        this.videoInputQueue.push(entry);
+      } else {
+        this._metrics.droppedChunks += 1;
+      }
+      return;
+    }
+
     if (this.totalPending() >= this.maxPending) {
       this._metrics.droppedChunks += 1;
       return;
     }
 
+    this.decodeVideoChunk(data, timestamp, isKeyFrame, opts?.duration);
+  }
+
+  private decodeVideoChunk(data: Uint8Array, timestamp: number, isKeyFrame: boolean, duration?: number): void {
+    if (!this.videoDecoder || !this.videoConfig) return;
     const EncodedVideoChunk = getGlobal<unknown>('EncodedVideoChunk') as EncodedVideoChunkConstructor | undefined;
     if (!EncodedVideoChunk) return;
 
-    const type = (opts?.isKeyFrame ?? guessKeyFrame(data, this.videoConfig.codec)) ? 'key' : 'delta';
+    const type = isKeyFrame ? 'key' : 'delta';
     if (type === 'key' && this.pendingReconfigure) {
       this.reconfigureVideo();
     }
@@ -374,7 +429,7 @@ export class WebCodecsBackend implements MediaBackend {
     const chunk = new EncodedVideoChunk({
       type,
       timestamp,
-      duration: opts?.duration,
+      duration,
       data,
     });
 
@@ -384,6 +439,13 @@ export class WebCodecsBackend implements MediaBackend {
 
   pushAudio(data: Uint8Array, timestamp: number, opts?: { duration?: number }): void {
     if (this.stopped || this.closing || this.errored || !this.audioDecoder || !this.audioConfig) return;
+
+    // Drop audio while the display is paused to keep it in sync with the
+    // frozen video picture.
+    if (this.displayPaused) {
+      this._metrics.droppedChunks += 1;
+      return;
+    }
 
     if (this.totalPending() >= this.maxPending) {
       this._metrics.droppedChunks += 1;
@@ -413,6 +475,54 @@ export class WebCodecsBackend implements MediaBackend {
     this.pendingReconfigure = true;
   }
 
+  async pauseDisplay(keepConnection = true): Promise<void> {
+    if (this.stopped || this.closing || this.errored || !this.configured) {
+      throw new Error('Cannot pause display before configure');
+    }
+    this.displayPaused = true;
+    this.keepConnectionOnPause = keepConnection;
+    if (!keepConnection) {
+      // Stop decoding without tearing down the decoder objects.
+      this.videoInputQueue = [];
+      this.videoDecoder?.reset();
+      this.audioDecoder?.reset();
+    }
+  }
+
+  async frameStep(direction: 'forward' | 'backward', keyframeOnly = false): Promise<void> {
+    if (this.stopped || this.closing || this.errored || !this.configured) {
+      throw new Error('Cannot frame step before configure');
+    }
+    if (direction !== 'forward' && direction !== 'backward') {
+      throw new Error('frameStep direction must be forward or backward');
+    }
+    if (direction === 'backward') {
+      throw new Error('Backward frame step requires a GOP cache and is not yet implemented');
+    }
+    if (!this.displayPaused) {
+      throw new Error('frameStep requires pauseDisplay() to be active');
+    }
+    if (this.frameStepResolver) {
+      throw new Error('A frame step is already pending');
+    }
+
+    // If we already have queued chunks, decode the next matching one now.
+    return new Promise<void>((resolve) => {
+      this.frameStepResolver = resolve;
+      this.frameStepKeyframeOnly = keyframeOnly;
+      while (this.videoInputQueue.length > 0) {
+        const entry = this.videoInputQueue.shift()!;
+        if (keyframeOnly && !entry.isKeyFrame) {
+          continue;
+        }
+        this.decodeVideoChunk(entry.data, entry.timestamp, entry.isKeyFrame ?? false, entry.duration);
+        return;
+      }
+      // If the queue was empty, pushVideo will decode the next incoming chunk
+      // and the output handler will resolve this promise.
+    });
+  }
+
   private reconfigureVideo(): void {
     if (!this.videoDecoder || !this.videoConfig) return;
     this.pendingReconfigure = false;
@@ -440,6 +550,11 @@ export class WebCodecsBackend implements MediaBackend {
     this.configured = false;
     this._pendingVideo = 0;
     this._pendingAudio = 0;
+    this.displayPaused = false;
+    this.keepConnectionOnPause = false;
+    this.frameStepResolver = undefined;
+    this.frameStepKeyframeOnly = false;
+    this.videoInputQueue = [];
     this.generation += 1;
     this.pendingReconfigure = false;
   }
@@ -467,6 +582,37 @@ export class WebCodecsBackend implements MediaBackend {
     }
     this._pendingVideo -= 1;
     this._metrics.decodedVideoFrames += 1;
+
+    // During a frame step, emit this single frame and then return to the
+    // paused state. The renderer can take ownership of the frame.
+    if (this.frameStepResolver) {
+      const resolver = this.frameStepResolver;
+      this.frameStepResolver = undefined;
+      this.frameStepKeyframeOnly = false;
+      const onVideoFrame = this.callbacks.onVideoFrame;
+      if (onVideoFrame) {
+        try {
+          onVideoFrame(frame);
+        } catch (err) {
+          frame.close();
+          this.handleError(err instanceof Error ? err : new Error(String(err)));
+          resolver();
+          return;
+        }
+      } else {
+        frame.close();
+      }
+      resolver();
+      return;
+    }
+
+    // While display is paused, suppress new frames so the renderer keeps the
+    // last displayed picture. Close the frame to release GPU-backed memory.
+    if (this.displayPaused) {
+      frame.close();
+      return;
+    }
+
     const onVideoFrame = this.callbacks.onVideoFrame;
     if (!onVideoFrame) {
       // No consumer registered; close the GPU-backed frame immediately.
@@ -489,6 +635,12 @@ export class WebCodecsBackend implements MediaBackend {
       return;
     }
     this._pendingAudio -= 1;
+    // Suppress audio while the display is paused; it would be out of sync with
+    // the frozen video picture.
+    if (this.displayPaused) {
+      data.close();
+      return;
+    }
     this._metrics.decodedAudioFrames += 1;
     const onAudioData = this.callbacks.onAudioData;
     if (!onAudioData) {

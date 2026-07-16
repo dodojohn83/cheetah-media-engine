@@ -8,6 +8,8 @@ import {
   type SeekPayload,
   type SetPlaybackRatePayload,
   type WorkerErrorPayload,
+  type FrameStepPayload,
+  type PauseDisplayPayload,
   PROTOCOL_VERSION,
 } from './messages';
 import { MemoryArenaView } from './memory';
@@ -18,6 +20,8 @@ export interface EngineRuntime {
   load(url: string, options?: { isLive?: boolean }): Promise<void>;
   play(): void;
   pause(): void;
+  frameStep(direction: 'forward' | 'backward', keyframeOnly?: boolean): Promise<void>;
+  pauseDisplay(keepConnection?: boolean): Promise<void>;
   seek(timeMs: number): Promise<void>;
   setPlaybackRate(rate: number): Promise<void>;
   stop(): Promise<void>;
@@ -190,6 +194,21 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
 
     pause(): void {
       sendControl('pause');
+    },
+
+    async frameStep(direction: 'forward' | 'backward', keyframeOnly = false): Promise<void> {
+      if (destroyed) throw new Error('Runtime destroyed');
+      if (direction !== 'forward' && direction !== 'backward') {
+        throw new Error('frameStep direction must be forward or backward');
+      }
+      const payload: FrameStepPayload = { direction, keyframeOnly };
+      await post('frame-step', payload, 10000);
+    },
+
+    async pauseDisplay(keepConnection = true): Promise<void> {
+      if (destroyed) throw new Error('Runtime destroyed');
+      const payload: PauseDisplayPayload = { keepConnection };
+      await post('pause-display', payload, 10000);
     },
 
     async seek(timeMs: number): Promise<void> {

@@ -447,4 +447,39 @@ describe('WebCodecsBackend', () => {
     expect(audio?.close).toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'audio callback boom' }));
   });
+
+  it('pauseDisplay keeps connection and queues incoming video frames', async () => {
+    const onVideoFrame = vi.fn();
+    const backend = new WebCodecsBackend(ctx, {
+      tracks: [videoTrack],
+      callbacks: { onVideoFrame },
+    });
+    await backend.configure();
+    await backend.pauseDisplay(true);
+
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x65]), 1000, { isKeyFrame: true });
+    await Promise.resolve();
+    // Queued, not decoded yet.
+    expect(onVideoFrame).not.toHaveBeenCalled();
+
+    const stepPromise = backend.frameStep('forward');
+    await Promise.resolve();
+    await expect(stepPromise).resolves.toBeUndefined();
+    expect(onVideoFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it('frameStep rejects backward direction', async () => {
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+    await backend.pauseDisplay(true);
+    await expect(backend.frameStep('backward')).rejects.toThrow('Backward');
+    await backend.stop();
+  });
+
+  it('frameStep requires pauseDisplay to be active', async () => {
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+    await expect(backend.frameStep('forward')).rejects.toThrow('pauseDisplay');
+    await backend.stop();
+  });
 });

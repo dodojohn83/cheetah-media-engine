@@ -40,6 +40,27 @@ describe('messages', () => {
     bad.protocolVersion = 2;
     expect(() => decodeEnvelope(JSON.stringify(bad))).toThrow();
   });
+
+  it('round-trips frame-step and pause-display envelopes', () => {
+    const frameStep = {
+      protocolVersion: 1,
+      instance: 2,
+      epoch: 3,
+      sequence: 4,
+      type: 'frame-step' as const,
+      payload: { direction: 'forward' as const, keyframeOnly: true },
+    };
+    const pauseDisplay = {
+      protocolVersion: 1,
+      instance: 2,
+      epoch: 3,
+      sequence: 5,
+      type: 'pause-display' as const,
+      payload: { keepConnection: false },
+    };
+    expect(decodeEnvelope(encodeEnvelope(frameStep))).toEqual(frameStep);
+    expect(decodeEnvelope(encodeEnvelope(pauseDisplay))).toEqual(pauseDisplay);
+  });
 });
 
 describe('createRuntime worker integration', () => {

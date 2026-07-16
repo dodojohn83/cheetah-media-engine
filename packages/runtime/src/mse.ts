@@ -109,6 +109,8 @@ export interface MseBackendOptions {
   readonly sourceOpenTimeoutMs?: number;
   readonly maxAppendQueue?: number;
   readonly maxQuotaRetries?: number;
+  /** Estimated video frame rate for MSE frame stepping. */
+  readonly videoFrameRate?: number;
 }
 
 export interface MseMetrics {
@@ -227,6 +229,9 @@ export class MseBackend implements MediaBackend {
   private cleanupInProgress = false;
   private quotaRetryCount = 0;
   private liveControlTimer: ReturnType<typeof setInterval> | undefined = undefined;
+  private displayPaused = false;
+  private displayKeepConnection = true;
+  private readonly defaultFrameStepS: number;
 
   private _metrics: MutableMseMetrics = {
     bufferedStart: 0,
@@ -255,6 +260,7 @@ export class MseBackend implements MediaBackend {
     this.maxAppendQueue = options.maxAppendQueue ?? 32;
     this.maxQuotaRetries = options.maxQuotaRetries ?? 1;
     this.isLive = options.isLive ?? true;
+    this.defaultFrameStepS = 1 / (options.videoFrameRate ?? 30);
   }
 
   get metrics(): MseMetrics {
@@ -324,6 +330,10 @@ export class MseBackend implements MediaBackend {
     },
   ): void {
     if (this.stopped || this.closing || this.errored || !this.configured) return;
+    if (this.displayPaused && !this.displayKeepConnection) {
+      this._metrics.droppedSegments += 1;
+      return;
+    }
     if (this.appendQueue.length >= this.maxAppendQueue) {
       this._metrics.droppedSegments += 1;
       return;
@@ -396,6 +406,8 @@ export class MseBackend implements MediaBackend {
     this.appendQueue = [];
     this.quotaRetryCount = 0;
     this.cleanupInProgress = false;
+    this.displayPaused = false;
+    this.displayKeepConnection = true;
     this.stopped = true;
     this.closing = false;
     this.errored = false;
@@ -470,6 +482,66 @@ export class MseBackend implements MediaBackend {
       throw new MseError('seek', 'playback rate must be between 0.1 and 16');
     }
     this.videoElement.playbackRate = rate;
+  }
+
+  async pauseDisplay(keepConnection = true): Promise<void> {
+    if (this.stopped || this.closing || this.errored || !this.configured) {
+      throw new MseError('not-configured', 'Cannot pause display before configure');
+    }
+    this.displayPaused = true;
+    this.displayKeepConnection = keepConnection;
+    if (!keepConnection) {
+      // Stop accepting new segments and clear the append queue.
+      this.appendQueue = [];
+    }
+    // Stop live latency correction; buffer cleanup still runs in the background.
+    if (this.isLive) {
+      this.stopLiveControl();
+      this.startLiveControl();
+    }
+  }
+
+  async frameStep(direction: 'forward' | 'backward', keyframeOnly = false): Promise<void> {
+    if (this.stopped || this.closing || this.errored || !this.configured) {
+      throw new MseError('not-configured', 'Cannot frame step before configure');
+    }
+    if (direction !== 'forward' && direction !== 'backward') {
+      throw new MseError('seek', 'frameStep direction must be forward or backward');
+    }
+    if (keyframeOnly) {
+      // MSE does not have frame-type visibility into the buffered segment; this
+      // would require decoder feedback. Report unsupported rather than guess.
+      throw new MseError('not-configured', 'Keyframe-only frame stepping is not supported in MSE mode');
+    }
+
+    const video = this.videoElement;
+    const delta = direction === 'forward' ? this.defaultFrameStepS : -this.defaultFrameStepS;
+    const target = Math.max(0, video.currentTime + delta);
+
+    return new Promise<void>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const onSeeked = (): void => {
+        cleanup();
+        resolve();
+      };
+      const onError = (event?: unknown): void => {
+        cleanup();
+        reject(this.eventToError(event, 'video-element-error'));
+      };
+      const cleanup = (): void => {
+        if (timer) clearTimeout(timer);
+        video.removeEventListener('seeked', onSeeked);
+        video.removeEventListener('error', onError);
+      };
+      video.addEventListener('seeked', onSeeked);
+      video.addEventListener('error', onError);
+      video.currentTime = target;
+      timer = setTimeout(() => {
+        cleanup();
+        // If the browser did not fire seeked, treat the time adjustment as best-effort.
+        resolve();
+      }, 1000);
+    });
   }
 
   private addSourceBuffer(mediaSource: MediaSourceLike): SourceBufferLike {
@@ -561,8 +633,8 @@ export class MseBackend implements MediaBackend {
       }
     }
 
-    // Live latency correction; skip rate/seek nudging in VOD mode.
-    if (this.isLive) {
+    // Live latency correction; skip rate/seek nudging in VOD or display-paused mode.
+    if (this.isLive && !this.displayPaused) {
       if (bufferAheadMs > this.liveLatencyTargetMs + this.liveDriftLargeMs) {
         const target = bufferedEnd - this.liveLatencyTargetMs / 1000;
         video.currentTime = Math.max(bufferedStart, target);
@@ -585,7 +657,7 @@ export class MseBackend implements MediaBackend {
     }
 
     // Resume playback if paused and we have a useful buffer.
-    if (video.paused && bufferAheadMs > this.liveDriftSmallMs) {
+    if (!this.displayPaused && video.paused && bufferAheadMs > this.liveDriftSmallMs) {
       // play() is async; a synchronous try/catch cannot catch a rejected
       // promise caused by autoplay policy, so attach a no-op rejection handler.
       video.play?.()?.catch(() => undefined);
