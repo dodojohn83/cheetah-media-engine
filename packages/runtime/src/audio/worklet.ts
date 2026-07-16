@@ -151,3 +151,35 @@ export function getSharedRingProcessorSource(): string {
 export function getTransferRingProcessorSource(): string {
   return TRANSFER_RING_PROCESSOR;
 }
+
+const CAPTURE_PROCESSOR = `
+class CheetahCaptureProcessor extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    this.frameSize = options.processorOptions.frameSize;
+    this.buffer = new Float32Array(this.frameSize);
+    this.write = 0;
+  }
+
+  process(inputs, outputs, parameters) {
+    const input = inputs[0] && inputs[0][0];
+    if (!input) return true;
+    for (let i = 0; i < input.length; i += 1) {
+      this.buffer[this.write] = input[i];
+      this.write += 1;
+      if (this.write === this.frameSize) {
+        const frame = this.buffer;
+        this.port.postMessage({ type: 'frame', samples: frame }, [frame.buffer]);
+        this.buffer = new Float32Array(this.frameSize);
+        this.write = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('cheetah-capture-processor', CheetahCaptureProcessor);
+`;
+
+export function getCaptureProcessorSource(): string {
+  return CAPTURE_PROCESSOR;
+}

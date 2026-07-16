@@ -25,3 +25,11 @@ export {
   type AudioDestinationNodeLike,
   type MessagePortLike,
 } from './pipeline';
+export { encodeG711Int16, encodeG711F32, encodeG711F32One, type G711Kind } from './g711';
+export {
+  MicrophoneCapture,
+  CaptureError,
+  type AudioPacket,
+  type MicrophoneCaptureCallbacks,
+  type MicrophoneCaptureOptions,
+} from './capture';

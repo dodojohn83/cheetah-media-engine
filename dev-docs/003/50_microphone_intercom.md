@@ -50,5 +50,5 @@
 ## 5. 状态
 
 - 50a：已完成；PR 见 `wp/50a-g711-encoder`。
-- 50b：待开始。
+- 50b：已完成；PR 见 `wp/50b-microphone-capture`。
 - 50c：待开始。
