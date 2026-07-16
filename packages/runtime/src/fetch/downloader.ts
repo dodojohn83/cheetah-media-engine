@@ -90,6 +90,10 @@ export class StreamDownloader {
         this.report(options, error);
       }
       throw error;
+    } finally {
+      if (this.state !== 'paused') {
+        await this.closeSink(options.sink);
+      }
     }
   }
 
@@ -125,6 +129,10 @@ export class StreamDownloader {
         this.report(options, error);
       }
       throw error;
+    } finally {
+      if (this.state !== 'paused') {
+        await this.closeSink(options.sink);
+      }
     }
   }
 
@@ -190,9 +198,14 @@ export class StreamDownloader {
       }
     } finally {
       reader.releaseLock();
-      if (this.state !== 'paused' && this.state !== 'running') {
-        await Promise.resolve(options.sink.close()).catch(() => undefined);
-      }
+    }
+  }
+
+  private async closeSink(sink: DownloadSink): Promise<void> {
+    try {
+      await Promise.resolve(sink.close()).catch(() => undefined);
+    } catch {
+      // User close handler must not break the downloader lifecycle.
     }
   }
 

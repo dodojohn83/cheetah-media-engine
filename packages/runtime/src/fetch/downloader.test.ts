@@ -135,4 +135,12 @@ describe('StreamDownloader', () => {
     const dl = new StreamDownloader();
     await expect(dl.stop()).resolves.toBeUndefined();
   });
+
+  it('closes the sink when the download completes', async () => {
+    const close = vi.fn();
+    const sink = { write: () => undefined, close };
+    const dl = new StreamDownloader();
+    await dl.start(makeOptions('https://example.com/video.mp4', sink));
+    expect(close).toHaveBeenCalledTimes(1);
+  });
 });
