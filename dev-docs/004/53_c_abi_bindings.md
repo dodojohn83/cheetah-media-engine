@@ -35,12 +35,12 @@
 ```c
 /* include/cheetah_media.h (generated) */
 typedef enum CheetahResult {
-  CheetahResult_Ok = 0,
-  CheetahResult_NullPtr = 1,
-  CheetahResult_InvalidState = 2,
-  CheetahResult_InvalidData = 3,
-  CheetahResult_NotSupported = 4,
-  CheetahResult_InternalError = 5,
+  CHEETAH_RESULT_OK = 0,
+  CHEETAH_RESULT_NULL_PTR = 1,
+  CHEETAH_RESULT_INVALID_STATE = 2,
+  CHEETAH_RESULT_INVALID_DATA = 3,
+  CHEETAH_RESULT_NOT_SUPPORTED = 4,
+  CHEETAH_RESULT_INTERNAL_ERROR = 5,
 } CheetahResult;
 
 typedef struct CheetahPlayer CheetahPlayer;

@@ -13,27 +13,27 @@ typedef enum {
   /**
    * Operation completed successfully.
    */
-  OK = 0,
+  CHEETAH_RESULT_OK = 0,
   /**
    * A required pointer argument was null.
    */
-  NULL_PTR = 1,
+  CHEETAH_RESULT_NULL_PTR = 1,
   /**
    * The player is in an invalid state for this operation.
    */
-  INVALID_STATE = 2,
+  CHEETAH_RESULT_INVALID_STATE = 2,
   /**
    * Input data was malformed or out of range.
    */
-  INVALID_DATA = 3,
+  CHEETAH_RESULT_INVALID_DATA = 3,
   /**
    * The requested capability is not supported in this build.
    */
-  NOT_SUPPORTED = 4,
+  CHEETAH_RESULT_NOT_SUPPORTED = 4,
   /**
    * An internal error occurred; see diagnostics for details.
    */
-  INTERNAL_ERROR = 5,
+  CHEETAH_RESULT_INTERNAL_ERROR = 5,
 } CheetahResult;
 
 /**
