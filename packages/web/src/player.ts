@@ -195,6 +195,8 @@ export interface CheetahPlayer {
   load(url: string, options?: { isLive?: boolean }): Promise<void>;
   play(): void;
   pause(): void;
+  seek(timeMs: number): Promise<void>;
+  setPlaybackRate(rate: number): Promise<void>;
   stop(): Promise<void>;
   destroy(): Promise<void>;
 
@@ -658,6 +660,27 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this.guardDestroyed();
     this.runtime.pause();
     this.setState('paused');
+  }
+
+  async seek(timeMs: number): Promise<void> {
+    this.guardDestroyed();
+    if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
+      throw new CheetahMediaError(6002, 'sdk', 'Seek requires an active stream', { recoverable: true });
+    }
+    try {
+      await this.runtime.seek(timeMs);
+    } catch (cause) {
+      throw new CheetahMediaError(6999, 'seek', 'Seek failed', { cause, recoverable: true });
+    }
+  }
+
+  async setPlaybackRate(rate: number): Promise<void> {
+    this.guardDestroyed();
+    try {
+      await this.runtime.setPlaybackRate(rate);
+    } catch (cause) {
+      throw new CheetahMediaError(6999, 'playback-rate', 'Set playback rate failed', { cause, recoverable: true });
+    }
   }
 
   async stop(): Promise<void> {

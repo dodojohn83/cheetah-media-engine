@@ -60,6 +60,16 @@ function mockRuntime(): MockRuntime {
       failIfDestroyed();
     },
 
+    async seek(timeMs: number): Promise<void> {
+      failIfDestroyed();
+      expect(typeof timeMs).toBe('number');
+    },
+
+    async setPlaybackRate(rate: number): Promise<void> {
+      failIfDestroyed();
+      expect(typeof rate).toBe('number');
+    },
+
     async stop(): Promise<void> {
       failIfDestroyed();
       epoch += 1;
@@ -150,6 +160,18 @@ describe('web sdk', () => {
     expect(player.state).toBe('playing');
     player.pause();
     expect(player.state).toBe('paused');
+  });
+
+  it('seek and setPlaybackRate forward to the runtime', async () => {
+    const player = playerWithMock();
+    await player.load('http://example.com/test.flv');
+    await expect(player.seek(12345)).resolves.toBeUndefined();
+    await expect(player.setPlaybackRate(2)).resolves.toBeUndefined();
+  });
+
+  it('seek is rejected when no active stream', async () => {
+    const player = playerWithMock();
+    await expect(player.seek(0)).rejects.toBeInstanceOf(CheetahMediaError);
   });
 
   it('destroy prevents further calls', async () => {

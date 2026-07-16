@@ -63,10 +63,10 @@
 
 ## 3. 完成定义
 
-- [ ] 43a 实现完成并通过 `packages/runtime` 与 `crates/cheetah-media-web-bindings` 测试。
-- [ ] 43b 实现完成并通过 `crates/cheetah-hls-client` 测试。
-- [ ] 43c 实现完成并通过 `packages/runtime` MSE 测试。
-- [ ] 合并后运行完整矩阵：
+- [x] 43a 实现完成并通过 `packages/runtime` 与 `crates/cheetah-media-web-bindings` 测试。
+- [x] 43b 实现完成并通过 `crates/cheetah-hls-client` 测试。
+- [x] 43c 实现完成并通过 `packages/runtime` MSE 测试。
+- [x] 合并后运行完整矩阵：
   - `cargo fmt --all --check`
   - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
   - `cargo test --workspace --all-features`

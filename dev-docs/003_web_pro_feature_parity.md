@@ -134,4 +134,4 @@ corepack pnpm exec playwright test
 | 40 | 已完成（40a + 40b） | `wp/40b-wasm-demuxer-bindings` → #42 | 40a planner 路由；40b WASM demuxer 绑定 |
 | 41 | 已完成 | `wp/41-webtransport-skeleton` → #43 | WebTransport transport 骨架与 capability 探测 |
 | 42 | 已完成 | `wp/42-webrtc-transport` → #44 | WebRTC H.264/H.265 signaling/transport 骨架 |
-| 43 | 进行中 | `wp/43-vod-seek-speed` | MP4/HLS 点播、seek、倍速；拆分为 43a/43b/43c |
+| 43 | 已完成 | `wp/43-vod-seek-speed` → #45 | MP4/HLS 点播、seek、倍速；43a/43b/43c 全部通过完整矩阵 |

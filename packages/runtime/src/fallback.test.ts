@@ -12,6 +12,7 @@ function makePlan(candidates: PlanCandidate[]): PlaybackPlan {
       renderer: undefined,
       transport: 'fetch',
       reason: 'empty',
+      isLive: true,
     },
     fallback: candidates.slice(1),
     unsupported: [],
@@ -28,17 +29,30 @@ function candidate(video: string, audio: string): PlanCandidate {
     renderer: undefined,
     transport: 'fetch',
     reason: `video=${video}, audio=${audio}`,
+    isLive: true,
   };
 }
 
-function fakeBackend(ctx: BackendContext, fail = false): MediaBackend {
-  return {
-    identity: ctx.candidate.videoBackend ?? 'wasm-baseline',
+function fakeBackend(ctx: BackendContext, fail = false, supportsSeek = false): MediaBackend {
+  const identity = ctx.candidate.videoBackend ?? 'wasm-baseline';
+  const backend: MediaBackend = {
+    identity,
     configure: fail
       ? () => Promise.reject(new Error('configure failed'))
       : () => Promise.resolve(),
     stop: () => Promise.resolve(),
   };
+  if (supportsSeek) {
+    backend.seek = (timeMs: number) => {
+      expect(typeof timeMs).toBe('number');
+      return Promise.resolve();
+    };
+    backend.setPlaybackRate = (rate: number) => {
+      expect(typeof rate).toBe('number');
+      return Promise.resolve();
+    };
+  }
+  return backend;
 }
 
 describe('FallbackController', () => {
@@ -169,6 +183,7 @@ describe('FallbackController', () => {
         renderer: undefined,
         transport: 'fetch',
         reason: 'empty',
+        isLive: true,
       },
     ]);
     const factory = vi.fn(() => fakeBackend({ candidate: plan.candidates[0]!, reason: 'test' }, true));
@@ -216,5 +231,35 @@ describe('FallbackController', () => {
     await controller.reportFailure('decode failure');
 
     expect(stop).toHaveBeenCalled();
+  });
+
+  it('forwards seek and setPlaybackRate to the current backend', async () => {
+    const plan = makePlan([candidate('mse', 'mse')]);
+    const backend = fakeBackend({ candidate: plan.candidates[0]!, reason: 'test' }, false, true);
+    const seekSpy = vi.spyOn(backend, 'seek');
+    const rateSpy = vi.spyOn(backend, 'setPlaybackRate');
+    const controller = new FallbackController({
+      plan,
+      factory: () => backend,
+    });
+
+    await controller.configureNext('initial');
+    await controller.seek(5000);
+    await controller.setPlaybackRate(2);
+
+    expect(seekSpy).toHaveBeenCalledWith(5000);
+    expect(rateSpy).toHaveBeenCalledWith(2);
+  });
+
+  it('seek and setPlaybackRate throw when backend does not support them', async () => {
+    const plan = makePlan([candidate('webcodecs', 'webcodecs')]);
+    const controller = new FallbackController({
+      plan,
+      factory: (ctx) => fakeBackend(ctx, ctx.candidate.videoBackend === 'webcodecs'),
+    });
+
+    await controller.configureNext('initial');
+    await expect(controller.seek(1000)).rejects.toThrow('does not support seek');
+    await expect(controller.setPlaybackRate(2)).rejects.toThrow('does not support playback rate');
   });
 });

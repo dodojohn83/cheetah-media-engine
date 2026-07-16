@@ -124,6 +124,8 @@ pub struct WebEngine {
     configured: bool,
     loaded_url: Option<String>,
     playing: bool,
+    seek_target_ms: Option<u64>,
+    playback_rate: f64,
 }
 
 impl Default for WebEngine {
@@ -142,6 +144,8 @@ impl WebEngine {
             configured: false,
             loaded_url: None,
             playing: false,
+            seek_target_ms: None,
+            playback_rate: 1.0,
         }
     }
 
@@ -184,6 +188,27 @@ impl WebEngine {
     /// Pause playback.
     pub fn pause(&mut self) -> Result<(), JsValue> {
         self.playing = false;
+        Ok(())
+    }
+
+    /// Seek to a target time in milliseconds.
+    ///
+    /// The target is stored for later integration with the pipeline; this
+    /// control surface call is validated but does not itself decode media.
+    pub fn seek(&mut self, time_ms: u64) -> Result<(), JsValue> {
+        self.seek_target_ms = Some(time_ms);
+        Ok(())
+    }
+
+    /// Set the desired playback rate.
+    ///
+    /// Supported range is 0.1x to 16x. The value is stored for the backend
+    /// scheduler; this call does not change browser video playback rate directly.
+    pub fn set_playback_rate(&mut self, rate: f64) -> Result<(), JsValue> {
+        if !rate.is_finite() || !(0.1..=16.0).contains(&rate) {
+            return Err(js_error(AbiError::InvalidData));
+        }
+        self.playback_rate = rate;
         Ok(())
     }
 
@@ -249,6 +274,8 @@ impl WebEngine {
         self.arena = MemoryArena::new(INSTANCE_ID);
         self.loaded_url = None;
         self.playing = false;
+        self.seek_target_ms = None;
+        self.playback_rate = 1.0;
         Ok(())
     }
 
@@ -265,6 +292,27 @@ mod tests {
     #[test]
     fn codec_name_unknown_for_high_index() {
         assert_eq!(codec_name(255), "unknown");
+    }
+
+    #[test]
+    fn webengine_seek_and_playback_rate_store_state() {
+        let mut engine = WebEngine::new();
+        engine.load("http://example.com/test.m3u8", false).unwrap();
+        engine.seek(12345).unwrap();
+        engine.set_playback_rate(2.0).unwrap();
+        assert_eq!(engine.seek_target_ms, Some(12345));
+        assert!((engine.playback_rate - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn webengine_stop_resets_seek_and_rate() {
+        let mut engine = WebEngine::new();
+        engine.load("http://example.com/test.m3u8", false).unwrap();
+        engine.seek(12345).unwrap();
+        engine.set_playback_rate(2.0).unwrap();
+        engine.stop().unwrap();
+        assert_eq!(engine.seek_target_ms, None);
+        assert!((engine.playback_rate - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]

@@ -14,6 +14,7 @@ const ctx: BackendContext = {
     renderer: undefined,
     transport: 'fetch',
     reason: 'test',
+    isLive: true,
   },
   reason: 'initial',
 };

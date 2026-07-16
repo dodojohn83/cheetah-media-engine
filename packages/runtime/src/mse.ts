@@ -21,6 +21,7 @@ export type MseErrorCode =
   | 'media-source-error'
   | 'video-element-error'
   | 'quota-exceeded'
+  | 'seek'
   | 'unknown';
 
 export class MseError extends Error {
@@ -95,6 +96,8 @@ export interface MseBackendOptions {
   readonly videoElement: HTMLVideoElementLike;
   readonly tracks: readonly TrackProfile[];
   readonly callbacks?: MseCallbacks;
+  /** When `false` the backend is in VOD mode and live catch-up is disabled. */
+  readonly isLive?: boolean;
   readonly maxBufferAheadMs?: number;
   readonly maxBufferBehindMs?: number;
   readonly liveLatencyTargetMs?: number;
@@ -210,6 +213,7 @@ export class MseBackend implements MediaBackend {
   private readonly sourceOpenTimeoutMs: number;
   private readonly maxAppendQueue: number;
   private readonly maxQuotaRetries: number;
+  private readonly isLive: boolean;
 
   private mediaSource: MediaSourceLike | undefined = undefined;
   private sourceBuffer: SourceBufferLike | undefined = undefined;
@@ -250,6 +254,7 @@ export class MseBackend implements MediaBackend {
     this.sourceOpenTimeoutMs = options.sourceOpenTimeoutMs ?? 5000;
     this.maxAppendQueue = options.maxAppendQueue ?? 32;
     this.maxQuotaRetries = options.maxQuotaRetries ?? 1;
+    this.isLive = options.isLive ?? true;
   }
 
   get metrics(): MseMetrics {
@@ -398,6 +403,73 @@ export class MseBackend implements MediaBackend {
     this.generation += 1;
   }
 
+  async seek(timeMs: number): Promise<void> {
+    if (this.stopped || this.closing || this.errored || !this.configured) {
+      throw new MseError('not-configured', 'Cannot seek before configure');
+    }
+    if (!Number.isFinite(timeMs) || timeMs < 0) {
+      throw new MseError('seek', 'seek timeMs must be finite and non-negative');
+    }
+    const sourceBuffer = this.sourceBuffer;
+    if (!sourceBuffer) {
+      throw new MseError('not-configured', 'No SourceBuffer');
+    }
+
+    this.stopLiveControl();
+    this.generation += 1;
+    this.appendQueue = [];
+
+    try {
+      if (sourceBuffer.updating) {
+        sourceBuffer.abort();
+      }
+      const buffered = sourceBuffer.buffered;
+      if (buffered.length > 0) {
+        sourceBuffer.remove(buffered.start(0), buffered.end(buffered.length - 1));
+      }
+    } catch {
+      // ignore cleanup errors
+    }
+
+    this._metrics.seekCount += 1;
+    const timeS = timeMs / 1000;
+    this.videoElement.currentTime = timeS;
+
+    return new Promise<void>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const onSeeked = (): void => {
+        cleanup();
+        resolve();
+      };
+      const onError = (event?: unknown): void => {
+        cleanup();
+        reject(this.eventToError(event, 'video-element-error'));
+      };
+      const cleanup = (): void => {
+        if (timer) clearTimeout(timer);
+        this.videoElement.removeEventListener('seeked', onSeeked);
+        this.videoElement.removeEventListener('error', onError);
+        this.startLiveControl();
+      };
+      this.videoElement.addEventListener('seeked', onSeeked);
+      this.videoElement.addEventListener('error', onError);
+      timer = setTimeout(() => {
+        cleanup();
+        reject(new MseError('seek', 'Seeked event timeout'));
+      }, 5000);
+    });
+  }
+
+  async setPlaybackRate(rate: number): Promise<void> {
+    if (this.stopped || this.closing || this.errored || !this.configured) {
+      throw new MseError('not-configured', 'Cannot set playback rate before configure');
+    }
+    if (!Number.isFinite(rate) || rate < 0.1 || rate > 16) {
+      throw new MseError('seek', 'playback rate must be between 0.1 and 16');
+    }
+    this.videoElement.playbackRate = rate;
+  }
+
   private addSourceBuffer(mediaSource: MediaSourceLike): SourceBufferLike {
     const sourceBuffer = mediaSource.addSourceBuffer(this.mime);
     sourceBuffer.addEventListener('updateend', this.onSourceBufferUpdateEnd);
@@ -487,24 +559,26 @@ export class MseBackend implements MediaBackend {
       }
     }
 
-    // Live latency correction.
-    if (bufferAheadMs > this.liveLatencyTargetMs + this.liveDriftLargeMs) {
-      const target = bufferedEnd - this.liveLatencyTargetMs / 1000;
-      video.currentTime = Math.max(bufferedStart, target);
-      // Reset playback rate immediately after a catch-up seek to avoid a
-      // brief fast-forward while the nudge logic slowly returns to 1.0.
-      video.playbackRate = 1.0;
-      this._metrics.seekCount += 1;
-    } else if (bufferAheadMs > this.liveLatencyTargetMs + this.liveDriftSmallMs) {
-      video.playbackRate = Math.min(video.playbackRate + 0.05, this.maxPlaybackRate);
-    } else if (bufferAheadMs < this.liveLatencyTargetMs - this.liveDriftSmallMs) {
-      video.playbackRate = Math.max(video.playbackRate - 0.05, this.minPlaybackRate);
-    } else {
-      // Nudge back toward 1.0 when close to the target.
-      if (video.playbackRate > 1.0) {
-        video.playbackRate = Math.max(video.playbackRate - 0.05, 1.0);
-      } else if (video.playbackRate < 1.0) {
-        video.playbackRate = Math.min(video.playbackRate + 0.05, 1.0);
+    // Live latency correction; skip rate/seek nudging in VOD mode.
+    if (this.isLive) {
+      if (bufferAheadMs > this.liveLatencyTargetMs + this.liveDriftLargeMs) {
+        const target = bufferedEnd - this.liveLatencyTargetMs / 1000;
+        video.currentTime = Math.max(bufferedStart, target);
+        // Reset playback rate immediately after a catch-up seek to avoid a
+        // brief fast-forward while the nudge logic slowly returns to 1.0.
+        video.playbackRate = 1.0;
+        this._metrics.seekCount += 1;
+      } else if (bufferAheadMs > this.liveLatencyTargetMs + this.liveDriftSmallMs) {
+        video.playbackRate = Math.min(video.playbackRate + 0.05, this.maxPlaybackRate);
+      } else if (bufferAheadMs < this.liveLatencyTargetMs - this.liveDriftSmallMs) {
+        video.playbackRate = Math.max(video.playbackRate - 0.05, this.minPlaybackRate);
+      } else {
+        // Nudge back toward 1.0 when close to the target.
+        if (video.playbackRate > 1.0) {
+          video.playbackRate = Math.max(video.playbackRate - 0.05, 1.0);
+        } else if (video.playbackRate < 1.0) {
+          video.playbackRate = Math.min(video.playbackRate + 0.05, 1.0);
+        }
       }
     }
 
@@ -686,5 +760,9 @@ export class MseBackend implements MediaBackend {
 }
 
 export function mseBackendFactory(options: MseBackendOptions): (ctx: BackendContext) => MseBackend {
-  return (ctx: BackendContext) => new MseBackend(ctx, options);
+  return (ctx: BackendContext) =>
+    new MseBackend(ctx, {
+      ...options,
+      isLive: options.isLive ?? ctx.candidate.isLive ?? true,
+    });
 }

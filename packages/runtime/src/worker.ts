@@ -13,6 +13,8 @@ import {
   type EventPayload,
   type LoadPayload,
   type PacketPayload,
+  type SeekPayload,
+  type SetPlaybackRatePayload,
   type BootstrapPayload,
   type WorkerErrorPayload,
 } from './messages.js';
@@ -35,6 +37,8 @@ interface WebEngineInstance {
   load(url: string, isLive: boolean): void;
   play(): void;
   pause(): void;
+  seek(time_ms: number): void;
+  set_playback_rate(rate: number): void;
   stop(): void;
   destroy(): void;
   readonly is_playing: boolean;
@@ -126,6 +130,22 @@ function withEngine<T>(action: (engine: WebEngineInstance) => T, instance: numbe
   }
 }
 
+function withEngineReply<T>(
+  action: (engine: WebEngineInstance) => T,
+  envelope: Envelope,
+  onSuccess?: (result: T) => unknown,
+): void {
+  try {
+    const result = action(ensureEngine());
+    reply({
+      ...envelope,
+      payload: onSuccess ? onSuccess(result) : { ok: true },
+    });
+  } catch (err) {
+    sendError(envelope.instance, envelope.sequence, err);
+  }
+}
+
 self.onmessage = (event: MessageEvent<unknown>) => {
   if (typeof event.data !== 'string') return;
   let envelope: Envelope;
@@ -182,6 +202,27 @@ self.onmessage = (event: MessageEvent<unknown>) => {
         sendEvent(envelope.instance, 'paused');
       }, envelope.instance, envelope.sequence);
       break;
+    case 'seek': {
+      const payload = envelope.payload as SeekPayload;
+      withEngineReply(
+        (e) => {
+          e.seek(payload.timeMs);
+          sendEvent(envelope.instance, 'seeking', { timeMs: payload.timeMs });
+        },
+        envelope,
+        () => ({ event: 'seeked', timeMs: payload.timeMs }),
+      );
+      break;
+    }
+    case 'set-playback-rate': {
+      const payload = envelope.payload as SetPlaybackRatePayload;
+      withEngineReply(
+        (e) => e.set_playback_rate(payload.rate),
+        envelope,
+        () => ({ event: 'playback-rate-set', rate: payload.rate }),
+      );
+      break;
+    }
     case 'stop':
       currentEpoch = envelope.epoch;
       withEngine((e) => {

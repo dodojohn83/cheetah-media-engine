@@ -59,6 +59,8 @@ pub enum HlsEvent {
     },
     /// Drive the live reload clock forward.
     Tick { now_ms: u64 },
+    /// Jump to a target time in a VOD or finished EVENT playlist.
+    Seek { time_ms: u64 },
     /// Stop the client.
     Stop,
 }
@@ -170,6 +172,7 @@ impl HlsClient {
                 ..
             } => self.on_request_failed(uri, retryable, epoch),
             HlsEvent::Tick { now_ms } => self.on_tick(now_ms),
+            HlsEvent::Seek { time_ms } => self.on_seek(time_ms),
             HlsEvent::Stop => {
                 self.stopped = true;
                 self.inflight.clear();
@@ -303,7 +306,7 @@ impl HlsClient {
 
     fn on_tick(&mut self, now_ms: u64) -> Vec<HlsAction> {
         let mut actions = Vec::new();
-        if self.media.is_some() && !self.media.as_ref().unwrap().end_list {
+        if self.media.is_some() && !self.media.as_ref().unwrap().is_vod() {
             // Do not pile up multiple playlist reloads.
             if !self.inflight.values().any(|k| {
                 matches!(
@@ -352,6 +355,35 @@ impl HlsClient {
                 }
             }
         }
+        actions
+    }
+
+    fn on_seek(&mut self, time_ms: u64) -> Vec<HlsAction> {
+        let media = match self.media.as_ref() {
+            Some(m) => m,
+            None => {
+                return self.stop_with_error(HlsError::Unsupported {
+                    feature: "seek before media playlist loaded".into(),
+                });
+            }
+        };
+        if !media.is_vod() {
+            return self.stop_with_error(HlsError::Unsupported {
+                feature: "seek only supported for VOD playlists".into(),
+            });
+        }
+        let time_s = (time_ms as f64) / 1000.0;
+        if time_s < 0.0 || time_s > media.duration {
+            return self.stop_with_error(HlsError::SeekOutOfRange);
+        }
+        let idx = find_segment_index_by_time(media, time_s);
+        let mut actions = self.bump_epoch();
+        self.next_segment_index = idx;
+        self.next_part_index = 0;
+        self.last_msn = None;
+        self.last_part_msn = None;
+        self.last_part_index = None;
+        actions.extend(self.schedule_downloads());
         actions
     }
 
@@ -469,6 +501,21 @@ fn action_uri(kind: &ActionKind) -> Option<&str> {
         ActionKind::LoadPart { uri, .. } => Some(uri.as_str()),
         _ => None,
     }
+}
+
+fn find_segment_index_by_time(media: &MediaPlaylist, time_s: f64) -> usize {
+    if time_s <= 0.0 || media.segments.is_empty() {
+        return 0;
+    }
+    let mut acc = 0.0;
+    for (idx, seg) in media.segments.iter().enumerate() {
+        acc += seg.duration;
+        if acc > time_s {
+            return idx;
+        }
+    }
+    // At or beyond the last boundary: start from the final segment.
+    media.segments.len().saturating_sub(1)
 }
 
 fn find_segment<'a>(media: &'a Option<MediaPlaylist>, uri: &str) -> Option<(usize, &'a Segment)> {

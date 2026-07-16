@@ -39,6 +39,8 @@ pub struct MediaPlaylist {
     pub preload_hint: Option<PreloadHint>,
     pub skip: Option<Skip>,
     pub rendition_reports: Vec<RenditionReport>,
+    /// Total duration in seconds for VOD playlists (sum of segment durations).
+    pub duration: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -216,6 +218,12 @@ impl Variant {
             closed_captions_group: None,
             associated_independent_segments: false,
         }
+    }
+}
+
+impl MediaPlaylist {
+    pub fn is_vod(&self) -> bool {
+        self.playlist_type == Some(PlaylistType::Vod) || self.end_list
     }
 }
 

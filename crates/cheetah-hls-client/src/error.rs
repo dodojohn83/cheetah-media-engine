@@ -23,6 +23,8 @@ pub enum HlsError {
     MissingTag { tag: String },
     /// UTF-8 decoding failed.
     Utf8Error,
+    /// Seek target is outside the playlist duration.
+    SeekOutOfRange,
 }
 
 impl HlsError {

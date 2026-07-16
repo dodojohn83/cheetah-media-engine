@@ -5,6 +5,8 @@ import {
   type Envelope,
   type EventPayload,
   type LoadPayload,
+  type SeekPayload,
+  type SetPlaybackRatePayload,
   type WorkerErrorPayload,
   PROTOCOL_VERSION,
 } from './messages';
@@ -16,6 +18,8 @@ export interface EngineRuntime {
   load(url: string, options?: { isLive?: boolean }): Promise<void>;
   play(): void;
   pause(): void;
+  seek(timeMs: number): Promise<void>;
+  setPlaybackRate(rate: number): Promise<void>;
   stop(): Promise<void>;
   destroy(): Promise<void>;
   request(type: Envelope['type'], payload?: unknown, timeoutMs?: number): Promise<unknown>;
@@ -186,6 +190,24 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
 
     pause(): void {
       sendControl('pause');
+    },
+
+    async seek(timeMs: number): Promise<void> {
+      if (destroyed) throw new Error('Runtime destroyed');
+      if (!Number.isFinite(timeMs) || timeMs < 0) {
+        throw new Error('seek timeMs must be a finite non-negative number');
+      }
+      const payload: SeekPayload = { timeMs };
+      await post('seek', payload, 10000);
+    },
+
+    async setPlaybackRate(rate: number): Promise<void> {
+      if (destroyed) throw new Error('Runtime destroyed');
+      if (!Number.isFinite(rate) || rate < 0.1 || rate > 16) {
+        throw new Error('playback rate must be between 0.1 and 16');
+      }
+      const payload: SetPlaybackRatePayload = { rate };
+      await post('set-playback-rate', payload, 10000);
     },
 
     async stop(): Promise<void> {

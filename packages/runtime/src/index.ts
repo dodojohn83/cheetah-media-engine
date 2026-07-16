@@ -41,6 +41,8 @@ export {
   type LoadPayload,
   type MessageType,
   type MetricsPayload,
+  type SeekPayload,
+  type SetPlaybackRatePayload,
   type OutputPayload,
   type PacketPayload,
   type WorkerErrorPayload,

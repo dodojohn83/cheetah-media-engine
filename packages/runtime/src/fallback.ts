@@ -29,6 +29,14 @@ export interface MediaBackend {
    */
   configure(): Promise<void>;
   /**
+   * Seek to a target time in milliseconds, if the backend supports VOD seeking.
+   */
+  seek?(timeMs: number): Promise<void>;
+  /**
+   * Set the playback rate, if the backend supports speed control.
+   */
+  setPlaybackRate?(rate: number): Promise<void>;
+  /**
    * Stop the backend and release resources.
    */
   stop(): Promise<void>;
@@ -163,6 +171,22 @@ export class FallbackController {
     this.tried.clear();
     this.attemptReasons.clear();
     this.triedCandidates.clear();
+  }
+
+  async seek(timeMs: number): Promise<void> {
+    if (this.stopped) throw new Error('FallbackController stopped');
+    if (!this.current?.seek) {
+      throw new Error(`Backend ${this.current?.identity ?? 'none'} does not support seek`);
+    }
+    await this.current.seek(timeMs);
+  }
+
+  async setPlaybackRate(rate: number): Promise<void> {
+    if (this.stopped) throw new Error('FallbackController stopped');
+    if (!this.current?.setPlaybackRate) {
+      throw new Error(`Backend ${this.current?.identity ?? 'none'} does not support playback rate`);
+    }
+    await this.current.setPlaybackRate(rate);
   }
 
   getState(): FallbackState {

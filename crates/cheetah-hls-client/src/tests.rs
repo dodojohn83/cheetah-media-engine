@@ -257,3 +257,108 @@ high.m3u8
     let v = select_initial_variant(&m.variants, &caps).unwrap();
     assert_eq!(v.bandwidth, 1_000_000);
 }
+
+#[test]
+fn parse_vod_computes_duration() {
+    let media = parse_media(MEDIA, "http://example.com/playlist.m3u8").unwrap();
+    assert!(media.is_vod());
+    assert!((media.duration - 12.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn vod_does_not_reload_on_tick() {
+    let mut client = HlsClient::new("http://x/master.m3u8", HlsConfig::default());
+    let _ = client.start();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: "http://x/master.m3u8".to_string(),
+        body: MASTER.as_bytes().to_vec(),
+    });
+    let media_url = "http://example.com/playlist_1.m3u8".to_string();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: media_url.clone(),
+        body: MEDIA.as_bytes().to_vec(),
+    });
+
+    let actions = client.handle_event(HlsEvent::Tick { now_ms: 10_000 });
+    assert!(
+        !actions
+            .iter()
+            .any(|a| matches!(a.kind, ActionKind::LoadPlaylist { .. }))
+    );
+}
+
+#[test]
+fn vod_seek_selects_target_segment() {
+    let mut client = HlsClient::new("http://x/master.m3u8", HlsConfig::default());
+    let _ = client.start();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: "http://x/master.m3u8".to_string(),
+        body: MASTER.as_bytes().to_vec(),
+    });
+    let media_url = "http://example.com/playlist_1.m3u8".to_string();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: media_url.clone(),
+        body: MEDIA.as_bytes().to_vec(),
+    });
+
+    let actions = client.handle_event(HlsEvent::Seek { time_ms: 7_000 });
+    let uri = actions
+        .iter()
+        .find_map(|a| match &a.kind {
+            ActionKind::LoadSegment { uri, .. } => Some(uri.clone()),
+            _ => None,
+        })
+        .expect("expected LoadSegment after seek");
+    assert!(uri.contains("seg1.ts"));
+}
+
+#[test]
+fn vod_seek_out_of_range_stops_client() {
+    let mut client = HlsClient::new("http://x/master.m3u8", HlsConfig::default());
+    let _ = client.start();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: "http://x/master.m3u8".to_string(),
+        body: MASTER.as_bytes().to_vec(),
+    });
+    let media_url = "http://example.com/playlist_1.m3u8".to_string();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: media_url.clone(),
+        body: MEDIA.as_bytes().to_vec(),
+    });
+
+    let actions = client.handle_event(HlsEvent::Seek { time_ms: 120_000 });
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a.kind, ActionKind::ReportError { .. }))
+    );
+    assert!(client.stopped());
+}
+
+#[test]
+fn live_event_seek_is_unsupported() {
+    let event_media = r#"#EXTM3U
+#EXT-X-TARGETDURATION:6
+#EXT-X-PLAYLIST-TYPE:EVENT
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:6.000,
+seg0.ts
+"#;
+    let mut client = HlsClient::new("http://x/master.m3u8", HlsConfig::default());
+    let _ = client.start();
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: "http://x/master.m3u8".to_string(),
+        body: MASTER.as_bytes().to_vec(),
+    });
+    client.handle_event(HlsEvent::PlaylistLoaded {
+        url: "http://example.com/playlist_1.m3u8".to_string(),
+        body: event_media.as_bytes().to_vec(),
+    });
+
+    let actions = client.handle_event(HlsEvent::Seek { time_ms: 1_000 });
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a.kind, ActionKind::ReportError { .. }))
+    );
+}

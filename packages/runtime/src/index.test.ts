@@ -97,6 +97,33 @@ describe('createRuntime worker integration', () => {
     runtime.play();
   });
 
+  it('seek resolves after worker reply', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await runtime.load('http://example.com/test.flv');
+    await expect(runtime.seek(12345)).resolves.toBeUndefined();
+  });
+
+  it('seek rejects invalid timeMs', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await runtime.load('http://example.com/test.flv');
+    await expect(runtime.seek(-1)).rejects.toThrow('seek timeMs');
+    await expect(runtime.seek(NaN)).rejects.toThrow('seek timeMs');
+  });
+
+  it('setPlaybackRate resolves after worker reply', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await runtime.load('http://example.com/test.flv');
+    await expect(runtime.setPlaybackRate(2)).resolves.toBeUndefined();
+  });
+
+  it('setPlaybackRate rejects out of range rate', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await runtime.load('http://example.com/test.flv');
+    await expect(runtime.setPlaybackRate(0.05)).rejects.toThrow('playback rate');
+    await expect(runtime.setPlaybackRate(20)).rejects.toThrow('playback rate');
+    await expect(runtime.setPlaybackRate(NaN)).rejects.toThrow('playback rate');
+  });
+
   it('destroy rejects pending commands', async () => {
     class NoReplyWorker extends EventTarget {
       public onmessage?: (event: MessageEvent<string>) => void;

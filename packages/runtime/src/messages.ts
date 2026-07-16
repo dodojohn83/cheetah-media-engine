@@ -19,6 +19,8 @@ export type MessageType =
   | 'config'
   | 'packet'
   | 'output'
+  | 'seek'
+  | 'set-playback-rate'
   | 'event'
   | 'error'
   | 'memory-growth'
@@ -60,6 +62,14 @@ export interface CapabilityPayload {
 export interface LoadPayload {
   readonly url: string;
   readonly isLive: boolean;
+}
+
+export interface SeekPayload {
+  readonly timeMs: number;
+}
+
+export interface SetPlaybackRatePayload {
+  readonly rate: number;
 }
 
 export interface PacketPayload {

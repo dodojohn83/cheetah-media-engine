@@ -14,6 +14,7 @@ const ctx: BackendContext = {
     renderer: undefined,
     transport: 'fetch',
     reason: 'mse fallback',
+    isLive: true,
   },
   reason: 'test',
 };
@@ -416,6 +417,59 @@ describe('MseBackend', () => {
     await expect(backend.configure()).rejects.toThrow('MediaSource did not open');
     expect(video.src).toBe('');
     expect(MockURL.revokeObjectURL).toHaveBeenCalled();
+  });
+
+  it('seek clears buffer, updates currentTime and resolves on seeked', async () => {
+    const video = new MockHTMLVideoElement();
+    const backend = new MseBackend(ctx, makeOptions({ videoElement: video, isLive: false }));
+    await backend.configure();
+    const sb = getSourceBuffer();
+    sb.setBuffered([[0, 10]]);
+
+    const seekPromise = backend.seek(5000);
+    await flushMicrotasks(2);
+    expect(sb.removed.length).toBeGreaterThanOrEqual(1);
+    expect(video.currentTime).toBe(5);
+
+    video.dispatchEvent('seeked');
+    await expect(seekPromise).resolves.toBeUndefined();
+    expect(backend.metrics.seekCount).toBe(1);
+  });
+
+  it('seek rejects before configure', async () => {
+    const backend = new MseBackend(ctx, makeOptions());
+    await expect(backend.seek(1000)).rejects.toThrow('Cannot seek before configure');
+  });
+
+  it('setPlaybackRate sets the video playback rate', async () => {
+    const video = new MockHTMLVideoElement();
+    const backend = new MseBackend(ctx, makeOptions({ videoElement: video }));
+    await backend.configure();
+    await backend.setPlaybackRate(2);
+    expect(video.playbackRate).toBe(2);
+  });
+
+  it('setPlaybackRate rejects out of range values', async () => {
+    const video = new MockHTMLVideoElement();
+    const backend = new MseBackend(ctx, makeOptions({ videoElement: video }));
+    await backend.configure();
+    await expect(backend.setPlaybackRate(0.05)).rejects.toThrow('playback rate');
+    await expect(backend.setPlaybackRate(20)).rejects.toThrow('playback rate');
+  });
+
+  it('VOD mode does not adjust playback rate for live catch-up', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const video = new MockHTMLVideoElement();
+    const backend = new MseBackend(ctx, makeOptions({ videoElement: video, isLive: false, liveControlIntervalMs: 10 }));
+    await backend.configure();
+    const sb = getSourceBuffer();
+    video.currentTime = 5;
+    sb.setBuffered([[0, 20]]);
+    video.playbackRate = 1;
+
+    vi.advanceTimersByTime(50);
+    expect(video.playbackRate).toBe(1);
+    vi.useRealTimers();
   });
 });
 

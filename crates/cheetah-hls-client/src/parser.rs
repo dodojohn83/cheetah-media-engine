@@ -416,6 +416,8 @@ pub fn parse_media(input: &str, base_uri: &str) -> Result<MediaPlaylist, HlsErro
         });
     }
 
+    pl.duration = pl.segments.iter().map(|s| s.duration).sum();
+
     Ok(pl)
 }
 

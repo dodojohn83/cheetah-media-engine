@@ -40,6 +40,8 @@ export interface PlanRequest {
   readonly protocol: Protocol;
   readonly tracks: readonly TrackProfile[];
   readonly latencyTarget: LatencyTarget;
+  /** Whether the stream is live. Defaults to `true`. */
+  readonly isLive?: boolean;
   /** Whether the page is cross-origin isolated (COOP/COEP). */
   readonly isolation?: boolean;
   /** Backends the user explicitly disabled. */
@@ -58,6 +60,8 @@ export interface PlanCandidate {
   readonly renderer: Renderer | undefined;
   readonly transport: TransportMode;
   readonly reason: string;
+  /** Whether this candidate is for a live stream. */
+  readonly isLive: boolean;
 }
 
 export interface PlaybackPlan {
@@ -374,6 +378,7 @@ export function plan(request: PlanRequest, caps: CapabilityReport): PlaybackPlan
         renderer: candidateRenderer,
         transport,
         reason: reasons.join(', '),
+        isLive: request.isLive ?? true,
       };
       candidates.push(candidate);
     }
@@ -394,6 +399,7 @@ export function plan(request: PlanRequest, caps: CapabilityReport): PlaybackPlan
         renderer: undefined,
         transport,
         reason: 'no supported playback route',
+        isLive: request.isLive ?? true,
       },
       fallback: [],
       unsupported,
