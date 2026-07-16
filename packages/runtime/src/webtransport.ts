@@ -122,7 +122,9 @@ export class WebTransportTransport implements Transport {
         if (receiveStream) {
           const promise = this.readStream(receiveStream, onChunk).catch((err) => {
             if (!this.stopped) {
-              this.finish(this.toError(err));
+              const failure = this.toError(err);
+              this.stop();
+              this.finish(failure);
             }
           });
           this.inFlight.add(promise);
