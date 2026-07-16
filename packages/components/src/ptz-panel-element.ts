@@ -57,9 +57,10 @@ export class CheetahPtzPanelElement extends HTMLElement {
   }
 
   connectedCallback(): void {
-    if (this._connected) return;
     this._connected = true;
-    this._buildShadowRoot();
+    if (!this.shadowRoot) {
+      this._buildShadowRoot();
+    }
   }
 
   disconnectedCallback(): void {

@@ -92,6 +92,24 @@ describe('CheetahPtzPanelElement', () => {
     expect(detail?.ptzCmd).toMatch(/^[0-9A-F]{16}$/);
   });
 
+  it('survives disconnection and reconnection without recreating shadow root', () => {
+    const el = document.createElement('cheetah-ptz-panel') as CheetahPtzPanelElement;
+    container.appendChild(el);
+    const shadow = el.shadowRoot;
+    expect(shadow).toBeTruthy();
+
+    container.removeChild(el);
+    container.appendChild(el);
+    expect(el.shadowRoot).toBe(shadow);
+
+    let detail: PtzEventDetail | undefined;
+    el.addEventListener('ptz', (event) => {
+      detail = (event as CustomEvent).detail as PtzEventDetail;
+    });
+    el.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowUp', bubbles: true }));
+    expect(detail?.action).toBe('up');
+  });
+
   it('keyboard arrow keys dispatch ptz events', () => {
     const el = document.createElement('cheetah-ptz-panel') as CheetahPtzPanelElement;
     container.appendChild(el);
