@@ -246,6 +246,7 @@ dependencies = [
  "cheetah-container-annexb",
  "cheetah-container-mpegps",
  "cheetah-media-abi",
+ "cheetah-media-bitstream",
  "cheetah-media-engine",
  "cheetah-media-types",
  "console_error_panic_hook",

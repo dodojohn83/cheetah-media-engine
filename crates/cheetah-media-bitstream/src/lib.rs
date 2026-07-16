@@ -17,7 +17,10 @@ pub use sei::{SeiError, SeiMessage, parse_sei};
 
 pub use aac::{AdtsHeader, AudioSpecificConfig};
 pub use bit::{BitCursor, BitError};
-pub use g711::{G711Kind, PcmFormat};
+pub use g711::{
+    G711Kind, PcmFormat, decode, decode_buffer, encode, encode_buffer, encode_buffer_f32,
+    encode_f32,
+};
 pub use h264::{H264CodecConfig, H264Error, NalUnit as H264NalUnit};
 pub use h265::{
     H265CodecConfig, H265Error, NalUnit as H265NalUnit, NalUnitType as H265NalUnitType,
