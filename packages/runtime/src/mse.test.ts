@@ -182,6 +182,7 @@ class MockHTMLVideoElement extends MockEventTarget implements HTMLVideoElementLi
   readyState = 0;
   error: { code: number; message: string } | null = null;
   play = vi.fn(async () => undefined);
+  pause = vi.fn();
   load = vi.fn();
 }
 
@@ -492,6 +493,56 @@ describe('MseBackend', () => {
     vi.advanceTimersByTime(1000);
     expect(video.playbackRate).toBe(1);
     vi.useRealTimers();
+  });
+
+  it('pauseDisplay freezes live latency correction but keeps appending when keepConnection is true', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const video = new MockHTMLVideoElement();
+    const backend = new MseBackend(ctx, makeOptions({ videoElement: video, liveControlIntervalMs: 10, maxBufferAheadMs: 1000 }));
+    await backend.configure();
+    const sb = getSourceBuffer();
+
+    backend.pushSegment(new Uint8Array([0, 1, 2]), { isInit: true });
+    await flushMicrotasks(2);
+    expect(sb.appended.length).toBe(1);
+
+    await backend.pauseDisplay(true);
+    expect(video.pause).toHaveBeenCalled();
+    backend.pushSegment(new Uint8Array([3, 4, 5]));
+    await flushMicrotasks(2);
+    expect(sb.appended.length).toBe(2);
+
+    vi.useRealTimers();
+    await backend.stop();
+  });
+
+  it('pauseDisplay with keepConnection false drops new segments', async () => {
+    const backend = new MseBackend(ctx, makeOptions());
+    await backend.configure();
+    await backend.pauseDisplay(false);
+    backend.pushSegment(new Uint8Array([0, 1, 2]));
+    expect(backend.metrics.droppedSegments).toBe(1);
+    await backend.stop();
+  });
+
+  it('frameStep rejects keyframe-only mode in MSE', async () => {
+    const backend = new MseBackend(ctx, makeOptions());
+    await backend.configure();
+    await expect(backend.frameStep('forward', true)).rejects.toThrow('Keyframe-only');
+    await backend.stop();
+  });
+
+  it('frameStep moves currentTime by one frame and resolves on seeked', async () => {
+    const video = new MockHTMLVideoElement();
+    const backend = new MseBackend(ctx, makeOptions({ videoElement: video, videoFrameRate: 30 }));
+    await backend.configure();
+    video.currentTime = 1.0;
+
+    const stepPromise = backend.frameStep('forward');
+    expect(video.currentTime).toBeCloseTo(1.0 + 1 / 30, 6);
+    video.dispatchEvent('seeked');
+    await expect(stepPromise).resolves.toBeUndefined();
+    await backend.stop();
   });
 });
 

@@ -37,6 +37,14 @@ export interface MediaBackend {
    */
   setPlaybackRate?(rate: number): Promise<void>;
   /**
+   * Step one frame forward or backward, if the backend supports frame stepping.
+   */
+  frameStep?(direction: 'forward' | 'backward', keyframeOnly?: boolean): Promise<void>;
+  /**
+   * Freeze display while optionally keeping the network/decoder connection.
+   */
+  pauseDisplay?(keepConnection?: boolean): Promise<void>;
+  /**
    * Stop the backend and release resources.
    */
   stop(): Promise<void>;
@@ -187,6 +195,22 @@ export class FallbackController {
       throw new Error(`Backend ${this.current?.identity ?? 'none'} does not support playback rate`);
     }
     await this.current.setPlaybackRate(rate);
+  }
+
+  async frameStep(direction: 'forward' | 'backward', keyframeOnly = false): Promise<void> {
+    if (this.stopped) throw new Error('FallbackController stopped');
+    if (!this.current?.frameStep) {
+      throw new Error(`Backend ${this.current?.identity ?? 'none'} does not support frame step`);
+    }
+    await this.current.frameStep(direction, keyframeOnly);
+  }
+
+  async pauseDisplay(keepConnection = true): Promise<void> {
+    if (this.stopped) throw new Error('FallbackController stopped');
+    if (!this.current?.pauseDisplay) {
+      throw new Error(`Backend ${this.current?.identity ?? 'none'} does not support pause display`);
+    }
+    await this.current.pauseDisplay(keepConnection);
   }
 
   getState(): FallbackState {

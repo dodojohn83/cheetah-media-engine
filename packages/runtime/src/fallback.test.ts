@@ -51,6 +51,15 @@ function fakeBackend(ctx: BackendContext, fail = false, supportsSeek = false): M
       expect(typeof rate).toBe('number');
       return Promise.resolve();
     };
+    backend.frameStep = (direction: 'forward' | 'backward', keyframeOnly?: boolean) => {
+      expect(direction === 'forward' || direction === 'backward').toBe(true);
+      expect(typeof keyframeOnly).toBe('boolean');
+      return Promise.resolve();
+    };
+    backend.pauseDisplay = (keepConnection?: boolean) => {
+      expect(typeof keepConnection).toBe('boolean');
+      return Promise.resolve();
+    };
   }
   return backend;
 }
@@ -261,5 +270,35 @@ describe('FallbackController', () => {
     await controller.configureNext('initial');
     await expect(controller.seek(1000)).rejects.toThrow('does not support seek');
     await expect(controller.setPlaybackRate(2)).rejects.toThrow('does not support playback rate');
+  });
+
+  it('forwards frameStep and pauseDisplay to the current backend', async () => {
+    const plan = makePlan([candidate('mse', 'mse')]);
+    const backend = fakeBackend({ candidate: plan.candidates[0]!, reason: 'test' }, false, true);
+    const stepSpy = vi.spyOn(backend, 'frameStep');
+    const pauseSpy = vi.spyOn(backend, 'pauseDisplay');
+    const controller = new FallbackController({
+      plan,
+      factory: () => backend,
+    });
+
+    await controller.configureNext('initial');
+    await controller.frameStep('forward', true);
+    await controller.pauseDisplay(false);
+
+    expect(stepSpy).toHaveBeenCalledWith('forward', true);
+    expect(pauseSpy).toHaveBeenCalledWith(false);
+  });
+
+  it('frameStep and pauseDisplay throw when backend does not support them', async () => {
+    const plan = makePlan([candidate('webcodecs', 'webcodecs')]);
+    const controller = new FallbackController({
+      plan,
+      factory: (ctx) => fakeBackend(ctx, ctx.candidate.videoBackend === 'webcodecs'),
+    });
+
+    await controller.configureNext('initial');
+    await expect(controller.frameStep('forward')).rejects.toThrow('does not support frame step');
+    await expect(controller.pauseDisplay()).rejects.toThrow('does not support pause display');
   });
 });

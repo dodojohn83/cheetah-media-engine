@@ -43,6 +43,8 @@ export {
   type MetricsPayload,
   type SeekPayload,
   type SetPlaybackRatePayload,
+  type FrameStepPayload,
+  type PauseDisplayPayload,
   type OutputPayload,
   type PacketPayload,
   type WorkerErrorPayload,

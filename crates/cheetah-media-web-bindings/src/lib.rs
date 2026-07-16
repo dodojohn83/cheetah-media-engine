@@ -126,6 +126,9 @@ pub struct WebEngine {
     playing: bool,
     seek_target_ms: Option<u64>,
     playback_rate: f64,
+    frame_step_direction: Option<String>,
+    frame_step_keyframe_only: bool,
+    pause_display_keep_connection: bool,
 }
 
 impl Default for WebEngine {
@@ -146,6 +149,9 @@ impl WebEngine {
             playing: false,
             seek_target_ms: None,
             playback_rate: 1.0,
+            frame_step_direction: None,
+            frame_step_keyframe_only: false,
+            pause_display_keep_connection: false,
         }
     }
 
@@ -209,6 +215,29 @@ impl WebEngine {
             return Err(js_error(AbiError::InvalidData));
         }
         self.playback_rate = rate;
+        Ok(())
+    }
+
+    /// Request a single frame step in the given direction.
+    ///
+    /// Valid directions are "forward" and "backward". The request is stored
+    /// for the backend scheduler; this call does not render frames itself.
+    pub fn frame_step(&mut self, direction: &str, keyframe_only: bool) -> Result<(), JsValue> {
+        if direction != "forward" && direction != "backward" {
+            return Err(js_error(AbiError::InvalidData));
+        }
+        self.frame_step_direction = Some(direction.to_string());
+        self.frame_step_keyframe_only = keyframe_only;
+        Ok(())
+    }
+
+    /// Pause display while optionally keeping the network/decoder connection.
+    ///
+    /// When `keep_connection` is true the backend freezes output without
+    /// tearing down the decoder or transport. This call only records the state.
+    pub fn pause_display(&mut self, keep_connection: bool) -> Result<(), JsValue> {
+        self.playing = false;
+        self.pause_display_keep_connection = keep_connection;
         Ok(())
     }
 
@@ -276,6 +305,9 @@ impl WebEngine {
         self.playing = false;
         self.seek_target_ms = None;
         self.playback_rate = 1.0;
+        self.frame_step_direction = None;
+        self.frame_step_keyframe_only = false;
+        self.pause_display_keep_connection = false;
         Ok(())
     }
 
@@ -313,6 +345,29 @@ mod tests {
         engine.stop().unwrap();
         assert_eq!(engine.seek_target_ms, None);
         assert!((engine.playback_rate - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn webengine_frame_step_and_pause_display_store_state() {
+        let mut engine = WebEngine::new();
+        engine.load("http://example.com/test.m3u8", false).unwrap();
+        engine.frame_step("forward", true).unwrap();
+        assert_eq!(engine.frame_step_direction.as_deref(), Some("forward"));
+        assert!(engine.frame_step_keyframe_only);
+        engine.pause_display(true).unwrap();
+        assert!(!engine.is_playing());
+        assert!(engine.pause_display_keep_connection);
+    }
+
+    #[test]
+    fn webengine_stop_resets_frame_step_and_pause_display() {
+        let mut engine = WebEngine::new();
+        engine.load("http://example.com/test.m3u8", false).unwrap();
+        engine.frame_step("backward", false).unwrap();
+        engine.pause_display(true).unwrap();
+        engine.stop().unwrap();
+        assert_eq!(engine.frame_step_direction, None);
+        assert!(!engine.pause_display_keep_connection);
     }
 
     #[test]

@@ -70,6 +70,17 @@ function mockRuntime(): MockRuntime {
       expect(typeof rate).toBe('number');
     },
 
+    async frameStep(direction: 'forward' | 'backward', keyframeOnly?: boolean): Promise<void> {
+      failIfDestroyed();
+      expect(direction === 'forward' || direction === 'backward').toBe(true);
+      expect(typeof keyframeOnly).toBe('boolean');
+    },
+
+    async pauseDisplay(keepConnection?: boolean): Promise<void> {
+      failIfDestroyed();
+      expect(typeof keepConnection).toBe('boolean');
+    },
+
     async stop(): Promise<void> {
       failIfDestroyed();
       epoch += 1;
@@ -167,6 +178,13 @@ describe('web sdk', () => {
     await player.load('http://example.com/test.flv');
     await expect(player.seek(12345)).resolves.toBeUndefined();
     await expect(player.setPlaybackRate(2)).resolves.toBeUndefined();
+  });
+
+  it('frameStep and pauseDisplay forward to the runtime', async () => {
+    const player = playerWithMock();
+    await player.load('http://example.com/test.flv');
+    await expect(player.frameStep('forward', true)).resolves.toBeUndefined();
+    await expect(player.pauseDisplay(false)).resolves.toBeUndefined();
   });
 
   it('seek is rejected when no active stream', async () => {

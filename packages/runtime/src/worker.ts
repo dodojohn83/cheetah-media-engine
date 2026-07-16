@@ -17,6 +17,8 @@ import {
   type SetPlaybackRatePayload,
   type BootstrapPayload,
   type WorkerErrorPayload,
+  type FrameStepPayload,
+  type PauseDisplayPayload,
 } from './messages.js';
 
 interface WorkerScope {
@@ -37,6 +39,8 @@ interface WebEngineInstance {
   load(url: string, isLive: boolean): void;
   play(): void;
   pause(): void;
+  frame_step(direction: string, keyframe_only: boolean): void;
+  pause_display(keep_connection: boolean): void;
   seek(time_ms: number): void;
   set_playback_rate(rate: number): void;
   stop(): void;
@@ -202,6 +206,30 @@ self.onmessage = (event: MessageEvent<unknown>) => {
         sendEvent(envelope.instance, 'paused');
       }, envelope.instance, envelope.sequence);
       break;
+    case 'frame-step': {
+      const payload = envelope.payload as FrameStepPayload;
+      withEngineReply(
+        (e) => {
+          e.frame_step(payload.direction, payload.keyframeOnly ?? false);
+          sendEvent(envelope.instance, 'frame-step', {
+            direction: payload.direction,
+            keyframeOnly: payload.keyframeOnly ?? false,
+          });
+        },
+        envelope,
+        () => ({ event: 'frame-stepped', direction: payload.direction, keyframeOnly: payload.keyframeOnly ?? false }),
+      );
+      break;
+    }
+    case 'pause-display': {
+      const payload = envelope.payload as PauseDisplayPayload;
+      withEngineReply(
+        (e) => e.pause_display(payload.keepConnection),
+        envelope,
+        () => ({ event: 'pause-display-set', keepConnection: payload.keepConnection }),
+      );
+      break;
+    }
     case 'seek': {
       const payload = envelope.payload as SeekPayload;
       withEngineReply(
