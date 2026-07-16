@@ -788,9 +788,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async destroy(): Promise<void> {
     if (this.destroyed) return;
-    await this.cleanupIntercom();
-    this._intercomActive = false;
     this.destroyed = true;
+    this._intercomActive = false;
+    await this.cleanupIntercom().catch(() => undefined);
     this._state = 'destroyed';
     this.listeners.clear();
     this.eventHistory.length = 0;
@@ -863,7 +863,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       { encoder },
       {
         onPacket: (packet: AudioPacket) => this._intercomPacketizer?.push(packet),
-        onError: (error: CaptureError) => this.handleIntercomError(error),
+        onError: (error: CaptureError) => this.handleCaptureError(error),
       },
     );
 
@@ -907,12 +907,22 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     try {
       this._intercomSend?.(packet);
     } catch (error) {
-      this.handleIntercomError(error instanceof Error ? error : new Error(String(error)));
+      this.reportIntercomError(error instanceof Error ? error : new Error(String(error)), false);
     }
   }
 
-  private handleIntercomError(error: Error): void {
-    this.emit('error', { stage: 'intercom', message: error.message });
+  private handleCaptureError(error: CaptureError): void {
+    this._intercomActive = false;
+    void this.cleanupIntercom();
+    this.reportIntercomError(error, false);
+  }
+
+  private reportIntercomError(error: Error, fatal: boolean): void {
+    const err =
+      error instanceof CheetahMediaError
+        ? error
+        : new CheetahMediaError(6999, 'intercom', error.message, { recoverable: !fatal });
+    this.emit('intercom', { active: this._intercomActive, error: err.toJSON() });
     this._intercomError?.(error);
   }
 
