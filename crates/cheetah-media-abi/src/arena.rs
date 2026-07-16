@@ -70,6 +70,11 @@ impl MemoryArena {
         }
     }
 
+    /// The instance id that owns handles created by this arena.
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+
     /// Allocate a writable region of `size` bytes.
     ///
     /// Returns a handle and a `MemoryDescriptor` that JS can use to build a
@@ -103,6 +108,23 @@ impl MemoryArena {
         Ok((handle, descriptor))
     }
 
+    /// Write `data` into a previously requested region.
+    ///
+    /// The region must be large enough to hold `data`; its committed length is
+    /// not changed until `commit` is called.
+    pub fn write(&mut self, handle: Handle, data: &[u8]) -> Result<(), AbiError> {
+        let index = self.validate_occupied(handle)?;
+        if let Slot::Occupied { region, .. } = &mut self.slots[index] {
+            if data.len() > region.data.len() {
+                return Err(AbiError::OutOfBounds);
+            }
+            region.data[..data.len()].copy_from_slice(data);
+            Ok(())
+        } else {
+            Err(AbiError::StaleHandle)
+        }
+    }
+
     /// Commit the first `len` bytes of a previously requested region.
     pub fn commit(&mut self, handle: Handle, len: usize) -> Result<(), AbiError> {
         let index = self.validate_occupied(handle)?;
@@ -115,6 +137,29 @@ impl MemoryArena {
         } else {
             Err(AbiError::StaleHandle)
         }
+    }
+
+    /// Return an up-to-date descriptor for a committed region.
+    pub fn descriptor(&self, handle: Handle) -> Result<MemoryDescriptor, AbiError> {
+        let index = self.validate_occupied(handle)?;
+        if let Slot::Occupied { region, .. } = &self.slots[index] {
+            Ok(region.as_descriptor(handle.generation))
+        } else {
+            Err(AbiError::StaleHandle)
+        }
+    }
+
+    /// Allocate a region, write `data` into it, commit it, and return the
+    /// handle and its descriptor.
+    pub fn store(&mut self, data: &[u8]) -> Result<(Handle, MemoryDescriptor), AbiError> {
+        if data.is_empty() {
+            return Err(AbiError::InvalidData);
+        }
+        let (handle, _desc) = self.request(data.len())?;
+        self.write(handle, data)?;
+        self.commit(handle, data.len())?;
+        let desc = self.descriptor(handle)?;
+        Ok((handle, desc))
     }
 
     /// Read a committed region.
