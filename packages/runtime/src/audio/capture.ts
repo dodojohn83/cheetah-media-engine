@@ -47,6 +47,7 @@ export interface MicrophoneCaptureOptions {
 export interface AudioContextLike {
   readonly sampleRate: number;
   readonly state: 'closed' | 'running' | 'suspended';
+  readonly destination: AudioDestinationNodeLike;
   resume(): Promise<void>;
   close(): Promise<void>;
   readonly audioWorklet: AudioWorkletLike;
@@ -76,7 +77,11 @@ export interface AudioWorkletNodeConstructor {
   new (
     context: AudioContextLike,
     name: string,
-    options: { readonly processorOptions: { readonly frameSize: number } },
+    options: {
+      readonly processorOptions: { readonly frameSize: number };
+      readonly outputChannelCount?: readonly number[];
+      readonly numberOfOutputs?: number;
+    },
   ): AudioWorkletNodeLike;
 }
 
@@ -254,11 +259,14 @@ export class MicrophoneCapture {
 
       this.workletNode = new WorkletNodeCtor(this.audioContext, 'cheetah-capture-processor', {
         processorOptions: { frameSize: contextFrameSize },
+        outputChannelCount: [1],
+        numberOfOutputs: 1,
       });
       this.workletNode.port.onmessage = (event: { data: unknown }) => this.handlePortMessage(event.data);
 
       this.sourceNode = this.audioContext.createMediaStreamSource(stream);
       this.sourceNode.connect(this.workletNode);
+      this.workletNode.connect(this.audioContext.destination);
 
       this.state = 'running';
     } catch (err) {

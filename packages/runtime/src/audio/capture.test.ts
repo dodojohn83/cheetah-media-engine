@@ -52,6 +52,7 @@ function createTestEnv(sampleRate = 8000): TestEnv {
   const audioContext: AudioContextLike = {
     sampleRate,
     state: 'running',
+    destination: { maxChannelCount: 2 },
     resume: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
     audioWorklet: {
@@ -104,6 +105,7 @@ describe('MicrophoneCapture', () => {
     expect(env.audioContext.audioWorklet.addModule).toHaveBeenCalled();
     expect(env.workletNodeCtor).toHaveBeenCalled();
     expect(env.fakeSource.connect).toHaveBeenCalledWith(env.fakeWorkletNode);
+    expect(env.fakeWorkletNode.connect).toHaveBeenCalledWith(env.audioContext.destination);
     expect(capture.isRunning).toBe(true);
 
     // Simulate two frames of silence from the AudioWorklet processor.

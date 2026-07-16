@@ -162,6 +162,17 @@ class CheetahCaptureProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs, parameters) {
+    // Capture processors need an output so the Web Audio graph pulls them.
+    for (let o = 0; o < outputs.length; o += 1) {
+      const output = outputs[o];
+      for (let c = 0; c < output.length; c += 1) {
+        const channel = output[c];
+        for (let s = 0; s < channel.length; s += 1) {
+          channel[s] = 0;
+        }
+      }
+    }
+
     const input = inputs[0] && inputs[0][0];
     if (!input) return true;
     for (let i = 0; i < input.length; i += 1) {
