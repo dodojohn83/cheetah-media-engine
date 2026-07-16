@@ -119,6 +119,74 @@ describe('StreamDownloader', () => {
     expect(sink.getBlob().size).toBe(4);
   });
 
+  it('resumes using raw received bytes when transform changes chunk size', async () => {
+    const sink = new BlobSink();
+    const requestedRanges: (string | null)[] = [];
+    const dl = new StreamDownloader();
+
+    function makeResumableStream(chunks: Uint8Array[], signal: AbortSignal | undefined, closeOnDone = true) {
+      let index = 0;
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (signal) {
+            signal.addEventListener('abort', () => {
+              try {
+                controller.close();
+              } catch {
+                // already closed
+              }
+            }, { once: true });
+          }
+        },
+        pull(controller) {
+          if (index >= chunks.length) {
+            if (closeOnDone) controller.close();
+            return;
+          }
+          if (controller.desiredSize !== null && controller.desiredSize <= 0) return;
+          const chunk = chunks[index];
+          if (chunk) {
+            controller.enqueue(chunk);
+            index += 1;
+          }
+        },
+      });
+    }
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const headers = init?.headers ? new Headers(init.headers) : new Headers();
+        const range = headers.get('Range');
+        const signal = init?.signal ?? undefined;
+        requestedRanges.push(range);
+        if (range) {
+          const start = Number.parseInt(range.replace('bytes=', ''), 10);
+          return new Response(makeResumableStream([new Uint8Array([start + 1, start + 2])], signal), { status: 206 });
+        }
+        return new Response(makeResumableStream([new Uint8Array([1, 2, 3, 4])], signal, false));
+      }),
+    );
+
+    const startPromise = dl.start({
+      url: 'https://example.com/range',
+      sink,
+      transform: (chunk) => {
+        // Drop the second half of every 4-byte block, halving the output size.
+        return chunk.length >= 2 ? chunk.subarray(0, 2) : chunk;
+      },
+      onProgress: (p) => {
+        if (p.bytesWritten >= 2) dl.pause();
+      },
+    });
+    const startResult = await startPromise;
+    expect(startResult.bytesWritten).toBe(2);
+
+    const result = await dl.resume({ url: 'https://example.com/range', sink });
+    expect(result.bytesWritten).toBe(4);
+    expect(requestedRanges[1]).toBe('bytes=4-');
+  });
+
   it('stop aborts a running download', async () => {
     const dl = new StreamDownloader();
     const start = dl.start({

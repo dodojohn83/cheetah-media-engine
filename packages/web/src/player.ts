@@ -961,7 +961,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       url: options.url,
       sink,
       onProgress: (progress: DownloadProgress) => this.emit('download', { active: true, progress }),
-      onError: (error: TransportError) => this.emit('download', { active: true, error }),
+      onError: (error: TransportError) => this.emit('download', { active: false, error }),
       onComplete: () => this.emit('download', { active: false, completed: true }),
       ...(options.headers !== undefined ? { headers: options.headers } : {}),
       ...(options.credentials !== undefined ? { credentials: options.credentials } : {}),
@@ -1005,7 +1005,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       url,
       sink,
       onProgress: (progress: DownloadProgress) => this.emit('download', { active: true, progress }),
-      onError: (error: TransportError) => this.emit('download', { active: true, error }),
+      onError: (error: TransportError) => this.emit('download', { active: false, error }),
       onComplete: () => this.emit('download', { active: false, completed: true }),
       ...(options?.headers !== undefined ? { headers: options.headers } : base.headers !== undefined ? { headers: base.headers } : {}),
       ...(options?.credentials !== undefined

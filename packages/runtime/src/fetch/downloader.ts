@@ -44,6 +44,7 @@ export class StreamDownloader {
   private state: DownloadState = 'idle';
   private controller?: AbortController;
   private bytesWritten = 0;
+  private bytesReceived = 0;
   private startedAt = 0;
   private completedAt = 0;
 
@@ -69,6 +70,7 @@ export class StreamDownloader {
 
     this.state = 'running';
     this.bytesWritten = 0;
+    this.bytesReceived = 0;
     this.startedAt = performance.now();
     this.completedAt = 0;
 
@@ -91,7 +93,8 @@ export class StreamDownloader {
       }
       throw error;
     } finally {
-      if (this.state !== 'paused') {
+      const finalState = this.state as DownloadState;
+      if (finalState !== 'paused') {
         await this.closeSink(options.sink);
       }
     }
@@ -130,7 +133,8 @@ export class StreamDownloader {
       }
       throw error;
     } finally {
-      if (this.state !== 'paused') {
+      const finalState = this.state as DownloadState;
+      if (finalState !== 'paused') {
         await this.closeSink(options.sink);
       }
     }
@@ -147,8 +151,8 @@ export class StreamDownloader {
     const signal = this.controller.signal;
 
     const headers = new Headers(options.headers ?? {});
-    if (isResume && this.bytesWritten > 0) {
-      headers.set('Range', `bytes=${this.bytesWritten}-`);
+    if (isResume && this.bytesReceived > 0) {
+      headers.set('Range', `bytes=${this.bytesReceived}-`);
     }
 
     const init: RequestInit = {
@@ -189,6 +193,7 @@ export class StreamDownloader {
           throw makeError(TransportErrorCode.Canceled, 'Download canceled', false);
         }
         if (done || !value) break;
+        this.bytesReceived += value.length;
         const chunk = options.transform ? options.transform(value) : value;
         if (chunk) {
           await options.sink.write(chunk);
