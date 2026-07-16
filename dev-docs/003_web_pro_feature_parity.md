@@ -60,7 +60,7 @@
 
 ## 6. 全局完成定义
 
-- [ ] 36–51 所有适用项完成，不适用项经产品评审记录原因。
+- [x] 36–51 所有适用项完成，不适用项经产品评审记录原因。
 - [ ] 每项有自动化测试、真实设备记录或明确人工验收步骤。
 - [ ] 浏览器限制和服务器依赖作为 capability 公示，不冒充标准支持。
 - [ ] 新增容器/transport 路径在共享核心中通过 contract suite，不重复 parser 逻辑。
@@ -142,6 +142,6 @@ corepack pnpm exec playwright test
 | 48 | 已完成 | `wp/48-crypto-transforms` -> #50 | SM4 / XOR / AES-128-CBC 解密 transform；Devin Review 修复 buffer drain 后通过 CI |
 | 49 | 已完成 | `wp/49-sei-metadata` -> #51 | SEI 提取、TS PES private data、服务端坐标 overlay |
 | 50 | 已完成 | `wp/50c-intercom-packetizer` -> #54 | 麦克风采集、G.711 编码、语音对讲 packetizer 与播放器集成；拆分为 50a/50b/50c |
-| 51a | 进行中 | `wp/51-downloader-recording` | `StreamDownloader` + `BlobSink`、播放器下载 API |
-| 51b | 待开始 | `wp/51-downloader-recording` | 合成录制（依赖 51a、WP-29、WP-47） |
-| 51c | 待开始 | `wp/51-downloader-recording` | VR/AI 扩展入口 |
+| 51a | 已完成 | `wp/51-downloader-recording` -> #55 | `StreamDownloader` + `BlobSink`、播放器下载 API |
+| 51b | 已完成 | `wp/51-downloader-recording` -> #56 | 合成录制（依赖 51a、WP-29、WP-47） |
+| 51c | 已完成 | `wp/51c-vr-ai-extension` -> #57 | VR/AI 扩展入口 |
