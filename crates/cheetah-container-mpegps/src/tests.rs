@@ -4,7 +4,21 @@ use cheetah_media_types::{CodecId, TrackKind};
 
 use crate::{MpegPsConfig, MpegPsDemuxer, MpegPsError, MpegPsEvent};
 
+fn encode_pts(pts: u64) -> [u8; 5] {
+    let pts = pts & 0x1FFFFFFFF;
+    let b0 = 0x20 | (((pts >> 30) & 0x7) << 1) | 1;
+    let b1 = ((pts >> 22) & 0xFF) as u8;
+    let b2 = ((((pts >> 15) & 0x7F) << 1) | 1) as u8;
+    let b3 = ((pts >> 7) & 0xFF) as u8;
+    let b4 = (((pts & 0x7F) << 1) | 1) as u8;
+    [b0 as u8, b1, b2, b3, b4]
+}
+
 fn make_video_pes(payload: &[u8]) -> Vec<u8> {
+    make_video_pes_with_pts(payload, 0)
+}
+
+fn make_video_pes_with_pts(payload: &[u8], pts: u64) -> Vec<u8> {
     let mut pes = Vec::new();
     pes.extend_from_slice(&[0x00, 0x00, 0x01, 0xE0]);
 
@@ -16,8 +30,7 @@ fn make_video_pes(payload: &[u8]) -> Vec<u8> {
     pes.push(0x81); // marker bits + PES_scrambling_control + priority + alignment + copyright + original
     pes.push(0x80); // PTS present
     pes.push(0x05); // header_data_length
-    // 5-byte PTS = 0
-    pes.extend_from_slice(&[0x21, 0x00, 0x01, 0x00, 0x01]);
+    pes.extend_from_slice(&encode_pts(pts));
     pes.extend_from_slice(payload);
     pes
 }
@@ -271,6 +284,58 @@ fn unbounded_video_pes_flushes_at_eof() {
         !packets.is_empty(),
         "unbounded video PES should flush at EOF"
     );
+}
+
+#[test]
+fn partial_pack_header_waits_for_more_data() {
+    // Pack start code followed by less than the 14 fixed bytes.
+    let data = [0x00, 0x00, 0x01, 0xBA, 0x44, 0x00];
+    let mut demuxer = MpegPsDemuxer::new(MpegPsConfig::h264());
+    demuxer.push(&data);
+    assert_eq!(demuxer.next_event().unwrap(), None);
+    assert!(!matches!(
+        demuxer.next_event(),
+        Err(MpegPsError::NeedMoreData)
+    ));
+}
+
+#[test]
+fn video_packet_timestamp_matches_originating_pes() {
+    // First PES contains an IDR NAL with no following start code, so it is
+    // held until the next PES begins with a start code.
+    let first = make_video_pes_with_pts(
+        &[0x00, 0x00, 0x00, 0x01, 0x65], // 4-byte start code + IDR NAL header
+        100,
+    );
+    let second = make_video_pes_with_pts(&[0x00, 0x00, 0x00, 0x01, 0x65], 200);
+
+    let mut demuxer = MpegPsDemuxer::new(MpegPsConfig::h264());
+    demuxer.push(&first);
+    assert_eq!(demuxer.next_event().unwrap(), None);
+
+    demuxer.push(&second);
+    let mut packets = Vec::new();
+    while let Ok(Some(event)) = demuxer.next_event() {
+        if let MpegPsEvent::Packet(p) = event {
+            packets.push(p);
+        }
+    }
+
+    assert!(
+        !packets.is_empty(),
+        "first video packet should be emitted when second PES arrives"
+    );
+    assert_eq!(packets[0].time.pts.map(|t| t.ticks()), Some(100));
+
+    demuxer.end().unwrap();
+    while let Ok(Some(event)) = demuxer.next_event() {
+        if let MpegPsEvent::Packet(p) = event {
+            packets.push(p);
+        }
+    }
+
+    assert_eq!(packets.len(), 2);
+    assert_eq!(packets[1].time.pts.map(|t| t.ticks()), Some(200));
 }
 
 fn build_adts_frame(sample_rate: u32, channels: u8, raw_len: usize) -> Vec<u8> {

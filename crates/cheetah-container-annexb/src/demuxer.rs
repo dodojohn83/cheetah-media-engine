@@ -322,7 +322,7 @@ impl AnnexBDemuxer {
 /// Find the next Annex-B start code, skipping emulation prevention bytes.
 ///
 /// Returns `(position, code_len)` where `code_len` is 3 or 4.
-pub(crate) fn find_start_code(data: &[u8], start: usize) -> Option<(usize, usize)> {
+pub fn find_start_code(data: &[u8], start: usize) -> Option<(usize, usize)> {
     if data.len() < start.saturating_add(3) {
         return None;
     }
