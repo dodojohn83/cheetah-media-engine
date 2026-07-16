@@ -468,5 +468,51 @@ describe('web sdk', () => {
         expect(result.bytesWritten).toBe(5);
       });
     });
+
+    it('stops an active download when the player is destroyed', async () => {
+      function makeSlowStream(chunks: Uint8Array[], signal?: AbortSignal) {
+        let index = 0;
+        return new ReadableStream<Uint8Array>({
+          start(controller) {
+            if (signal) {
+              signal.addEventListener('abort', () => {
+                try {
+                  controller.close();
+                } catch {
+                  // already closed
+                }
+              }, { once: true });
+            }
+          },
+          pull(controller) {
+            if (index >= chunks.length) return;
+            const chunk = chunks[index];
+            if (chunk) {
+              controller.enqueue(chunk);
+              index += 1;
+            }
+          },
+        });
+      }
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+          const signal = init?.signal ?? undefined;
+          return Promise.resolve(new Response(makeSlowStream([new Uint8Array([1, 2])], signal)));
+        }),
+      );
+
+      const player = playerWithMock();
+      const sink = { write: vi.fn(), close: vi.fn() };
+      player.addEventListener('download', () => {
+        void player.destroy();
+      });
+      const start = player.startDownload({ url: 'https://example.com/video.mp4', sink });
+      await expect(start).rejects.toBeInstanceOf(CheetahMediaError);
+      expect(player.downloadActive).toBe(false);
+      expect(sink.write).toHaveBeenCalledTimes(1);
+      expect(sink.close).toHaveBeenCalled();
+    });
   });
 });

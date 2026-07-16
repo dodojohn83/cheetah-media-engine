@@ -835,6 +835,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this.destroyed = true;
     this._intercomActive = false;
     this._intercomStarting = false;
+    await this.cleanupDownload().catch(() => undefined);
     await this.cleanupIntercom().catch(() => undefined);
     this._state = 'destroyed';
     this.listeners.clear();
@@ -1042,6 +1043,20 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this._downloadController = undefined;
     this._downloadSink = undefined;
     this._lastDownloadOptions = undefined;
+  }
+
+  private async cleanupDownload(): Promise<void> {
+    const controller = this._downloadController;
+    this._downloadController = undefined;
+    this._downloadSink = undefined;
+    this._lastDownloadOptions = undefined;
+    if (controller) {
+      try {
+        await controller.stop();
+      } catch {
+        // stop() may fail if the download already completed; ignore.
+      }
+    }
   }
 
   private async cleanupIntercom(): Promise<void> {
