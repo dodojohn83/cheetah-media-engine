@@ -3,6 +3,7 @@ import {
   clearMetadataOverlay,
   parseMetadataPayload,
   renderMetadataOverlay,
+  sanitizeStyle,
   type MetadataShape,
 } from './metadata-overlay';
 
@@ -80,7 +81,7 @@ describe('renderMetadataOverlay', () => {
     renderMetadataOverlay(shapes, svg);
     expect(svg.children.length).toBe(2);
     expect(svg.querySelector('line')).not.toBeNull();
-    expect(svg.querySelector('rect')?.getAttribute('style')).toBe('fill:red');
+    expect(svg.querySelector('rect')?.getAttribute('style')).toBe('fill: red');
   });
 
   it('replaces previous shapes', () => {
@@ -110,6 +111,33 @@ describe('renderMetadataOverlay', () => {
     expect(text).not.toBeNull();
     expect(text?.textContent).toBe('<script>alert(1)</script>');
     expect(text?.innerHTML).not.toContain('<script>');
+  });
+});
+
+describe('sanitizeStyle', () => {
+  it('keeps safe SVG presentation properties', () => {
+    const raw = 'fill: red; stroke: rgba(0,0,0,0.5); stroke-width: 0.002; opacity: 0.8';
+    expect(sanitizeStyle(raw)).toBe(
+      'fill: red; stroke: rgba(0,0,0,0.5); stroke-width: 0.002; opacity: 0.8',
+    );
+  });
+
+  it('drops dangerous url/expression/javascript declarations', () => {
+    const raw =
+      "fill: red; background: url(https://attacker/); stroke: expression(alert(1)); color: javascript://";
+    expect(sanitizeStyle(raw)).toBe('fill: red');
+  });
+
+  it('drops disallowed properties like pointer-events and z-index', () => {
+    expect(sanitizeStyle('pointer-events: auto; z-index: 9999; fill: blue')).toBe('fill: blue');
+  });
+
+  it('returns undefined for oversized style strings', () => {
+    expect(sanitizeStyle('fill: red'.repeat(300))).toBeUndefined();
+  });
+
+  it('drops declarations with malformed syntax', () => {
+    expect(sanitizeStyle('fill-red; fill: blue;')).toBe('fill: blue');
   });
 });
 

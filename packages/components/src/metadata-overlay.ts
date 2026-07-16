@@ -171,9 +171,74 @@ function createSvgElement<K extends keyof SVGElementTagNameMap>(
   return document.createElementNS('http://www.w3.org/2000/svg', tag);
 }
 
+const ALLOWED_STYLE_PROPS = new Set([
+  'fill',
+  'stroke',
+  'stroke-width',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'stroke-dasharray',
+  'stroke-dashoffset',
+  'opacity',
+  'fill-opacity',
+  'stroke-opacity',
+  'fill-rule',
+  'clip-rule',
+  'color',
+  'font',
+  'font-size',
+  'font-family',
+  'font-weight',
+  'font-style',
+  'font-variant',
+  'text-anchor',
+  'dominant-baseline',
+  'letter-spacing',
+  'word-spacing',
+  'paint-order',
+  'vector-effect',
+  'shape-rendering',
+  'text-rendering',
+  'transform',
+]);
+
+const FORBIDDEN_STYLE_PATTERN =
+  /url\(|expression\(|javascript:|@import|behavior:|moz-binding|calc\(|attr\(|var\(|\/\*|\*\/|[<>"'\\!]|!important/i;
+
+/** Sanitize an untrusted style string to a subset of safe SVG presentation properties. */
+export function sanitizeStyle(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw.length === 0) return undefined;
+  if (raw.length > 1024) return undefined;
+
+  const sanitized: string[] = [];
+  const declarations = raw.split(';');
+  if (declarations.length > 32) return undefined;
+
+  for (const declaration of declarations) {
+    const colonIndex = declaration.indexOf(':');
+    if (colonIndex === -1) continue;
+
+    const prop = declaration.slice(0, colonIndex).trim();
+    const value = declaration.slice(colonIndex + 1).trim();
+
+    if (prop.length === 0 || value.length === 0) continue;
+    if (!/^[a-zA-Z-]+$/.test(prop)) continue;
+    if (FORBIDDEN_STYLE_PATTERN.test(value)) continue;
+    if (FORBIDDEN_STYLE_PATTERN.test(prop)) continue;
+
+    const lowerProp = prop.toLowerCase();
+    if (!ALLOWED_STYLE_PROPS.has(lowerProp)) continue;
+
+    sanitized.push(`${lowerProp}: ${value}`);
+  }
+
+  return sanitized.length > 0 ? sanitized.join('; ') : undefined;
+}
+
 function setStyle(element: SVGElement, style: string | undefined): void {
-  if (style !== undefined && style.length > 0) {
-    element.setAttribute('style', style);
+  const sanitized = sanitizeStyle(style);
+  if (sanitized !== undefined && sanitized.length > 0) {
+    element.setAttribute('style', sanitized);
   }
 }
 

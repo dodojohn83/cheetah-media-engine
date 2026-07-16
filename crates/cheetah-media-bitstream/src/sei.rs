@@ -57,6 +57,14 @@ pub fn parse_sei_messages(
     let mut i = 0;
 
     while i < rbsp.len() {
+        // An SEI RBSP ends with rbsp_trailing_bits: a single 1 bit followed by
+        // zero bits. When the payload is byte-aligned, the trailing bits byte is
+        // 0x80; optional zero padding bytes may follow. If the remainder is
+        // such a pattern, we are done.
+        if rbsp[i] == 0x80 && rbsp[i + 1..].iter().all(|&b| b == 0) {
+            break;
+        }
+
         if messages.len() >= max_messages {
             return Err(SeiError::TooManyMessages);
         }
@@ -191,6 +199,28 @@ mod tests {
         assert_eq!(out[0].payload, b"ab");
         assert_eq!(out[1].payload_type, 2);
         assert!(out[1].payload.is_empty());
+    }
+
+    #[test]
+    fn rbsp_trailing_bits_stop_byte_is_accepted() {
+        // A standards-compliant SEI NAL RBSP ends with rbsp_trailing_bits,
+        // which for byte-aligned payload is 0x80 (single stop bit + zeros).
+        let mut rbsp = vec![0x04, 0x05, b'h', b'e', b'l', b'l', b'o'];
+        rbsp.push(0x80);
+        let out = parse_sei(&rbsp).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].payload_type, 4);
+        assert_eq!(out[0].payload, b"hello");
+    }
+
+    #[test]
+    fn rbsp_trailing_bits_with_zero_padding_is_accepted() {
+        let mut rbsp = vec![0x04, 0x05, b'h', b'e', b'l', b'l', b'o', 0x80];
+        rbsp.extend_from_slice(&[0x00, 0x00]);
+        let out = parse_sei(&rbsp).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].payload_type, 4);
+        assert_eq!(out[0].payload, b"hello");
     }
 
     #[test]
