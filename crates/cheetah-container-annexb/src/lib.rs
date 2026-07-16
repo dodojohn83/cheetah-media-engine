@@ -10,7 +10,7 @@ pub mod demuxer;
 pub mod error;
 pub mod param_sets;
 
-pub use demuxer::{AnnexBConfig, AnnexBDemuxer, AnnexbEvent};
+pub use demuxer::{AnnexBConfig, AnnexBDemuxer, AnnexbEvent, find_start_code};
 pub use error::AnnexbError;
 
 #[cfg(test)]

@@ -102,6 +102,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cheetah-container-mpegps"
+version = "0.1.0"
+dependencies = [
+ "cheetah-container-annexb",
+ "cheetah-container-mpegts",
+ "cheetah-media-bitstream",
+ "cheetah-media-types",
+]
+
+[[package]]
 name = "cheetah-container-mpegts"
 version = "0.1.0"
 dependencies = [
