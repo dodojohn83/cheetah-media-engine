@@ -3,11 +3,14 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 extern crate alloc;
 
+mod audio;
 pub mod demuxer;
 pub mod error;
 pub mod pack;
 pub mod pes;
 mod scan;
+mod types;
+mod video;
 
 pub use demuxer::{MpegPsConfig, MpegPsDemuxer, MpegPsEvent};
 pub use error::MpegPsError;
