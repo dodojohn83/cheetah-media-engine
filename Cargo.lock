@@ -222,6 +222,8 @@ dependencies = [
 name = "cheetah-media-web-bindings"
 version = "0.1.0"
 dependencies = [
+ "cheetah-container-annexb",
+ "cheetah-container-mpegps",
  "cheetah-media-abi",
  "cheetah-media-engine",
  "cheetah-media-types",

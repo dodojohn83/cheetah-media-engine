@@ -8,6 +8,10 @@ use cheetah_media_engine::VERSION;
 use js_sys::Error as JsError;
 use wasm_bindgen::prelude::*;
 
+mod demux;
+
+pub use demux::{AnnexBDemuxer, DemuxEvent, DemuxEventKind, MpegPsDemuxer};
+
 const INSTANCE_ID: u64 = 1;
 
 /// Turn a stable `AbiError` into a JavaScript `Error`.
