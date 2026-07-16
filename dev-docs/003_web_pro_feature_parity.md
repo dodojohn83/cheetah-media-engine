@@ -138,4 +138,5 @@ corepack pnpm exec playwright test
 | 44 | 已完成 | `wp/44-frame-step` -> #46 | 逐帧/暂停显示 API；MSE time-step、WebCodecs 前向步进/队列保持连接、FallbackController/Player 转发 |
 | 45 | 已完成 | `wp/45-ptz-panel` -> #47 | PTZ 操作盘组件、GB28181 PtzCmd 编码、CheetahPlayer.ptz 事件；信号传输由调用方转发到 signaling 服务 |
 | 46 | 已完成 | `wp/46-advanced-wall` -> #48 | 双击局部全屏、拖拽排序、不规则布局 |
-| 47 | 进行中 | `wp/47-watermark` | 局部文字/图片/HTML 水印、平铺/动态/幽灵水印 |
+| 47 | 已完成 | `wp/47-watermark` -> #49 | 局部文字/图片/HTML 水印、平铺/动态/幽灵水印；Devin Review 修复并通过 CI |
+| 48 | 进行中 | `wp/48-crypto-transforms` | SM4 / XOR / AES-128-CBC 解密 transform |
