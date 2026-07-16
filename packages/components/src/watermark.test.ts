@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createWatermarkOverlay, parseWatermarks, type TextWatermark, type ImageWatermark, type HtmlWatermark } from './watermark';
+import {
+  createWatermarkOverlay,
+  parseWatermarks,
+  sanitizeHtml,
+  type TextWatermark,
+  type ImageWatermark,
+  type HtmlWatermark,
+} from './watermark';
 
 describe('parseWatermarks', () => {
   it('returns undefined for empty or invalid input', () => {
@@ -62,11 +69,12 @@ describe('createWatermarkOverlay', () => {
   });
 
   it('renders image watermarks', () => {
-    overlay.setWatermarks([{ type: 'image', content: 'http://example.com/w.png', width: '120px' }]);
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    overlay.setWatermarks([{ type: 'image', content: dataUrl, width: '120px' }]);
     const items = overlay.root.querySelectorAll('.watermark-item');
     expect(items.length).toBe(1);
     expect(items[0]!.tagName.toLowerCase()).toBe('img');
-    expect((items[0] as HTMLImageElement).src).toBe('http://example.com/w.png');
+    expect((items[0] as HTMLImageElement).src).toBe(dataUrl);
     expect((items[0] as HTMLElement).style.width).toBe('120px');
   });
 
@@ -138,5 +146,42 @@ describe('Watermark type compatibility', () => {
   it('accepts html watermark', () => {
     const wm: HtmlWatermark = { type: 'html', content: '<p>warning</p>', opacity: 0.3, ghost: true };
     expect(wm.type).toBe('html');
+  });
+});
+
+describe('sanitizeHtml', () => {
+  it('keeps safe formatting markup', () => {
+    const fragment = sanitizeHtml('<p class="note">Hello <b>world</b></p>');
+    const div = document.createElement('div');
+    div.appendChild(fragment);
+    expect(div.innerHTML).toBe('<p class="note">Hello <b>world</b></p>');
+  });
+
+  it("removes script tags and event handlers", () => {
+    const fragment = sanitizeHtml('<p onclick="alert(1)">x</p><script>/* should not run */</script><span onmouseover="bad">y</span>');
+    const div = document.createElement('div');
+    div.appendChild(fragment);
+    expect(div.querySelector('script')).toBeNull();
+    expect(div.querySelector('p')?.getAttribute('onclick')).toBeNull();
+    expect(div.querySelector('span')?.getAttribute('onmouseover')).toBeNull();
+    expect(div.textContent).toBe('xy');
+  });
+
+  it("removes dangerous URLs", () => {
+    const fragment = sanitizeHtml('<a href="javascript:alert(1)">link</a><img src="javascript:alert(2)">');
+    const div = document.createElement('div');
+    div.appendChild(fragment);
+    expect(div.querySelector('a')?.getAttribute('href')).toBeNull();
+    expect(div.querySelector('img')?.getAttribute('src')).toBeNull();
+  });
+
+  it("removes non-allowlisted tags and attributes", () => {
+    const fragment = sanitizeHtml('<x-foo data-x="1"><span data-x="1" unknown-attr="2">safe</span></x-foo>');
+    const div = document.createElement('div');
+    div.appendChild(fragment);
+    expect(div.querySelector('x-foo')).toBeNull();
+    expect(div.querySelector('span')?.getAttribute('data-x')).toBeNull();
+    expect(div.querySelector('span')?.getAttribute('unknown-attr')).toBeNull();
+    expect(div.textContent).toBe('safe');
   });
 });

@@ -157,6 +157,120 @@ export function parseWatermarks(value: string | null): Watermark[] | undefined {
   }
 }
 
+const ALLOWED_TAGS = new Set<string>([
+  'a',
+  'b',
+  'br',
+  'div',
+  'em',
+  'font',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'i',
+  'img',
+  'li',
+  'ol',
+  'p',
+  's',
+  'small',
+  'span',
+  'strike',
+  'strong',
+  'sub',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'th',
+  'thead',
+  'tr',
+  'u',
+  'ul',
+]);
+
+const ALLOWED_ATTRIBUTES = new Set<string>([
+  'alt',
+  'class',
+  'colspan',
+  'height',
+  'href',
+  'rowspan',
+  'src',
+  'style',
+  'target',
+  'title',
+  'width',
+]);
+
+function isDangerousUrl(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  return lower.startsWith('javascript:') || lower.startsWith('data:text/html');
+}
+
+function sanitizeAttribute(name: string, value: string): string | undefined {
+  const lowerName = name.toLowerCase();
+  if (lowerName.startsWith('on')) return undefined;
+  if (!ALLOWED_ATTRIBUTES.has(lowerName)) return undefined;
+  if ((lowerName === 'href' || lowerName === 'src') && isDangerousUrl(value)) return undefined;
+  return value;
+}
+
+function sanitizeNode(node: Node): Node | undefined {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return document.createTextNode(node.textContent ?? '');
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return undefined;
+  }
+  const element = node as Element;
+  const tag = element.tagName.toLowerCase();
+  if (!ALLOWED_TAGS.has(tag)) {
+    // Dangerous containers such as <script> and <style> are dropped entirely;
+    // other unknown tags have their safe children flattened into the parent.
+    if (tag === 'script' || tag === 'style') {
+      return undefined;
+    }
+    const fragment = document.createDocumentFragment();
+    for (const child of Array.from(element.childNodes)) {
+      const sanitized = sanitizeNode(child);
+      if (sanitized) fragment.appendChild(sanitized);
+    }
+    return fragment.childNodes.length > 0 ? fragment : undefined;
+  }
+
+  const safe = document.createElement(tag);
+  for (const attr of Array.from(element.attributes)) {
+    const value = sanitizeAttribute(attr.name, attr.value);
+    if (value !== undefined) {
+      safe.setAttribute(attr.name, value);
+    }
+  }
+  for (const child of Array.from(element.childNodes)) {
+    const sanitized = sanitizeNode(child);
+    if (sanitized) safe.appendChild(sanitized);
+  }
+  return safe;
+}
+
+/**
+ * Sanitize a raw HTML string for use in an HTML watermark. Removes scripts,
+ * event handlers, dangerous URLs and non-allowlisted tags/attributes.
+ */
+export function sanitizeHtml(html: string): DocumentFragment {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const fragment = document.createDocumentFragment();
+  for (const child of Array.from(doc.body.childNodes)) {
+    const sanitized = sanitizeNode(child);
+    if (sanitized) fragment.appendChild(sanitized);
+  }
+  return fragment;
+}
+
 function createWatermarkItem(watermark: Watermark, index: number): HTMLElement {
   const el: HTMLElement =
     watermark.type === 'image'
@@ -181,7 +295,7 @@ function createWatermarkItem(watermark: Watermark, index: number): HTMLElement {
     // Decorative watermark images do not need a screen-reader announcement.
     img.setAttribute('aria-hidden', 'true');
   } else {
-    el.innerHTML = watermark.content;
+    el.appendChild(sanitizeHtml(watermark.content));
   }
 
   const opacity = watermark.opacity;

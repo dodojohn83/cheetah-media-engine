@@ -644,7 +644,9 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   private _updateWatermarks(): void {
-    this._watermarkOverlay.setWatermarks(this.watermarks);
+    if (this._watermarkOverlay) {
+      this._watermarkOverlay.setWatermarks(this.watermarks);
+    }
   }
 
   private _announce(text: string): void {
