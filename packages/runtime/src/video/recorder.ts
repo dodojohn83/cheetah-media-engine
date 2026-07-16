@@ -57,6 +57,10 @@ export interface RecordingResult {
 export interface RecordingSession {
   /** Stop recording and finalize the output. */
   stop(): Promise<RecordingResult>;
+  /** Pause recording; frames are dropped and no data is emitted until resume(). */
+  pause(): void;
+  /** Resume a paused recording. */
+  resume(): void;
   /** Abort recording without finalizing. */
   cancel(): Promise<void>;
   /** Current recording statistics. */
@@ -115,6 +119,8 @@ class MediaStreamRecorderSession implements RecordingSession {
   private recorder: MediaRecorderWithState | undefined;
   private writer: WritableStreamDefaultWriter<Uint8Array> | undefined;
   private startTime = 0;
+  private pauseStartTime = 0;
+  private pausedDurationMs = 0;
   private bytesWritten = 0;
   private queueSize = 0;
   private backpressure = false;
@@ -193,9 +199,14 @@ class MediaStreamRecorderSession implements RecordingSession {
     }
   }
 
+  private _pausedDurationMs(): number {
+    const currentPause = this.pauseStartTime > 0 ? performance.now() - this.pauseStartTime : 0;
+    return this.pausedDurationMs + currentPause;
+  }
+
   private _checkLimits(): void {
     if (this.finalized) return;
-    const elapsed = performance.now() - this.startTime;
+    const elapsed = performance.now() - this.startTime - this._pausedDurationMs();
     const maxDuration = this.options.maxDurationMs;
     const maxSize = this.options.maxSizeBytes;
     if ((maxDuration !== undefined && elapsed >= maxDuration) || (maxSize !== undefined && this.bytesWritten >= maxSize)) {
@@ -211,9 +222,14 @@ class MediaStreamRecorderSession implements RecordingSession {
       if (error) {
         this.rejectStop?.(error);
       } else {
+        const pausedMs = this._pausedDurationMs();
+        if (this.pauseStartTime > 0) {
+          this.pausedDurationMs += performance.now() - this.pauseStartTime;
+          this.pauseStartTime = 0;
+        }
         const result: RecordingResult = {
           bytes: this.bytesWritten,
-          durationMs: Math.max(0, performance.now() - this.startTime),
+          durationMs: Math.max(0, performance.now() - this.startTime - pausedMs),
           mimeType: this.recorder?.mimeType ?? 'video/webm',
           filename: this.options.filename ?? 'recording',
           partial: this.partial,
@@ -245,6 +261,34 @@ class MediaStreamRecorderSession implements RecordingSession {
       });
     }
     return this.stopPromise;
+  }
+
+  pause(): void {
+    if (!this.recorder || this.recorder.state !== 'recording') return;
+    try {
+      this.recorder.pause();
+    } catch {
+      // Some MediaRecorder implementations do not support pause; ignore.
+      return;
+    }
+    if (this.pauseStartTime === 0) {
+      this.pauseStartTime = performance.now();
+    }
+  }
+
+  resume(): void {
+    if (!this.recorder || this.recorder.state !== 'paused') return;
+    const start = this.pauseStartTime;
+    try {
+      this.recorder.resume();
+    } catch {
+      // Some MediaRecorder implementations do not support resume; ignore.
+      return;
+    }
+    if (start > 0) {
+      this.pausedDurationMs += performance.now() - start;
+      this.pauseStartTime = 0;
+    }
   }
 
   stop(): Promise<RecordingResult> {
@@ -284,7 +328,7 @@ class MediaStreamRecorderSession implements RecordingSession {
   getStats(): RecordingStats {
     return {
       bytesWritten: this.bytesWritten,
-      durationMs: this.recorder && this.startTime > 0 ? Math.max(0, performance.now() - this.startTime) : 0,
+      durationMs: this.recorder && this.startTime > 0 ? Math.max(0, performance.now() - this.startTime - this._pausedDurationMs()) : 0,
       queueSize: this.queueSize,
       backpressure: this.backpressure,
     };

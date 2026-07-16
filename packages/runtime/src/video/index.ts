@@ -33,3 +33,11 @@ export {
   type RecordingResult,
   type RecordingSession,
 } from './recorder';
+export {
+  CompositeRecorder,
+  type CompositeRecordingOptions,
+  type CompositeRecordingResult,
+  type CompositeRecordingProgress,
+  type CompositeRecordingState,
+  type CompositeWatermark,
+} from './composite-recorder';
