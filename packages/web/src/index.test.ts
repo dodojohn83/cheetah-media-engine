@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createPlayer,
   createPlayerWithRuntime,
@@ -351,5 +351,58 @@ describe('web sdk', () => {
     const player = playerWithMock();
     await expect(player.stopIntercom()).resolves.toBeUndefined();
     expect(player.intercomActive).toBe(false);
+  });
+
+  describe('download', () => {
+    function makeStream(chunks: Uint8Array[], closeWhenDone = true) {
+      let index = 0;
+      return new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (index >= chunks.length) {
+            if (closeWhenDone) controller.close();
+            return;
+          }
+          if (controller.desiredSize !== null && controller.desiredSize <= 0) return;
+          const chunk = chunks[index];
+          if (chunk) {
+            controller.enqueue(chunk);
+            index += 1;
+          }
+        },
+      });
+    }
+
+    beforeEach(() => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(makeStream([new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])]))),
+      );
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('downloads a stream through the player', async () => {
+      const player = playerWithMock();
+      const result = await player.startDownload({ url: 'https://example.com/video.mp4' });
+      expect(result.bytesWritten).toBe(5);
+      expect(player.downloadActive).toBe(false);
+    });
+
+    it('rejects non-http download URLs', async () => {
+      const player = playerWithMock();
+      await expect(player.startDownload({ url: 'ftp://example.com/video.mp4' })).rejects.toBeInstanceOf(
+        CheetahMediaError,
+      );
+    });
+
+    it('emits download progress events', async () => {
+      const player = playerWithMock();
+      const events: CheetahPlayerEvent<'download'>[] = [];
+      player.addEventListener('download', (event) => events.push(event as CheetahPlayerEvent<'download'>));
+      await player.startDownload({ url: 'https://example.com/video.mp4' });
+      expect(events.length).toBeGreaterThanOrEqual(2);
+    });
   });
 });

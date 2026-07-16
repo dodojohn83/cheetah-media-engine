@@ -5,13 +5,22 @@ import {
   MicrophoneCapture,
   IntercomPacketizer,
   CaptureError,
+  BlobSink,
+  StreamDownloader,
   type EngineRuntime,
   type MetricsSnapshot,
   type WorkerErrorPayload,
   type AudioPacket,
+  type DownloadResult,
+  type DownloadProgress,
+  type DownloadSink,
+  type DownloadOptions as RuntimeDownloadOptions,
+  type TransportError,
 } from '@cheetah-media/runtime';
 import { createGb28181PtzCmd, type PtzCommand } from './ptz';
 import type { IntercomPacket } from '@cheetah-media/runtime';
+
+export type { DownloadResult, DownloadProgress, DownloadSink } from '@cheetah-media/runtime';
 
 export interface MemoryDescriptor {
   readonly region: number;
@@ -78,7 +87,8 @@ export type CheetahPlayerEventType =
   | 'recording'
   | 'ptz'
   | 'metadata'
-  | 'intercom';
+  | 'intercom'
+  | 'download';
 
 /** A single metadata item extracted from a stream or injected by an external caller. */
 export interface MetadataItem {
@@ -220,6 +230,21 @@ export interface IntercomOptions {
   readonly onError?: (error: Error) => void;
 }
 
+export interface DownloadOptions {
+  /** URL to download. Only http(s) URLs are supported. */
+  readonly url: string;
+  /** Optional request headers. */
+  readonly headers?: Record<string, string>;
+  /** Fetch credentials mode. */
+  readonly credentials?: RequestCredentials;
+  /** Optional custom sink. Defaults to an in-memory BlobSink. */
+  readonly sink?: DownloadSink;
+  /** Optional per-chunk transform applied before writing to the sink. */
+  readonly transform?: (chunk: Uint8Array) => Uint8Array | undefined;
+  /** Optional filename hint when saving via File System Access API. */
+  readonly filename?: string;
+}
+
 export interface CheetahPlayer {
   readonly id: string;
   readonly version: string;
@@ -244,6 +269,13 @@ export interface CheetahPlayer {
 
   startIntercom(options: IntercomOptions): Promise<void>;
   stopIntercom(): Promise<void>;
+
+  startDownload(options: DownloadOptions): Promise<import('@cheetah-media/runtime').DownloadResult>;
+  pauseDownload(): void;
+  resumeDownload(options?: DownloadOptions): Promise<import('@cheetah-media/runtime').DownloadResult>;
+  stopDownload(): Promise<void>;
+  readonly downloadActive: boolean;
+  readonly downloadProgress: import('@cheetah-media/runtime').DownloadProgress | undefined;
 
   getStats(): PlayerStats;
   getMetrics(): MetricsSnapshot;
@@ -501,6 +533,8 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private _intercomPacketizer: IntercomPacketizer | undefined;
   private _intercomSend: ((packet: IntercomPacket) => void) | undefined;
   private _intercomError: ((error: Error) => void) | undefined;
+  private _downloadController: StreamDownloader | undefined;
+  private _lastDownloadOptions: DownloadOptions | undefined;
 
   constructor(
     config: PlayerConfig,
@@ -525,6 +559,14 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   get intercomActive(): boolean {
     return this._intercomActive;
+  }
+
+  get downloadActive(): boolean {
+    return this._downloadController ? this._downloadController.progress.state === 'running' : false;
+  }
+
+  get downloadProgress(): DownloadProgress | undefined {
+    return this._downloadController?.progress;
   }
 
   private nextSequence(): number {
@@ -892,6 +934,104 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     await this.cleanupIntercom();
     this._intercomActive = false;
     this.emit('intercom', { active: false });
+  }
+
+  async startDownload(options: DownloadOptions): Promise<DownloadResult> {
+    this.guardDestroyed();
+    if (this._downloadController) {
+      throw new CheetahMediaError(6002, 'sdk', 'Download already active', { recoverable: true });
+    }
+    const url = new URL(options.url);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new CheetahMediaError(7001, 'download', 'Only http/https downloads are supported', { recoverable: false });
+    }
+
+    this._lastDownloadOptions = options;
+    const sink = options.sink ?? new BlobSink();
+    const controller = new StreamDownloader();
+    this._downloadController = controller;
+    const runtimeOptions: RuntimeDownloadOptions = {
+      url: options.url,
+      sink,
+      onProgress: (progress: DownloadProgress) => this.emit('download', { active: true, progress }),
+      onError: (error: TransportError) => this.emit('download', { active: true, error }),
+      onComplete: () => this.emit('download', { active: false, completed: true }),
+      ...(options.headers !== undefined ? { headers: options.headers } : {}),
+      ...(options.credentials !== undefined ? { credentials: options.credentials } : {}),
+      ...(options.transform !== undefined ? { transform: options.transform } : {}),
+    };
+
+    try {
+      const result = await controller.start(runtimeOptions);
+      return result;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new CheetahMediaError(6999, 'download', `Download failed: ${message}`, { cause, recoverable: true });
+    } finally {
+      if (this._downloadController === controller) {
+        const state = this._downloadController.progress.state;
+        if (state === 'completed' || state === 'error' || state === 'idle') {
+          this._downloadController = undefined;
+        }
+      }
+    }
+  }
+
+  pauseDownload(): void {
+    this.guardDestroyed();
+    this._downloadController?.pause();
+  }
+
+  async resumeDownload(options?: DownloadOptions): Promise<DownloadResult> {
+    this.guardDestroyed();
+    if (!this._downloadController) {
+      throw new CheetahMediaError(6002, 'sdk', 'No paused download to resume', { recoverable: true });
+    }
+    const base = this._lastDownloadOptions;
+    if (!base) {
+      throw new CheetahMediaError(6002, 'sdk', 'No paused download to resume', { recoverable: true });
+    }
+    const url = options?.url ?? base.url;
+    const sink = options?.sink ?? base.sink ?? new BlobSink();
+    const runtimeOptions: RuntimeDownloadOptions = {
+      url,
+      sink,
+      onProgress: (progress: DownloadProgress) => this.emit('download', { active: true, progress }),
+      onError: (error: TransportError) => this.emit('download', { active: true, error }),
+      onComplete: () => this.emit('download', { active: false, completed: true }),
+      ...(options?.headers !== undefined ? { headers: options.headers } : base.headers !== undefined ? { headers: base.headers } : {}),
+      ...(options?.credentials !== undefined
+        ? { credentials: options.credentials }
+        : base.credentials !== undefined
+          ? { credentials: base.credentials }
+          : {}),
+      ...(options?.transform !== undefined
+        ? { transform: options.transform }
+        : base.transform !== undefined
+          ? { transform: base.transform }
+          : {}),
+    };
+
+    try {
+      const result = await this._downloadController.resume(runtimeOptions);
+      return result;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new CheetahMediaError(6999, 'download', `Download resume failed: ${message}`, { cause, recoverable: true });
+    } finally {
+      if (this._downloadController) {
+        const state = this._downloadController.progress.state;
+        if (state === 'completed' || state === 'error' || state === 'idle') {
+          this._downloadController = undefined;
+        }
+      }
+    }
+  }
+
+  async stopDownload(): Promise<void> {
+    this.guardDestroyed();
+    await this._downloadController?.stop();
+    this._downloadController = undefined;
   }
 
   private async cleanupIntercom(): Promise<void> {

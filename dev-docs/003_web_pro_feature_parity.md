@@ -141,3 +141,7 @@ corepack pnpm exec playwright test
 | 47 | 已完成 | `wp/47-watermark` -> #49 | 局部文字/图片/HTML 水印、平铺/动态/幽灵水印；Devin Review 修复并通过 CI |
 | 48 | 已完成 | `wp/48-crypto-transforms` -> #50 | SM4 / XOR / AES-128-CBC 解密 transform；Devin Review 修复 buffer drain 后通过 CI |
 | 49 | 已完成 | `wp/49-sei-metadata` -> #51 | SEI 提取、TS PES private data、服务端坐标 overlay |
+| 50 | 已完成 | `wp/50c-intercom-packetizer` -> #54 | 麦克风采集、G.711 编码、语音对讲 packetizer 与播放器集成；拆分为 50a/50b/50c |
+| 51a | 进行中 | `wp/51-downloader-recording` | `StreamDownloader` + `BlobSink`、播放器下载 API |
+| 51b | 待开始 | `wp/51-downloader-recording` | 合成录制（依赖 51a、WP-29、WP-47） |
+| 51c | 待开始 | `wp/51-downloader-recording` | VR/AI 扩展入口 |
