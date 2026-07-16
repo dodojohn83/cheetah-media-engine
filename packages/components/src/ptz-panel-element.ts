@@ -115,15 +115,15 @@ export class CheetahPtzPanelElement extends HTMLElement {
     pad.className = 'ptz-pad';
 
     const directions: [PtzAction, MessageKey, string][] = [
-      ['upLeft', 'ptzUp', '↖'],
+      ['upLeft', 'ptzUpLeft', '↖'],
       ['up', 'ptzUp', '↑'],
-      ['upRight', 'ptzUp', '↗'],
+      ['upRight', 'ptzUpRight', '↗'],
       ['left', 'ptzLeft', '←'],
       ['stop', 'ptzStop', '●'],
       ['right', 'ptzRight', '→'],
-      ['downLeft', 'ptzDown', '↙'],
+      ['downLeft', 'ptzDownLeft', '↙'],
       ['down', 'ptzDown', '↓'],
-      ['downRight', 'ptzDown', '↘'],
+      ['downRight', 'ptzDownRight', '↘'],
     ];
 
     for (const [action, key, symbol] of directions) {

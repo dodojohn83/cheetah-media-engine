@@ -36,7 +36,11 @@ export type MessageKey =
   | 'ptzPresetDelete'
   | 'ptzStop'
   | 'ptzPresetNumber'
-  | 'ptzSpeed';
+  | 'ptzSpeed'
+  | 'ptzUpLeft'
+  | 'ptzUpRight'
+  | 'ptzDownLeft'
+  | 'ptzDownRight';
 
 const messages: Record<string, Record<MessageKey, string>> = {
   en: {
@@ -70,6 +74,10 @@ const messages: Record<string, Record<MessageKey, string>> = {
     ptzDown: 'Down',
     ptzLeft: 'Left',
     ptzRight: 'Right',
+    ptzUpLeft: 'Up left',
+    ptzUpRight: 'Up right',
+    ptzDownLeft: 'Down left',
+    ptzDownRight: 'Down right',
     ptzZoomIn: 'Zoom in',
     ptzZoomOut: 'Zoom out',
     ptzPresetSet: 'Set preset',
@@ -110,6 +118,10 @@ const messages: Record<string, Record<MessageKey, string>> = {
     ptzDown: '下',
     ptzLeft: '左',
     ptzRight: '右',
+    ptzUpLeft: '左上',
+    ptzUpRight: '右上',
+    ptzDownLeft: '左下',
+    ptzDownRight: '右下',
     ptzZoomIn: '变焦放大',
     ptzZoomOut: '变焦缩小',
     ptzPresetSet: '设置预置位',

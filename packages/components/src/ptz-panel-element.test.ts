@@ -34,6 +34,16 @@ describe('CheetahPtzPanelElement', () => {
     expect(detail).toEqual({ action: 'test' });
   });
 
+  it('gives each direction button a unique accessible label', () => {
+    const el = document.createElement('cheetah-ptz-panel') as CheetahPtzPanelElement;
+    container.appendChild(el);
+
+    const buttons = el.shadowRoot?.querySelectorAll('.ptz-pad button') as NodeListOf<HTMLButtonElement> | undefined;
+    expect(buttons).toBeTruthy();
+    const labels = Array.from(buttons!).map((b) => b.getAttribute('aria-label'));
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
   it('creates a shadow root with a ptz pad', () => {
     const el = document.createElement('cheetah-ptz-panel') as CheetahPtzPanelElement;
     container.appendChild(el);
