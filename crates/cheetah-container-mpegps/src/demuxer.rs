@@ -623,3 +623,10 @@ impl MpegPsDemuxer {
         Ok(track)
     }
 }
+
+#[cfg(test)]
+impl MpegPsDemuxer {
+    pub(crate) fn video_es_chunks_len(&self) -> usize {
+        self.video_es_chunks.len()
+    }
+}

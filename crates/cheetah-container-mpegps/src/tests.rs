@@ -338,6 +338,24 @@ fn video_packet_timestamp_matches_originating_pes() {
     assert_eq!(packets[1].time.pts.map(|t| t.ticks()), Some(200));
 }
 
+#[test]
+fn video_es_chunks_stay_bounded_across_pes() {
+    // Each PES contains two AUD NALs. The first is emitted because it is
+    // followed by a start code; the second is held until the next PES.
+    let payload = [0x00, 0x00, 0x00, 0x01, 0x09, 0x00, 0x00, 0x00, 0x01, 0x09];
+    let mut demuxer = MpegPsDemuxer::new(MpegPsConfig::h264());
+    for i in 0..10u64 {
+        let pes = make_video_pes_with_pts(&payload, i * 100);
+        demuxer.push(&pes);
+        while let Ok(Some(_)) = demuxer.next_event() {}
+    }
+    assert!(
+        demuxer.video_es_chunks_len() <= 2,
+        "video_es_chunks should stay bounded, got {}",
+        demuxer.video_es_chunks_len()
+    );
+}
+
 fn build_adts_frame(sample_rate: u32, channels: u8, raw_len: usize) -> Vec<u8> {
     use cheetah_media_bitstream::aac::AdtsHeader;
 
