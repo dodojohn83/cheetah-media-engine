@@ -9,8 +9,10 @@ use js_sys::Error as JsError;
 use wasm_bindgen::prelude::*;
 
 mod demux;
+mod g711;
 
 pub use demux::{AnnexBDemuxer, DemuxEvent, DemuxEventKind, MpegPsDemuxer};
+pub use g711::g711_encode_f32;
 
 const INSTANCE_ID: u64 = 1;
 
