@@ -47,6 +47,8 @@ class MockVideoDecoder {
   decodeCalls: unknown[] = [];
   flushed = false;
   closed = false;
+  private issueToken = 0;
+  private resetToken = 0;
 
   constructor(init: { output: (frame: CloseableVideoFrame) => void; error: (err: Error) => void }) {
     this.output = init.output;
@@ -60,8 +62,9 @@ class MockVideoDecoder {
   decode(chunk: object): void {
     this.decodeCalls.push(chunk);
     const frame = createMockFrame(0);
+    const token = ++this.issueToken;
     queueMicrotask(() => {
-      if (!this.closed && this.state !== 'error') {
+      if (!this.closed && this.state !== 'error' && token > this.resetToken) {
         this.output(frame);
       }
     });
@@ -74,6 +77,7 @@ class MockVideoDecoder {
 
   reset(): void {
     this.state = 'configured';
+    this.resetToken = this.issueToken;
   }
 
   close(): void {
@@ -95,6 +99,8 @@ class MockAudioDecoder {
   decodeCalls: unknown[] = [];
   flushed = false;
   closed = false;
+  private issueToken = 0;
+  private resetToken = 0;
 
   constructor(init: { output: (data: CloseableAudioData) => void; error: (err: Error) => void }) {
     this.output = init.output;
@@ -108,8 +114,9 @@ class MockAudioDecoder {
   decode(chunk: object): void {
     this.decodeCalls.push(chunk);
     const data = createMockAudio(0);
+    const token = ++this.issueToken;
     queueMicrotask(() => {
-      if (!this.closed && this.state !== 'error') {
+      if (!this.closed && this.state !== 'error' && token > this.resetToken) {
         this.output(data);
       }
     });
@@ -122,6 +129,7 @@ class MockAudioDecoder {
 
   reset(): void {
     this.state = 'configured';
+    this.resetToken = this.issueToken;
   }
 
   close(): void {
@@ -480,6 +488,34 @@ describe('WebCodecsBackend', () => {
     const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
     await backend.configure();
     await expect(backend.frameStep('forward')).rejects.toThrow('pauseDisplay');
+    await backend.stop();
+  });
+
+  it('frameStep rejects when stop is called before the next frame arrives', async () => {
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+    await backend.pauseDisplay(true);
+
+    const stepPromise = backend.frameStep('forward');
+    await backend.stop();
+
+    await expect(stepPromise).rejects.toThrow('stopped during frame step');
+  });
+
+  it('pauseDisplay(false) clears in-flight decode counters', async () => {
+    const backend = new WebCodecsBackend(ctx, {
+      tracks: [videoTrack, audioTrack],
+      callbacks: {},
+      maxPendingDecodes: 5,
+    });
+    await backend.configure();
+
+    backend.pushVideo(new Uint8Array([0, 0, 0, 1, 0x65]), 1000, { isKeyFrame: true });
+    backend.pushAudio(new Uint8Array([1, 2, 3]), 2000);
+    expect(backend.metrics.pendingDecodes).toBe(2);
+
+    await backend.pauseDisplay(false);
+    expect(backend.metrics.pendingDecodes).toBe(0);
     await backend.stop();
   });
 });

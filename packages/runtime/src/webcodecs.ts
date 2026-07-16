@@ -260,6 +260,7 @@ export class WebCodecsBackend implements MediaBackend {
   private displayPaused = false;
   private keepConnectionOnPause = false;
   private frameStepResolver: (() => void) | undefined = undefined;
+  private frameStepRejecter: ((error: Error) => void) | undefined = undefined;
   private frameStepKeyframeOnly = false;
   private readonly maxVideoQueue: number;
   private videoInputQueue: {
@@ -486,6 +487,9 @@ export class WebCodecsBackend implements MediaBackend {
       this.videoInputQueue = [];
       this.videoDecoder?.reset();
       this.audioDecoder?.reset();
+      // reset() discards pending decodes; their output callbacks never fire.
+      this._pendingVideo = 0;
+      this._pendingAudio = 0;
     }
   }
 
@@ -507,8 +511,9 @@ export class WebCodecsBackend implements MediaBackend {
     }
 
     // If we already have queued chunks, decode the next matching one now.
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       this.frameStepResolver = resolve;
+      this.frameStepRejecter = reject;
       this.frameStepKeyframeOnly = keyframeOnly;
       while (this.videoInputQueue.length > 0) {
         const entry = this.videoInputQueue.shift()!;
@@ -552,6 +557,12 @@ export class WebCodecsBackend implements MediaBackend {
     this._pendingAudio = 0;
     this.displayPaused = false;
     this.keepConnectionOnPause = false;
+    // Reject any in-flight frame-step request so callers do not hang.
+    if (this.frameStepRejecter) {
+      const rejecter = this.frameStepRejecter;
+      this.frameStepRejecter = undefined;
+      rejecter(new Error('Backend stopped during frame step'));
+    }
     this.frameStepResolver = undefined;
     this.frameStepKeyframeOnly = false;
     this.videoInputQueue = [];
@@ -588,6 +599,7 @@ export class WebCodecsBackend implements MediaBackend {
     if (this.frameStepResolver) {
       const resolver = this.frameStepResolver;
       this.frameStepResolver = undefined;
+      this.frameStepRejecter = undefined;
       this.frameStepKeyframeOnly = false;
       const onVideoFrame = this.callbacks.onVideoFrame;
       if (onVideoFrame) {
