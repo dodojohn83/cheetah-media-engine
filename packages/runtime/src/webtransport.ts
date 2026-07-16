@@ -53,6 +53,7 @@ export class WebTransportTransport implements Transport {
   private transport: WebTransportHandle | undefined;
   private streamsReader: ReadableStreamDefaultReader<WebTransportReceiveStream> | undefined;
   private datagramReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  private started = false;
   private stopped = false;
   private ended = false;
   private bytesRead = 0;
@@ -76,6 +77,8 @@ export class WebTransportTransport implements Transport {
       onEnd();
       return;
     }
+    if (this.started) return;
+    this.started = true;
 
     this.onError = onError;
     this.onEnd = onEnd;
