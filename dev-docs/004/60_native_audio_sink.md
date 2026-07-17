@@ -59,8 +59,8 @@ cargo deny check
 
 ## 5. 状态
 
-- [~] crate 创建与 audio sink 模型
-- [~] 平台 audio sink 探测 stub 与注册表选择
-- [~] `NullAudioSink` 与 `AvSync`
-- [~] Rust 全矩阵验证通过
-- [ ] CI / Devin Review 通过并合并
+- [x] crate 创建与 audio sink 模型
+- [x] 平台 audio sink 探测 stub 与注册表选择
+- [x] `NullAudioSink` 与 `AvSync`
+- [x] Rust 全矩阵验证通过
+- [x] CI / Devin Review 通过并合并
