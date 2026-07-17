@@ -35,6 +35,13 @@ jobs:
         run: cargo build -p cheetah-media-web-bindings --target wasm32-unknown-unknown --release
       - name: wasm build no-default-features
         run: cargo build -p cheetah-media-web-bindings --target wasm32-unknown-unknown --no-default-features
+      - name: install cbindgen
+        run: cargo install cbindgen --version 0.28.0 --locked
+      - name: verify C header is up to date
+        run: |
+          cd crates/cheetah-media-c-bindings
+          cbindgen --config cbindgen.toml --crate cheetah-media-c-bindings --output /tmp/cheetah_media.h
+          diff -u include/cheetah_media.h /tmp/cheetah_media.h
       - name: install cargo-deny
         run: cargo install cargo-deny --locked
       - name: cargo deny

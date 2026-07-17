@@ -1,0 +1,14 @@
+language = "C"
+cpp_compat = true
+include_guard = "CHEETAH_MEDIA_H"
+style = "type"
+
+# Pin emitted order so header drift checks remain deterministic across cbindgen versions.
+sort_by = "Name"
+
+[export]
+include = ["CheetahPlayer", "CheetahResult"]
+
+[enum]
+rename_variants = "ScreamingSnakeCase"
+prefix_with_name = true
