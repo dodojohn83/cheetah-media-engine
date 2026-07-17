@@ -240,6 +240,10 @@ version = "0.1.0"
 dependencies = [
  "cheetah-media-abi",
  "cheetah-media-backend-api",
+ "cheetah-media-native-audio",
+ "cheetah-media-native-decoder",
+ "cheetah-media-native-renderer",
+ "cheetah-media-native-transport",
  "cheetah-media-pipeline-core",
  "cheetah-media-timeline",
  "cheetah-media-types",

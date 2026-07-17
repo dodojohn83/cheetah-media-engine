@@ -26,24 +26,26 @@ impl AudioSinkProbe for NullAudioSinkProbe {
     }
 
     fn probe(&self) -> Vec<AudioSinkCapability> {
+        // Common headless test formats. The null sink does not depend on a
+        // real audio device, so it advertises a broad range of PCM rates
+        // and channel layouts for CI/headless playback.
+        let sample_rates = [8000, 16000, 44100, 48000];
+        let channels = [1u8, 2];
+        let formats = sample_rates
+            .iter()
+            .flat_map(|&rate| {
+                channels.iter().map(move |&ch| AudioFormatSupport {
+                    sample_rate: rate,
+                    channels: ch,
+                    sample_format: SampleFormat::S16,
+                    min_buffer_ms: 0,
+                    max_buffer_ms: 1000,
+                })
+            })
+            .collect();
         vec![AudioSinkCapability {
             api: PlatformAudioSink::Null,
-            formats: vec![
-                AudioFormatSupport {
-                    sample_rate: 48000,
-                    channels: 2,
-                    sample_format: SampleFormat::S16,
-                    min_buffer_ms: 0,
-                    max_buffer_ms: 1000,
-                },
-                AudioFormatSupport {
-                    sample_rate: 44100,
-                    channels: 2,
-                    sample_format: SampleFormat::S16,
-                    min_buffer_ms: 0,
-                    max_buffer_ms: 1000,
-                },
-            ],
+            formats,
             priority: 0,
             headless: true,
         }]

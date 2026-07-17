@@ -9,6 +9,8 @@ extern crate alloc;
 
 pub mod latency;
 pub mod metrics;
+#[cfg(feature = "native")]
+pub mod native;
 pub mod recovery;
 pub mod resource;
 pub mod scheduler;

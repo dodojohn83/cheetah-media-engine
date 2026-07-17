@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use cheetah_media_abi::{AbiError, Decoder, DecoderProbe, Input, Output};
-use cheetah_media_bitstream::g711::{self, G711Kind};
+pub use cheetah_media_bitstream::g711::{self, G711Kind};
 use cheetah_media_types::CodecId;
 
 /// Decodes G.711 A-law or μ-law into 16-bit signed PCM.
