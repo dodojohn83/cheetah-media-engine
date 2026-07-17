@@ -52,25 +52,37 @@ pub fn jni_on_unload() {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    // The instance counter is a process-wide static; serialize tests that touch
+    // it so parallel test threads do not interfere with each other's expected
+    // counts.
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn reset_counter() {
+        while instance_count() > 0 {
+            destroy();
+        }
+    }
 
     #[test]
     fn create_and_destroy_are_balanced() {
-        let start = instance_count();
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_counter();
         create().unwrap();
         create().unwrap();
-        assert_eq!(instance_count(), start + 2);
+        assert_eq!(instance_count(), 2);
         destroy();
         destroy();
-        assert_eq!(instance_count(), start);
+        assert_eq!(instance_count(), 0);
     }
 
     #[test]
     fn destroy_without_create_does_not_underflow() {
-        // Reset counter to a known state.
-        while instance_count() > 0 {
-            destroy();
-        }
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_counter();
         destroy();
         assert_eq!(instance_count(), 0);
     }

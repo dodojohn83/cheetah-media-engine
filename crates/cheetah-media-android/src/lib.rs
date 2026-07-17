@@ -6,7 +6,7 @@
 //! tested on the host; the actual JNI paths are filled in once the Android
 //! NDK is linked in the build.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
 extern crate alloc;
 
 pub mod audio;
