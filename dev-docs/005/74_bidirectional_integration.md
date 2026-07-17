@@ -47,9 +47,9 @@ corepack pnpm build
 ## 4. 状态
 
 - [x] 创建 WP-74 计划文档
-- [ ] 实现 `ResourceLimits` 与统一资源预算校验
-- [ ] 集成 `MediaClock` 与 A/V 时间线元数据
-- [ ] 实现 `BroadcastDiagnostics` 接口
-- [ ] 添加端到端 soak 测试
-- [ ] Rust/JS 验证矩阵通过
-- [ ] CI / Devin Review 通过并合并
+- [x] 实现 `ResourceLimits` 与统一资源预算校验
+- [x] 集成 `MediaClock` 与 A/V 时间线元数据
+- [x] 实现 `BroadcastDiagnostics` 接口
+- [x] 添加端到端 soak 测试
+- [x] Rust/JS 验证矩阵通过
+- [x] CI / Devin Review 通过并合并（PR #75）
