@@ -761,8 +761,10 @@ mod tests {
 
     #[test]
     fn media_limits_reject_oversized_pipeline() {
-        let mut limits = MediaLimits::default();
-        limits.max_resolution = (1, 1);
+        let limits = MediaLimits {
+            max_resolution: (1, 1),
+            ..Default::default()
+        };
         let mut engine = ready_engine().with_media_limits(limits);
         let events = engine.apply(BroadcastCommand::Start).unwrap();
         assert_eq!(engine.state(), BroadcastState::Failed);
@@ -835,7 +837,7 @@ mod tests {
             let events = engine.tick().unwrap();
             if events
                 .iter()
-                .any(|e| matches!(e, BroadcastEvent::PacketPublished { sequence, .. }))
+                .any(|e| matches!(e, BroadcastEvent::PacketPublished { .. }))
             {
                 published += 1;
                 last_sequence = i as u64;
