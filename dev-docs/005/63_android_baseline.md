@@ -57,4 +57,4 @@ corepack pnpm build
 - [x] 实现 `cheetah-media-android` crate 骨架
 - [x] 接入 `cheetah-media-engine` 的 `android` feature
 - [x] Rust/JS 验证矩阵通过
-- [ ] CI / Devin Review 通过并合并
+- [x] CI / Devin Review 通过并合并（PR #70）
