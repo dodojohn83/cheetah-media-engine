@@ -82,8 +82,10 @@ impl BroadcastPipeline {
     /// Connect the publisher to `url`.
     pub fn connect(&mut self, url: &str) -> Result<(), MediaError> {
         self.publisher.connect(url)?;
-        self.resources.acquire(ResourceKind::Network);
-        self.connected = true;
+        if !self.connected {
+            self.resources.acquire(ResourceKind::Network);
+            self.connected = true;
+        }
         Ok(())
     }
 
@@ -180,9 +182,9 @@ impl BroadcastPipeline {
 mod tests {
     use super::*;
     use crate::broadcast::encoder::UnsupportedEncoder;
-    use crate::broadcast::publisher::UnsupportedPublisherBackend;
+    use crate::broadcast::publisher::{PublisherBackend, UnsupportedPublisherBackend};
     use crate::broadcast::source::UnsupportedCaptureSource;
-    use cheetah_media_types::{CodecId, StreamEpoch, TrackId};
+    use cheetah_media_types::{CodecId, MediaPacket, StreamEpoch, TrackId};
 
     fn config() -> PipelineConfig {
         PipelineConfig {
@@ -230,5 +232,63 @@ mod tests {
         let mut pipe = unsupported_pipeline();
         assert!(pipe.stop().is_ok());
         assert!(!pipe.is_started());
+    }
+
+    struct MockPublisher {
+        connected: bool,
+    }
+
+    impl PublisherBackend for MockPublisher {
+        fn connect(&mut self, _url: &str) -> Result<(), cheetah_media_types::MediaError> {
+            self.connected = true;
+            Ok(())
+        }
+
+        fn publish(
+            &mut self,
+            _packet: &MediaPacket<'static>,
+        ) -> Result<(), cheetah_media_types::MediaError> {
+            Ok(())
+        }
+
+        fn flush(&mut self) -> Result<(), cheetah_media_types::MediaError> {
+            Ok(())
+        }
+
+        fn disconnect(&mut self) {
+            self.connected = false;
+        }
+
+        fn connected(&self) -> bool {
+            self.connected
+        }
+
+        fn kind(&self) -> &'static str {
+            "mock"
+        }
+    }
+
+    #[test]
+    fn repeated_connect_does_not_leak_network_resource() {
+        let mut pipe = BroadcastPipeline::new(
+            Box::new(UnsupportedCaptureSource),
+            Vec::new(),
+            Box::new(UnsupportedEncoder),
+            Box::new(MockPublisher { connected: false }),
+            config(),
+        );
+        pipe.connect("mock://x").unwrap();
+        pipe.connect("mock://x").unwrap();
+        assert!(
+            pipe.resources()
+                .count(crate::resource::ResourceKind::Network)
+                > 0
+        );
+        pipe.stop().unwrap();
+        assert_eq!(
+            pipe.resources()
+                .count(crate::resource::ResourceKind::Network),
+            0
+        );
     }
 }
