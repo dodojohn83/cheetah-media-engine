@@ -33,6 +33,9 @@ pub use permission::{
 };
 pub use pipeline::{BroadcastPacketSummary, BroadcastPipeline, PipelineConfig};
 pub use processor::{PassThroughProcessor, Processor};
-pub use publisher::{PublisherBackend, UnsupportedPublisherBackend};
+pub use publisher::{
+    BitrateFeedback, MockPublisher, PublisherBackend, RtmpPublisherBackend,
+    UnsupportedPublisherBackend, WebRtcPublisherBackend,
+};
 pub use registry::{CaptureSourceRegistry, EncoderRegistry, PublisherBackendRegistry};
 pub use source::{CaptureSource, UnsupportedCaptureSource};

@@ -36,6 +36,8 @@ pub struct BroadcastPacketSummary {
     pub sequence: u64,
     /// Track identifier.
     pub track_id: TrackId,
+    /// Target bitrate suggested by publisher feedback, if any.
+    pub target_bitrate_bps: Option<u32>,
 }
 
 /// A one-tick broadcast pipeline.
@@ -149,10 +151,19 @@ impl BroadcastPipeline {
         let payload_len = packet.payload.len() as u64;
         self.publisher.publish(&packet)?;
 
+        let mut target_bitrate_bps = None;
+        if let Some(feedback) = self.publisher.poll_feedback() {
+            if let Some(bps) = feedback.target_bitrate_bps {
+                self.encoder.set_bitrate(bps)?;
+                target_bitrate_bps = Some(bps);
+            }
+        }
+
         self.metrics.record_allocation(payload_len);
         let summary = BroadcastPacketSummary {
             sequence: self.sequence,
             track_id: packet.track_id,
+            target_bitrate_bps,
         };
         self.sequence += 1;
         Ok(Some(summary))
@@ -192,10 +203,14 @@ impl BroadcastPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::broadcast::capture_sources::{MockCaptureSource, VideoFrameInfo};
     use crate::broadcast::encoder::UnsupportedEncoder;
-    use crate::broadcast::publisher::{PublisherBackend, UnsupportedPublisherBackend};
+    use crate::broadcast::encoders::MockEncoder;
+    use crate::broadcast::publisher::{
+        BitrateFeedback, MockPublisher, UnsupportedPublisherBackend,
+    };
     use crate::broadcast::source::UnsupportedCaptureSource;
-    use cheetah_media_types::{CodecId, MediaPacket, StreamEpoch, TrackId};
+    use cheetah_media_types::{CodecId, ColorSpace, PixelFormat, StreamEpoch, TrackId};
 
     fn config() -> PipelineConfig {
         PipelineConfig {
@@ -245,47 +260,13 @@ mod tests {
         assert!(!pipe.is_started());
     }
 
-    struct MockPublisher {
-        connected: bool,
-    }
-
-    impl PublisherBackend for MockPublisher {
-        fn connect(&mut self, _url: &str) -> Result<(), cheetah_media_types::MediaError> {
-            self.connected = true;
-            Ok(())
-        }
-
-        fn publish(
-            &mut self,
-            _packet: &MediaPacket<'static>,
-        ) -> Result<(), cheetah_media_types::MediaError> {
-            Ok(())
-        }
-
-        fn flush(&mut self) -> Result<(), cheetah_media_types::MediaError> {
-            Ok(())
-        }
-
-        fn disconnect(&mut self) {
-            self.connected = false;
-        }
-
-        fn connected(&self) -> bool {
-            self.connected
-        }
-
-        fn kind(&self) -> &'static str {
-            "mock"
-        }
-    }
-
     #[test]
     fn repeated_connect_does_not_leak_network_resource() {
         let mut pipe = BroadcastPipeline::new(
             Box::new(UnsupportedCaptureSource),
             Vec::new(),
             Box::new(UnsupportedEncoder),
-            Box::new(MockPublisher { connected: false }),
+            Box::new(MockPublisher::new()),
             config(),
         );
         pipe.connect("mock://x").unwrap();
@@ -301,5 +282,44 @@ mod tests {
                 .count(crate::resource::ResourceKind::Network),
             0
         );
+    }
+
+    #[test]
+    fn tick_applies_publisher_feedback_to_encoder() {
+        let mut publisher = MockPublisher::new();
+        publisher.set_feedback(BitrateFeedback {
+            target_bitrate_bps: Some(500_000),
+            loss_fraction: None,
+            rtt_ms: None,
+        });
+
+        let info = VideoFrameInfo {
+            width: 2,
+            height: 2,
+            stride: 8,
+            pixel_format: PixelFormat::Rgba,
+            color_space: ColorSpace::Bt709,
+        };
+        let source = MockCaptureSource::with_count(1, info);
+        let mut pipe = BroadcastPipeline::new(
+            Box::new(source),
+            Vec::new(),
+            Box::new(MockEncoder::new()),
+            Box::new(publisher),
+            PipelineConfig {
+                track_id: TrackId::new(1).unwrap(),
+                stream_epoch: StreamEpoch::new(0),
+                codec: CodecId::H264,
+                width: 2,
+                height: 2,
+                fps: 30,
+            },
+        );
+
+        pipe.connect("mock://x").unwrap();
+        pipe.start().unwrap();
+
+        let summary = pipe.tick().unwrap().unwrap();
+        assert_eq!(summary.target_bitrate_bps, Some(500_000));
     }
 }

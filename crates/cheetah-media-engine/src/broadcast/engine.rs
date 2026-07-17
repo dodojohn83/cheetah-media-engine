@@ -67,6 +67,8 @@ pub enum BroadcastCommand {
     RequestKeyframe,
     /// Update the encoder target bitrate.
     SetBitrate(u32),
+    /// Apply congestion/transport feedback to the encoder.
+    ApplyFeedback(crate::broadcast::publisher::BitrateFeedback),
     /// Request permission for a capture kind.
     RequestPermission(CaptureSourceKind),
     /// Destroy the engine and release all resources.
@@ -83,6 +85,8 @@ pub enum BroadcastEvent {
     },
     /// A packet was published.
     PacketPublished { sequence: u64, track_id: TrackId },
+    /// The encoder target bitrate changed.
+    BitrateChanged { bps: u32 },
     /// Permission state changed.
     PermissionChanged {
         kind: CaptureSourceKind,
@@ -145,6 +149,7 @@ impl BroadcastEngine {
             BroadcastCommand::Stop => self.stop(),
             BroadcastCommand::RequestKeyframe => self.request_keyframe(),
             BroadcastCommand::SetBitrate(bps) => self.set_bitrate(bps),
+            BroadcastCommand::ApplyFeedback(feedback) => self.apply_feedback(feedback),
             BroadcastCommand::RequestPermission(kind) => self.request_permission(kind),
             BroadcastCommand::Destroy => self.destroy(),
         }
@@ -161,10 +166,16 @@ impl BroadcastEngine {
             .ok_or(BroadcastError::PipelineNotSet)?;
         match pipeline.tick() {
             Ok(None) => Ok(Vec::new()),
-            Ok(Some(summary)) => Ok(vec![BroadcastEvent::PacketPublished {
-                sequence: summary.sequence,
-                track_id: summary.track_id,
-            }]),
+            Ok(Some(summary)) => {
+                let mut events = vec![BroadcastEvent::PacketPublished {
+                    sequence: summary.sequence,
+                    track_id: summary.track_id,
+                }];
+                if let Some(bps) = summary.target_bitrate_bps {
+                    events.push(BroadcastEvent::BitrateChanged { bps });
+                }
+                Ok(events)
+            }
             Err(err) => {
                 self.state = BroadcastState::Failed;
                 Ok(vec![BroadcastEvent::Error(err)])
@@ -302,7 +313,31 @@ impl BroadcastEngine {
             .encoder_mut()
             .set_bitrate(bps)
             .map_err(BroadcastError::Pipeline)?;
-        Ok(Vec::new())
+        Ok(vec![BroadcastEvent::BitrateChanged { bps }])
+    }
+
+    fn apply_feedback(
+        &mut self,
+        feedback: crate::broadcast::publisher::BitrateFeedback,
+    ) -> Result<Vec<BroadcastEvent>, BroadcastError> {
+        if self.state != BroadcastState::Broadcasting {
+            return Err(BroadcastError::InvalidState {
+                state: self.state,
+                command: "apply_feedback",
+            });
+        }
+        let Some(bps) = feedback.target_bitrate_bps else {
+            return Ok(Vec::new());
+        };
+        let pipeline = self
+            .pipeline
+            .as_mut()
+            .ok_or(BroadcastError::PipelineNotSet)?;
+        pipeline
+            .encoder_mut()
+            .set_bitrate(bps)
+            .map_err(BroadcastError::Pipeline)?;
+        Ok(vec![BroadcastEvent::BitrateChanged { bps }])
     }
 
     fn request_permission(
@@ -347,15 +382,20 @@ impl Default for BroadcastEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::broadcast::capture_sources::CameraCaptureSource;
+    use crate::broadcast::capture_sources::{
+        CameraCaptureSource, MockCaptureSource, VideoFrameInfo,
+    };
     use crate::broadcast::encoder::UnsupportedEncoder;
+    use crate::broadcast::encoders::MockEncoder;
     use crate::broadcast::permission::{
         AlwaysDenyPermissionModel, AlwaysGrantPermissionModel, CaptureSourceKind, PermissionState,
     };
     use crate::broadcast::pipeline::{BroadcastPipeline, PipelineConfig};
-    use crate::broadcast::publisher::{PublisherBackend, UnsupportedPublisherBackend};
+    use crate::broadcast::publisher::{
+        BitrateFeedback, MockPublisher, UnsupportedPublisherBackend,
+    };
     use crate::broadcast::source::UnsupportedCaptureSource;
-    use cheetah_media_types::{CodecId, MediaPacket, StreamEpoch, TrackId};
+    use cheetah_media_types::{CodecId, ColorSpace, PixelFormat, StreamEpoch, TrackId};
 
     fn make_engine() -> BroadcastEngine {
         let config = PipelineConfig {
@@ -434,40 +474,6 @@ mod tests {
         );
     }
 
-    struct MockPublisher {
-        connected: bool,
-    }
-
-    impl PublisherBackend for MockPublisher {
-        fn connect(&mut self, _url: &str) -> Result<(), cheetah_media_types::MediaError> {
-            self.connected = true;
-            Ok(())
-        }
-
-        fn publish(
-            &mut self,
-            _packet: &MediaPacket<'static>,
-        ) -> Result<(), cheetah_media_types::MediaError> {
-            Ok(())
-        }
-
-        fn flush(&mut self) -> Result<(), cheetah_media_types::MediaError> {
-            Ok(())
-        }
-
-        fn disconnect(&mut self) {
-            self.connected = false;
-        }
-
-        fn connected(&self) -> bool {
-            self.connected
-        }
-
-        fn kind(&self) -> &'static str {
-            "mock"
-        }
-    }
-
     fn permission_pipeline() -> BroadcastPipeline {
         let config = PipelineConfig {
             track_id: TrackId::new(1).unwrap(),
@@ -484,7 +490,7 @@ mod tests {
             }),
             Vec::new(),
             Box::new(UnsupportedEncoder),
-            Box::new(MockPublisher { connected: false }),
+            Box::new(MockPublisher::new()),
             config,
         )
     }
@@ -544,5 +550,128 @@ mod tests {
                 state: PermissionState::Denied,
             }
         )));
+    }
+
+    fn broadcasting_engine() -> BroadcastEngine {
+        let config = PipelineConfig {
+            track_id: TrackId::new(1).unwrap(),
+            stream_epoch: StreamEpoch::new(0),
+            codec: CodecId::H264,
+            width: 2,
+            height: 2,
+            fps: 30,
+        };
+        let info = VideoFrameInfo {
+            width: 2,
+            height: 2,
+            stride: 8,
+            pixel_format: PixelFormat::Rgba,
+            color_space: ColorSpace::Bt709,
+        };
+        let pipeline = BroadcastPipeline::new(
+            Box::new(MockCaptureSource::with_count(1, info)),
+            Vec::new(),
+            Box::new(MockEncoder::new()),
+            Box::new(MockPublisher::new()),
+            config,
+        );
+        let mut engine = BroadcastEngine::with_pipeline(pipeline)
+            .with_permission_model(Box::new(AlwaysGrantPermissionModel));
+        engine
+            .apply(BroadcastCommand::Connect("mock://x".into()))
+            .unwrap();
+        engine.apply(BroadcastCommand::Start).unwrap();
+        engine
+    }
+
+    #[test]
+    fn set_bitrate_and_apply_feedback_emit_bitrate_changed_in_broadcasting() {
+        let mut engine = broadcasting_engine();
+
+        let events = engine
+            .apply(BroadcastCommand::SetBitrate(1_000_000))
+            .unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, BroadcastEvent::BitrateChanged { bps: 1_000_000 }))
+        );
+
+        let events = engine
+            .apply(BroadcastCommand::ApplyFeedback(BitrateFeedback {
+                target_bitrate_bps: Some(2_000_000),
+                loss_fraction: None,
+                rtt_ms: None,
+            }))
+            .unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, BroadcastEvent::BitrateChanged { bps: 2_000_000 }))
+        );
+
+        let events = engine
+            .apply(BroadcastCommand::ApplyFeedback(BitrateFeedback {
+                target_bitrate_bps: None,
+                loss_fraction: Some(0),
+                rtt_ms: Some(20),
+            }))
+            .unwrap();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, BroadcastEvent::BitrateChanged { .. }))
+        );
+    }
+
+    #[test]
+    fn tick_emits_bitrate_changed_when_pipeline_feedback_changes() {
+        let mut publisher = MockPublisher::new();
+        publisher.set_feedback(BitrateFeedback {
+            target_bitrate_bps: Some(800_000),
+            loss_fraction: None,
+            rtt_ms: None,
+        });
+
+        let config = PipelineConfig {
+            track_id: TrackId::new(1).unwrap(),
+            stream_epoch: StreamEpoch::new(0),
+            codec: CodecId::H264,
+            width: 2,
+            height: 2,
+            fps: 30,
+        };
+        let info = VideoFrameInfo {
+            width: 2,
+            height: 2,
+            stride: 8,
+            pixel_format: PixelFormat::Rgba,
+            color_space: ColorSpace::Bt709,
+        };
+        let pipeline = BroadcastPipeline::new(
+            Box::new(MockCaptureSource::with_count(1, info)),
+            Vec::new(),
+            Box::new(MockEncoder::new()),
+            Box::new(publisher),
+            config,
+        );
+        let mut engine = BroadcastEngine::with_pipeline(pipeline)
+            .with_permission_model(Box::new(AlwaysGrantPermissionModel));
+        engine
+            .apply(BroadcastCommand::Connect("mock://x".into()))
+            .unwrap();
+        engine.apply(BroadcastCommand::Start).unwrap();
+
+        let events = engine.tick().unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, BroadcastEvent::PacketPublished { sequence: 0, .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, BroadcastEvent::BitrateChanged { bps: 800_000 }))
+        );
     }
 }

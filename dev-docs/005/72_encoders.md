@@ -75,9 +75,9 @@ corepack pnpm build
 ## 5. 状态
 
 - [x] 创建 WP-72 计划文档
-- [ ] 扩展 `Encoder` trait 与 `UnsupportedEncoder`
-- [ ] 实现 G.711 编码器与平台占位编码器
-- [ ] 更新 `BroadcastPipeline` packet 元数据传递
-- [ ] 更新 `EncoderRegistry` 按 priority 选择
-- [ ] Rust/JS 验证矩阵通过
-- [ ] CI / Devin Review 通过并合并
+- [x] 扩展 `Encoder` trait 与 `UnsupportedEncoder`
+- [x] 实现 G.711 编码器与平台占位编码器
+- [x] 更新 `BroadcastPipeline` packet 元数据传递
+- [x] 更新 `EncoderRegistry` 按 priority 选择
+- [x] Rust/JS 验证矩阵通过
+- [x] CI / Devin Review 通过并合并（PR #73）
