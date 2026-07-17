@@ -27,7 +27,7 @@ impl AudioSink for AndroidAudioSink {
     }
 
     fn pause(&mut self) -> Result<(), AbiError> {
-        Ok(())
+        Err(AbiError::NotSupported)
     }
 
     fn set_volume(&mut self, _volume: f32) -> Result<(), AbiError> {
@@ -63,8 +63,8 @@ mod tests {
     }
 
     #[test]
-    fn pause_is_allowed_without_playback() {
+    fn pause_is_rejected_like_other_operations() {
         let mut sink = AndroidAudioSink::new();
-        assert!(sink.pause().is_ok());
+        assert_eq!(sink.pause().unwrap_err(), AbiError::NotSupported);
     }
 }
