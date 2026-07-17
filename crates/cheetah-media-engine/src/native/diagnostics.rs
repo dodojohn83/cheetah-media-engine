@@ -65,6 +65,9 @@ impl Diagnostics {
             DiagnosticEvent::Error { .. } => self.counters.errors += 1,
             _ => {}
         }
+        if self.max_events == 0 {
+            return;
+        }
         if self.events.len() >= self.max_events {
             self.events.remove(0);
         }
@@ -151,5 +154,17 @@ mod tests {
         d.backend_selected("b", "x");
         d.backend_selected("c", "x");
         assert_eq!(d.events().len(), 2);
+    }
+
+    #[test]
+    fn zero_capacity_records_counters_without_panic() {
+        let mut d = Diagnostics::with_capacity(0);
+        d.backend_selected("decoder", "software");
+        d.record(DiagnosticEvent::FrameDecoded {
+            track_id: TrackId::new(1).unwrap(),
+            codec: CodecId::G711A,
+        });
+        assert_eq!(d.counters().decoded, 1);
+        assert!(d.events().is_empty());
     }
 }

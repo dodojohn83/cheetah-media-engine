@@ -75,10 +75,14 @@ impl LifecycleSoak {
                 (PlayerState::Preroll, LifecycleEvent::Paused) => state = PlayerState::Paused,
                 (PlayerState::Playing, LifecycleEvent::Paused) => state = PlayerState::Paused,
                 (PlayerState::Paused, LifecycleEvent::Played) => state = PlayerState::Playing,
-                (PlayerState::Playing, LifecycleEvent::Stopped)
+                (PlayerState::Loading, LifecycleEvent::Stopped)
+                | (PlayerState::Preroll, LifecycleEvent::Stopped)
+                | (PlayerState::Playing, LifecycleEvent::Stopped)
                 | (PlayerState::Paused, LifecycleEvent::Stopped) => state = PlayerState::Idle,
                 (PlayerState::Idle, LifecycleEvent::Destroyed) => state = PlayerState::Destroyed,
-                (PlayerState::Playing, LifecycleEvent::Destroyed)
+                (PlayerState::Loading, LifecycleEvent::Destroyed)
+                | (PlayerState::Preroll, LifecycleEvent::Destroyed)
+                | (PlayerState::Playing, LifecycleEvent::Destroyed)
                 | (PlayerState::Paused, LifecycleEvent::Destroyed) => {
                     state = PlayerState::Destroyed
                 }
@@ -144,6 +148,19 @@ mod tests {
         soak.record(LifecycleEvent::Destroyed);
         assert!(soak.validate().is_ok());
         assert!(soak.is_destroyed());
+    }
+
+    #[test]
+    fn stop_after_preroll_before_play_is_valid() {
+        let mut soak = LifecycleSoak::new();
+        soak.record(LifecycleEvent::Created);
+        soak.record(LifecycleEvent::Loaded {
+            url: "memory://".into(),
+        });
+        soak.record(LifecycleEvent::Prerolled);
+        soak.record(LifecycleEvent::Stopped);
+        soak.record(LifecycleEvent::Destroyed);
+        assert!(soak.validate().is_ok());
     }
 
     #[test]

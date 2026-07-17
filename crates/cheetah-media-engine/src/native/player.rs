@@ -612,4 +612,24 @@ mod tests {
         player.stop().unwrap();
         player.destroy().unwrap();
     }
+
+    #[test]
+    fn stop_before_play_is_valid() {
+        let track = g711_track();
+        let decoder =
+            NativeDecoder::with_backends(vec![Box::new(G711Decoder::new(G711Kind::ALaw))]);
+        let audio_sink = NullAudioSink::new(8000, 1, SampleFormat::S16);
+        let mut player = NativePlayer::new(
+            Box::new(MemoryByteSource::new(Vec::new(), 80)),
+            track,
+            None,
+            Some(audio_target()),
+            Box::new(decoder) as Box<dyn Decoder>,
+            None,
+            Some(Box::new(audio_sink) as Box<dyn AudioSink + Send>),
+        );
+        player.load("memory://").unwrap();
+        player.stop().unwrap();
+        player.destroy().unwrap();
+    }
 }
