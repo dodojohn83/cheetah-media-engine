@@ -35,7 +35,7 @@ impl Pipeline {
     }
 
     /// Feed a compressed sample through the decoder.
-    pub fn feed<'a>(&mut self, input: &Input<'a>) -> Result<Output<'a>, AbiError> {
+    pub fn feed(&mut self, input: &Input<'_>) -> Result<Output, AbiError> {
         let decoder = self.decoder.as_mut().ok_or(AbiError::NotSupported)?;
         let output = decoder.decode(input)?;
         if let Some(renderer) = self.renderer.as_mut() {
@@ -66,9 +66,9 @@ mod tests {
         }
     }
     impl Decoder for DummyDecoder {
-        fn decode<'a>(&mut self, input: &Input<'a>) -> Result<Output<'a>, AbiError> {
+        fn decode(&mut self, input: &Input<'_>) -> Result<Output, AbiError> {
             Ok(Output {
-                data: input.data,
+                data: input.data.to_vec(),
                 time: input.time,
                 duration_ms: 0,
                 track_id: input.track_id,

@@ -1,0 +1,20 @@
+[package]
+name = "cheetah-media-native-decoder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Native hardware decoder capability probe and fallback selection for the Cheetah media engine."
+
+[features]
+default = ["std"]
+std = ["cheetah-media-abi/std", "cheetah-media-types/std", "cheetah-media-bitstream/std"]
+
+[dependencies]
+cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false, features = ["std"] }
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false, features = ["std"] }
+cheetah-media-bitstream = { path = "../cheetah-media-bitstream", default-features = false, features = ["std"] }
+
+[lints.rust]
+unsafe_code = "deny"
