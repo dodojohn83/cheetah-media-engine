@@ -179,6 +179,7 @@ name = "cheetah-media-c-bindings"
 version = "0.1.0"
 dependencies = [
  "cheetah-media-engine",
+ "cheetah-media-types",
 ]
 
 [[package]]

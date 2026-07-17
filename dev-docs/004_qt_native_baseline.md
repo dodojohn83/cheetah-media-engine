@@ -53,6 +53,18 @@
 
 > 未来工作包（Android / iOS / 鸿蒙 / 双向引擎）将在 Phase 5 完成后另建 `dev-docs/005` 计划。
 
+## 5.1 工作包状态
+
+- [x] WP-53 `cheetah-media-c-bindings` crate 骨架（已合并到 `wp/16-engine-state-machine`）
+- [~] WP-54 C ABI 控制面：config、load、play、pause、stop、destroy、async 回调
+- [ ] WP-55 Qt QWidget 接入与窗口生命周期
+- [ ] WP-56 Qt QML / Qt Quick surface 接入
+- [ ] WP-57 原生 HTTP/WS/TCP transport adapter（tokio）
+- [ ] WP-58 平台硬解探测与回退
+- [ ] WP-59 原生 renderer 与零拷贝 surface
+- [ ] WP-60 平台 audio sink 与 A/V sync
+- [ ] WP-61 原生能力协商、diagnostics 与生命周期 soak
+
 ## 6. 全局完成定义
 
 - [ ] 53–61 所有适用项完成，不适用项经产品评审记录原因。

@@ -7,7 +7,7 @@ style = "type"
 sort_by = "Name"
 
 [export]
-include = ["CheetahPlayer", "CheetahResult"]
+include = ["CheetahEvent", "CheetahEventCallback", "CheetahPlayer", "CheetahResult"]
 
 [enum]
 rename_variants = "ScreamingSnakeCase"
