@@ -119,7 +119,7 @@ pub fn parse_tag_header(input: &[u8]) -> Result<FlvTagHeader, FlvError> {
 
 /// Total size of a tag including the 11-byte header and the data body.
 pub const fn tag_total_size(data_size: u32) -> u32 {
-    11 + data_size
+    data_size.saturating_add(11)
 }
 
 #[cfg(test)]

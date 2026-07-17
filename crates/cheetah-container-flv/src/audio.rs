@@ -118,14 +118,22 @@ impl AudioTagHeader {
             CodecId::G711U => 8,
             _ => 15,
         };
-        let rate_bits: u8 = match sample_rate {
-            5512 => 0,
-            11025 => 1,
-            22050 => 2,
-            _ => 3, // 44100 or other
+        let rate_bits: u8 = if sample_rate <= 8000 {
+            0
+        } else if sample_rate <= 16_000 {
+            1
+        } else if sample_rate <= 32_000 {
+            2
+        } else {
+            3
+        };
+        let sound_size: u8 = if matches!(codec, CodecId::G711A | CodecId::G711U) {
+            0
+        } else {
+            1
         };
         let type_bit: u8 = if channels > 1 { 1 } else { 0 };
-        (format_nibble << 4) | (rate_bits << 2) | (1 << 1) | type_bit
+        (format_nibble << 4) | (rate_bits << 2) | (sound_size << 1) | type_bit
     }
 
     /// True if this is an AAC config packet.
