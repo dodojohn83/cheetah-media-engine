@@ -41,6 +41,18 @@ impl RendererProbe for SoftwareRendererProbe {
                     max_height: 2160,
                     zero_copy: false,
                 },
+                RendererFormatSupport {
+                    format: PixelFormat::I420,
+                    max_width: 3840,
+                    max_height: 2160,
+                    zero_copy: false,
+                },
+                RendererFormatSupport {
+                    format: PixelFormat::Nv12,
+                    max_width: 3840,
+                    max_height: 2160,
+                    zero_copy: false,
+                },
             ],
             priority: 0,
         }]

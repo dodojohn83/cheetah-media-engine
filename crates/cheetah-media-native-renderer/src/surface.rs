@@ -32,8 +32,23 @@ impl Surface {
     }
 
     /// Expected byte size for the current dimensions and format.
+    ///
+    /// For packed RGB/RGBA this is `height * stride`. For planar YUV formats
+    /// it includes the luma plane plus the chroma planes.
     pub fn expected_size(&self) -> usize {
-        self.height as usize * self.stride as usize
+        match self.format {
+            PixelFormat::Rgba32 | PixelFormat::Rgb24 => self.height as usize * self.stride as usize,
+            PixelFormat::I420 => {
+                let y = self.width as usize * self.height as usize;
+                let c = self.width.div_ceil(2) as usize * self.height.div_ceil(2) as usize * 2;
+                y + c
+            }
+            PixelFormat::Nv12 => {
+                let y = self.width as usize * self.height as usize;
+                let uv = self.width as usize * self.height.div_ceil(2) as usize;
+                y + uv
+            }
+        }
     }
 
     /// Copy `data` into the surface, validating size.
@@ -100,5 +115,19 @@ mod tests {
         let mut s = Surface::new(2, 2, PixelFormat::Rgba32);
         assert!(s.upload(&[0u8; 16]).is_ok());
         assert_eq!(s.data.len(), 16);
+    }
+
+    #[test]
+    fn i420_expected_size_includes_chroma() {
+        // 4x4 I420: 16 Y + 4 U + 4 V = 24
+        let s = Surface::new(4, 4, PixelFormat::I420);
+        assert_eq!(s.expected_size(), 24);
+    }
+
+    #[test]
+    fn nv12_expected_size_includes_chroma() {
+        // 4x4 NV12: 16 Y + 8 UV = 24
+        let s = Surface::new(4, 4, PixelFormat::Nv12);
+        assert_eq!(s.expected_size(), 24);
     }
 }

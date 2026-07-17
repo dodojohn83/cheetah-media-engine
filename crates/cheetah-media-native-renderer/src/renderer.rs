@@ -197,6 +197,13 @@ mod tests {
     }
 
     #[test]
+    fn cpu_renderer_accepts_i420_frame() {
+        let mut renderer = CpuRenderer::new(4, 4, PixelFormat::I420);
+        let data = vec![0u8; 24]; // 4x4 I420
+        assert!(renderer.render(&output(data)).is_ok());
+    }
+
+    #[test]
     fn unsupported_renderer_returns_not_supported() {
         let mut renderer = UnsupportedRenderer::new(PlatformRenderer::Vulkan);
         assert_eq!(
