@@ -16,11 +16,9 @@
 ## 2. 交付物
 
 - `crates/cheetah-media-native-transport/Cargo.toml`
-- `crates/cheetah-media-native-transport/src/lib.rs`
-- `crates/cheetah-media-native-transport/src/tcp.rs`
-- `crates/cheetah-media-native-transport/src/http.rs`（reqwest 流式）
-- `crates/cheetah-media-native-transport/src/ws.rs`（tokio-tungstenite）
-- `crates/cheetah-media-native-transport/src/error.rs`
+- `crates/cheetah-media-native-transport/src/lib.rs`（含 TCP 模块）
+- `crates/cheetah-media-native-transport/src/http.rs`（reqwest 流式，feature `http`）
+- `crates/cheetah-media-native-transport/src/ws.rs`（tokio-tungstenite，feature `websocket`）
 - 单元测试覆盖三种 transport
 - `dev-docs/004/57_native_transport.md` 与 baseline 状态更新
 

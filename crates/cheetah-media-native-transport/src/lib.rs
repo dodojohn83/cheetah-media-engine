@@ -21,6 +21,17 @@ enum Chunk {
     Error(ByteSourceError),
 }
 
+/// Lifecycle state of the native byte source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceState {
+    /// `start()` has not been called (or was cancelled).
+    Idle,
+    /// A transport task is running.
+    Running,
+    /// The transport task has ended; further reads are terminal.
+    Finished,
+}
+
 /// Platform-native `ByteSource` supporting `tcp://`, `http(s)://` and `ws(s)://`.
 pub struct NativeByteSource {
     runtime: Runtime,
@@ -28,6 +39,8 @@ pub struct NativeByteSource {
     task: Option<JoinHandle<()>>,
     rx: Option<mpsc::Receiver<Chunk>>,
     stats: SourceStats,
+    state: SourceState,
+    last_error: Option<ByteSourceError>,
 }
 
 impl Default for NativeByteSource {
@@ -49,6 +62,8 @@ impl NativeByteSource {
             task: None,
             rx: None,
             stats: SourceStats::default(),
+            state: SourceState::Idle,
+            last_error: None,
         })
     }
 
@@ -88,6 +103,8 @@ impl NativeByteSource {
         }
         self.rx = None;
         self.buffer.clear();
+        self.state = SourceState::Idle;
+        self.last_error = None;
     }
 }
 
@@ -111,6 +128,13 @@ impl ByteSource for NativeByteSource {
         };
         let port = port.unwrap_or(default_port);
 
+        if scheme == "tcp" && port == 0 {
+            return Err(ByteSourceError::Fatal {
+                code: 2,
+                context: Some("missing_tcp_port"),
+            });
+        }
+
         let (tx, rx) = mpsc::channel(16);
 
         let is_live = matches!(scheme, "ws" | "wss");
@@ -120,15 +144,7 @@ impl ByteSource for NativeByteSource {
         };
 
         let task = match scheme {
-            "tcp" => {
-                if port == 0 {
-                    return Err(ByteSourceError::Fatal {
-                        code: 2,
-                        context: Some("missing_tcp_port"),
-                    });
-                }
-                self.runtime.spawn(tcp::run(host, port, tx))
-            }
+            "tcp" => self.runtime.spawn(tcp::run(host, port, tx)),
             #[cfg(feature = "http")]
             "http" | "https" => {
                 let full = if path.is_empty() || path == "/" {
@@ -157,6 +173,7 @@ impl ByteSource for NativeByteSource {
 
         self.task = Some(task);
         self.rx = Some(rx);
+        self.state = SourceState::Running;
         Ok(())
     }
 
@@ -168,9 +185,25 @@ impl ByteSource for NativeByteSource {
             self.buffer.clear();
         }
 
-        let Some(rx) = self.rx.as_mut() else {
-            return ByteSourceEvent::Error(ByteSourceError::NotStarted);
-        };
+        if self.rx.is_none() {
+            return match self.state {
+                SourceState::Idle => ByteSourceEvent::Error(ByteSourceError::NotStarted),
+                SourceState::Finished => {
+                    if let Some(e) = self.last_error.take() {
+                        ByteSourceEvent::Error(e)
+                    } else {
+                        ByteSourceEvent::Eof
+                    }
+                }
+                SourceState::Running => {
+                    // We are Running but the channel is gone; treat as terminal EOF.
+                    self.state = SourceState::Finished;
+                    ByteSourceEvent::Eof
+                }
+            };
+        }
+
+        let rx = self.rx.as_mut().expect("rx checked non-None above");
 
         match rx.try_recv() {
             Ok(Chunk::Data(data)) => {
@@ -180,15 +213,19 @@ impl ByteSource for NativeByteSource {
             }
             Ok(Chunk::Eof) => {
                 self.rx = None;
+                self.state = SourceState::Finished;
                 ByteSourceEvent::Eof
             }
             Ok(Chunk::Error(e)) => {
                 self.rx = None;
+                self.last_error = Some(e.clone());
+                self.state = SourceState::Finished;
                 ByteSourceEvent::Error(e)
             }
             Err(mpsc::error::TryRecvError::Empty) => ByteSourceEvent::Live,
             Err(mpsc::error::TryRecvError::Disconnected) => {
                 self.rx = None;
+                self.state = SourceState::Finished;
                 ByteSourceEvent::Eof
             }
         }

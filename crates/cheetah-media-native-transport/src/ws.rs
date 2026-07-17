@@ -6,9 +6,11 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 pub(crate) async fn run(url: String, tx: mpsc::Sender<Chunk>) {
     match tokio_tungstenite::connect_async(&url).await {
-        Ok((ws_stream, _)) => {
-            let (mut _write, mut read) = ws_stream.split();
-            while let Some(msg) = read.next().await {
+        Ok((mut ws_stream, _)) => {
+            // Drive the combined Stream+Sink. Tungstenite queues and flushes
+            // automatic Pong replies while polling the stream, so we do not
+            // split off the write half.
+            while let Some(msg) = ws_stream.next().await {
                 match msg {
                     Ok(Message::Binary(data)) => {
                         if tx.send(Chunk::Data(data)).await.is_err() {

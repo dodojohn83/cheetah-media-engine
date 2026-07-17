@@ -105,6 +105,17 @@ fn websocket_roundtrip() {
 }
 
 #[test]
+fn eof_is_idempotent() {
+    let port = tcp_server(b"hello world".to_vec());
+    let mut src = NativeByteSource::new().unwrap();
+    src.start(&format!("tcp://127.0.0.1:{}", port)).unwrap();
+    let data = read_all(&mut src, Duration::from_secs(5));
+    assert_eq!(data, b"hello world");
+    assert_eq!(src.read_or_push(&mut []), ByteSourceEvent::Eof);
+    assert_eq!(src.read_or_push(&mut []), ByteSourceEvent::Eof);
+}
+
+#[test]
 fn unsupported_scheme_rejected() {
     let mut src = NativeByteSource::new().unwrap();
     let err = src.start("ftp://example.com/").unwrap_err();
