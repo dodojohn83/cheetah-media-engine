@@ -7,6 +7,7 @@
 
 pub mod capture_sources;
 pub mod encoder;
+pub mod encoders;
 pub mod engine;
 pub mod frame;
 pub mod permission;
@@ -21,6 +22,7 @@ pub use capture_sources::{
     VideoFrameInfo,
 };
 pub use encoder::{Encoder, EncoderCapability, UnsupportedEncoder};
+pub use encoders::{AacEncoder, G711Encoder, H264Encoder, H265Encoder, MockEncoder, OpusEncoder};
 pub use engine::{
     BroadcastCommand, BroadcastEngine, BroadcastError, BroadcastEvent, BroadcastState,
 };

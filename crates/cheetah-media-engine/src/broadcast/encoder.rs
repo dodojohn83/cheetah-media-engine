@@ -3,7 +3,7 @@
 //! Real platform encoders (H.264/H.265/Opus/AAC/G.711) will be implemented in
 //! WP-72. The host-side placeholder returns `MediaError::Unsupported`.
 
-use cheetah_media_types::{CodecId, MediaError, MediaPacket};
+use cheetah_media_types::{CodecId, MediaError, MediaPacket, SequenceNumber, StreamEpoch, TrackId};
 
 use crate::broadcast::frame::MediaFrame;
 
@@ -35,8 +35,17 @@ pub trait Encoder: Send {
         fps: u32,
     ) -> Result<(), MediaError>;
 
-    /// Encode one frame. Returns a compressed packet.
-    fn encode(&mut self, frame: &MediaFrame<'static>) -> Result<MediaPacket<'static>, MediaError>;
+    /// Encode one frame into a compressed packet.
+    ///
+    /// The encoder is responsible for attaching `track_id`, `stream_epoch` and
+    /// `sequence` to the produced `MediaPacket`.
+    fn encode(
+        &mut self,
+        frame: &MediaFrame<'static>,
+        track_id: TrackId,
+        stream_epoch: StreamEpoch,
+        sequence: SequenceNumber,
+    ) -> Result<MediaPacket<'static>, MediaError>;
 
     /// Request the next output frame to be a keyframe / IDR.
     fn request_keyframe(&mut self) -> Result<(), MediaError>;
@@ -44,8 +53,13 @@ pub trait Encoder: Send {
     /// Update the target bitrate in bits per second.
     fn set_bitrate(&mut self, bps: u32) -> Result<(), MediaError>;
 
-    /// True if this encoder supports `codec` at its current configuration.
-    fn supports(&self, codec: CodecId) -> bool;
+    /// Capabilities advertised by this encoder.
+    fn capabilities(&self) -> &[EncoderCapability];
+
+    /// True if this encoder advertises support for `codec`.
+    fn supports(&self, codec: CodecId) -> bool {
+        self.capabilities().iter().any(|c| c.codec == codec)
+    }
 
     /// Human-readable encoder kind.
     fn kind(&self) -> &'static str;
@@ -68,7 +82,13 @@ impl Encoder for UnsupportedEncoder {
         })
     }
 
-    fn encode(&mut self, _frame: &MediaFrame<'static>) -> Result<MediaPacket<'static>, MediaError> {
+    fn encode(
+        &mut self,
+        _frame: &MediaFrame<'static>,
+        _track_id: TrackId,
+        _stream_epoch: StreamEpoch,
+        _sequence: SequenceNumber,
+    ) -> Result<MediaPacket<'static>, MediaError> {
         Err(MediaError::Unsupported {
             code: 7002,
             context: Some("encoder not linked"),
@@ -89,8 +109,8 @@ impl Encoder for UnsupportedEncoder {
         })
     }
 
-    fn supports(&self, _codec: CodecId) -> bool {
-        false
+    fn capabilities(&self) -> &[EncoderCapability] {
+        &[]
     }
 
     fn kind(&self) -> &'static str {

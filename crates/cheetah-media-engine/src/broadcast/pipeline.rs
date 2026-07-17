@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use cheetah_media_types::{CodecId, MediaError, StreamEpoch, TrackId};
+use cheetah_media_types::{CodecId, MediaError, SequenceNumber, StreamEpoch, TrackId};
 
 use crate::broadcast::encoder::Encoder;
 use crate::broadcast::processor::Processor;
@@ -139,7 +139,13 @@ impl BroadcastPipeline {
             frame = processor.process(&frame)?;
         }
 
-        let packet = self.encoder.encode(&frame)?;
+        let sequence = SequenceNumber::new(self.sequence);
+        let packet = self.encoder.encode(
+            &frame,
+            self.config.track_id,
+            self.config.stream_epoch,
+            sequence,
+        )?;
         let payload_len = packet.payload.len() as u64;
         self.publisher.publish(&packet)?;
 

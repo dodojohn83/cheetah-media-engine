@@ -50,7 +50,7 @@
 | 69 | `005/69_mobile_capability_matrix.md` | 跨平台 capability 统一、探测注册表与真机兼容矩阵 | 65、67、68 |
 | 70 | `005/70_bidirectional_engine.md` | 双向引擎抽象：`CaptureSource`、`Processor`、`Encoder`、`PublisherBackend` | 63 |
 | 71 | `005/71_capture_sources.md` | 麦克风/摄像头/屏幕采集与平台权限模型 | 70 |
-| 72 | `005/72_encoders.md` | H.264/H.265/Opus/AAC/G.711 平台编码器能力 | 70 |
+| 72 | `005/72_encoders.md` | H.264/H.265/Opus/AAC/G.711 平台编码器能力 | 71 |
 | 73 | `005/73_publish_backends.md` | WebRTC/RTMP 发布路径、拥塞反馈与动态码率 | 72 |
 | 74 | `005/74_bidirectional_integration.md` | 播放与发布统一资源预算、A/V sync、diagnostics 与端到端 soak | 71、73 |
 
@@ -67,8 +67,8 @@
 - [~] WP-68 鸿蒙 NAPI/ArkTS wrapper（跳过，无 HarmonyOS SDK）
 - [~] WP-69 跨平台 capability 统一与真机兼容矩阵（跳过）
 - [x] WP-70 双向引擎抽象（PR #71）
-- [~] WP-71 采集源与权限模型（本 PR）
-- [ ] WP-72 平台编码器能力
+- [x] WP-71 采集源与权限模型（PR #72）
+- [~] WP-72 平台编码器能力（本 PR）
 - [ ] WP-73 发布路径与拥塞控制
 - [ ] WP-74 双向引擎集成与端到端 soak
 

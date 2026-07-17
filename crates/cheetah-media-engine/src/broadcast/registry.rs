@@ -79,7 +79,7 @@ impl EncoderRegistry {
         self.encoders
             .iter()
             .filter(|e| e.as_ref().supports(codec))
-            .max_by_key(|e| encoder_priority(e.as_ref()))
+            .max_by_key(|e| encoder_priority(e.as_ref(), codec))
             .map(|e| e.as_ref())
     }
 
@@ -100,10 +100,14 @@ impl Default for EncoderRegistry {
     }
 }
 
-fn encoder_priority(_encoder: &dyn Encoder) -> i32 {
-    // For WP-70 every registered encoder is treated equally; priority will be
-    // driven by `EncoderCapability` once probes are added.
-    0
+fn encoder_priority(encoder: &dyn Encoder, codec: CodecId) -> i32 {
+    encoder
+        .capabilities()
+        .iter()
+        .filter(|c| c.codec == codec)
+        .map(|c| c.priority)
+        .max()
+        .unwrap_or(0)
 }
 
 /// Registry of publisher backends.

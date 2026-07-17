@@ -31,11 +31,12 @@ android = [
     "dep:cheetah-media-android",
     "cheetah-media-android/std",
 ]
-bidirectional = ["std"]
+bidirectional = ["std", "dep:cheetah-media-bitstream", "cheetah-media-bitstream/std"]
 
 [dependencies]
 cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false }
 cheetah-media-backend-api = { path = "../cheetah-media-backend-api", default-features = false }
+cheetah-media-bitstream = { path = "../cheetah-media-bitstream", default-features = false, optional = true }
 cheetah-media-pipeline-core = { path = "../cheetah-media-pipeline-core", default-features = false }
 cheetah-media-timeline = { path = "../cheetah-media-timeline", default-features = false }
 cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
