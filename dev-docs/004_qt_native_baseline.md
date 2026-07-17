@@ -61,8 +61,8 @@
 - [x] WP-56 Qt QML / Qt Quick surface 接入（PR #63）
 - [x] WP-57 原生 HTTP/WS/TCP transport adapter（tokio）（PR #64）
 - [x] WP-58 平台硬解探测与回退（PR #65）
-- [~] WP-59 原生 renderer 与零拷贝 surface（进行中）
-- [ ] WP-60 平台 audio sink 与 A/V sync
+- [x] WP-59 原生 renderer 与零拷贝 surface（PR #66）
+- [~] WP-60 平台 audio sink 与 A/V sync（进行中）
 - [ ] WP-61 原生能力协商、diagnostics 与生命周期 soak
 
 ## 6. 全局完成定义
