@@ -31,6 +31,7 @@ android = [
     "dep:cheetah-media-android",
     "cheetah-media-android/std",
 ]
+bidirectional = ["std"]
 
 [dependencies]
 cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false }

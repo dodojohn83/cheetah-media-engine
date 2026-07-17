@@ -7,6 +7,8 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 extern crate alloc;
 
+#[cfg(feature = "bidirectional")]
+pub mod broadcast;
 pub mod latency;
 pub mod metrics;
 #[cfg(feature = "native")]

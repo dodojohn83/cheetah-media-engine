@@ -48,7 +48,7 @@
 | 67 | `005/67_ios_surface_audio.md` | iOS `Metal`/`CAMetalLayer` 渲染与 `AudioUnit` sink | 66 |
 | 68 | `005/68_harmonyos_baseline.md` | 鸿蒙 NAPI/ArkTS wrapper、平台 codec/surface/audio 生命周期 | 62 |
 | 69 | `005/69_mobile_capability_matrix.md` | 跨平台 capability 统一、探测注册表与真机兼容矩阵 | 65、67、68 |
-| 70 | `005/70_bidirectional_engine.md` | 双向引擎抽象：`CaptureSource`、`Processor`、`Encoder`、`PublisherBackend` | 69 |
+| 70 | `005/70_bidirectional_engine.md` | 双向引擎抽象：`CaptureSource`、`Processor`、`Encoder`、`PublisherBackend` | 63 |
 | 71 | `005/71_capture_sources.md` | 麦克风/摄像头/屏幕采集与平台权限模型 | 70 |
 | 72 | `005/72_encoders.md` | H.264/H.265/Opus/AAC/G.711 平台编码器能力 | 70 |
 | 73 | `005/73_publish_backends.md` | WebRTC/RTMP 发布路径、拥塞反馈与动态码率 | 72 |
@@ -60,13 +60,13 @@
 
 - [x] WP-62 Phase 6/7 执行计划与移动/双向基线（PR #69）
 - [x] WP-63 Android 播放骨架（PR #70）
-- [ ] WP-64 Android Surface 渲染与 AudioTrack sink
-- [ ] WP-65 Android 模拟器/真机 smoke
-- [ ] WP-66 iOS 播放骨架
-- [ ] WP-67 iOS Metal 渲染与 AudioUnit sink
-- [ ] WP-68 鸿蒙 NAPI/ArkTS wrapper
-- [ ] WP-69 跨平台 capability 统一与真机兼容矩阵
-- [ ] WP-70 双向引擎抽象
+- [~] WP-64 Android Surface 渲染与 AudioTrack sink（跳过，无 Android SDK）
+- [~] WP-65 Android 模拟器/真机 smoke（跳过）
+- [~] WP-66 iOS 播放骨架（跳过，无 macOS/Xcode）
+- [~] WP-67 iOS Metal 渲染与 AudioUnit sink（跳过）
+- [~] WP-68 鸿蒙 NAPI/ArkTS wrapper（跳过，无 HarmonyOS SDK）
+- [~] WP-69 跨平台 capability 统一与真机兼容矩阵（跳过）
+- [~] WP-70 双向引擎抽象（本 PR）
 - [ ] WP-71 采集源与权限模型
 - [ ] WP-72 平台编码器能力
 - [ ] WP-73 发布路径与拥塞控制
