@@ -120,6 +120,9 @@ pub struct BroadcastEngine {
     media_limits: MediaLimits,
     resource_limits: ResourceLimits,
     clock: MediaClock,
+    /// Tracks whether the current clock is for an audio (`Some(true)`) or video
+    /// (`Some(false)`) stream. `None` before the first published packet.
+    clock_track_is_audio: Option<bool>,
 }
 
 impl BroadcastEngine {
@@ -132,6 +135,7 @@ impl BroadcastEngine {
             media_limits: MediaLimits::default(),
             resource_limits: ResourceLimits::default(),
             clock: MediaClock::new(None, None),
+            clock_track_is_audio: None,
         }
     }
 
@@ -144,6 +148,7 @@ impl BroadcastEngine {
             media_limits: MediaLimits::default(),
             resource_limits: ResourceLimits::default(),
             clock: MediaClock::new(None, None),
+            clock_track_is_audio: None,
         }
     }
 
@@ -206,9 +211,16 @@ impl BroadcastEngine {
             Ok(Some(summary)) => {
                 if let Some(time) = summary.timestamp {
                     // Update the media clock for jitter/discontinuity diagnostics.
-                    // Errors here are non-fatal: a single bad timestamp should not
-                    // tear down the broadcast.
-                    let _ = self.clock.update(time, summary.stream_epoch);
+                    // Keep a single clock per stream type so audio and video timestamps
+                    // are not mixed in a single `MediaClock`.
+                    if self.clock_track_is_audio.is_none() {
+                        self.clock_track_is_audio = Some(summary.is_audio);
+                    }
+                    if self.clock_track_is_audio == Some(summary.is_audio) {
+                        // Errors here are non-fatal: a single bad timestamp should not
+                        // tear down the broadcast.
+                        let _ = self.clock.update(time, summary.stream_epoch);
+                    }
                 }
 
                 let mut events = vec![BroadcastEvent::PacketPublished {
@@ -222,6 +234,7 @@ impl BroadcastEngine {
             }
             Err(err) => {
                 self.state = BroadcastState::Failed;
+                let _ = pipeline.stop();
                 Ok(vec![BroadcastEvent::Error(err)])
             }
         }
@@ -329,6 +342,7 @@ impl BroadcastEngine {
             Ok(()) => {
                 // Reset the session-scoped media clock for fresh diagnostics.
                 self.clock = MediaClock::new(None, None);
+                self.clock_track_is_audio = None;
                 events.extend(self.transition(BroadcastState::Starting));
                 events.extend(self.transition(BroadcastState::Broadcasting));
                 Ok(events)

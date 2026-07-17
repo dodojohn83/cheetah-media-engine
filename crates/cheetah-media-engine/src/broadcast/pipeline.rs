@@ -151,11 +151,12 @@ impl BroadcastPipeline {
             None => return Ok(None),
         };
 
-        let is_audio = matches!(frame, MediaFrame::Audio(_));
-
         for processor in self.processors.iter_mut() {
             frame = processor.process(&frame)?;
         }
+
+        // Determine the emitted media type from the (possibly transformed) frame.
+        let is_audio = matches!(frame, MediaFrame::Audio(_));
 
         let sequence = SequenceNumber::new(self.sequence);
         let packet = self.encoder.encode(
