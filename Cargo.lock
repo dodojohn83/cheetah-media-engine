@@ -246,6 +246,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cheetah-media-native-audio"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-abi",
+ "cheetah-media-types",
+]
+
+[[package]]
 name = "cheetah-media-native-decoder"
 version = "0.1.0"
 dependencies = [
