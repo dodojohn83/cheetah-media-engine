@@ -72,8 +72,8 @@ fn supports_video(
         if vc.codec != codec {
             return false;
         }
-        // If no profiles are specified, accept any constraint. Probes should
-        // provide profiles to avoid overclaiming.
+        // If no profiles are specified, reject the codec to avoid overclaiming.
+        // Probes must provide explicit profile/level constraints.
         if vc.profiles.is_empty() {
             return false;
         }
