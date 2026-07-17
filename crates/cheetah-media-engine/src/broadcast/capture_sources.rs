@@ -3,6 +3,8 @@
 //! WP-71 adds typed placeholder sources for camera, microphone and screen. Real
 //! platform backends will replace these host stubs in later work packages.
 
+use alloc::collections::VecDeque;
+
 use cheetah_media_types::{MediaError, MediaTime, Timestamp};
 
 use crate::broadcast::frame::MediaFrame;
@@ -118,16 +120,16 @@ impl CaptureSource for ScreenCaptureSource {
 
 /// Mock capture source for headless tests.
 pub struct MockCaptureSource {
-    frames: alloc::vec::Vec<MediaFrame<'static>>,
+    frames: VecDeque<MediaFrame<'static>>,
     started: bool,
     video_info: VideoFrameInfo,
 }
 
 impl MockCaptureSource {
-    /// Create a mock source that yields the given `frames`.
+    /// Create a mock source that yields the given `frames` in insertion order.
     pub fn new(frames: alloc::vec::Vec<MediaFrame<'static>>, video_info: VideoFrameInfo) -> Self {
         Self {
-            frames,
+            frames: VecDeque::from(frames),
             started: false,
             video_info,
         }
@@ -141,6 +143,8 @@ impl MockCaptureSource {
     /// Create a mock source that yields `count` identical RGBA frames.
     pub fn with_count(count: usize, video_info: VideoFrameInfo) -> Self {
         use alloc::vec;
+        // For identical frames order does not matter; for distinct frames `new`
+        // preserves insertion order by consuming from the front of a VecDeque.
         let format = cheetah_media_types::VideoFormat {
             pixel_format: video_info.pixel_format,
             coded_width: video_info.width,
@@ -176,7 +180,7 @@ impl CaptureSource for MockCaptureSource {
         if !self.started {
             return Ok(None);
         }
-        Ok(self.frames.pop())
+        Ok(self.frames.pop_front())
     }
 
     fn kind(&self) -> &'static str {
@@ -243,6 +247,46 @@ mod tests {
         source.start().unwrap();
         assert!(source.poll().unwrap().is_some());
         source.stop().unwrap();
+        assert!(source.poll().unwrap().is_none());
+    }
+
+    #[test]
+    fn mock_source_yields_frames_in_insertion_order() {
+        use alloc::vec;
+        let info = info();
+        let format = cheetah_media_types::VideoFormat {
+            pixel_format: info.pixel_format,
+            coded_width: info.width,
+            coded_height: info.height,
+            visible_width: info.width,
+            visible_height: info.height,
+            stride: info.stride,
+            color_space: info.color_space,
+        };
+        let mut frames = vec![];
+        for i in 0..3 {
+            let payload = vec![i as u8; (info.stride * info.height) as usize];
+            let ts = Timestamp::new(i);
+            frames.push(MediaFrame::Video(cheetah_media_types::VideoFrame::new(
+                payload,
+                format,
+                MediaTime::from_pts_dts(ts, ts, cheetah_media_types::TimeBase::DEFAULT),
+            )));
+        }
+
+        let mut source = MockCaptureSource::new(frames, info);
+        source.start().unwrap();
+
+        for i in 0..3 {
+            let frame = source.poll().unwrap().unwrap();
+            match frame {
+                MediaFrame::Video(video) => {
+                    assert_eq!(video.timestamp.pts_ms(), Some(i as i64));
+                    assert_eq!(video.payload.as_ref()[0], i as u8);
+                }
+                MediaFrame::Audio(_) => panic!("expected video frame"),
+            }
+        }
         assert!(source.poll().unwrap().is_none());
     }
 }
