@@ -215,7 +215,7 @@ impl MediaClock {
         // consecutive deltas. Skip when `last_delta` is zero (first sample or
         // after a reset/wrap/discontinuity) so the metric is not seeded with
         // the first interval.
-        let jitter_deviation = (delta - last_delta).abs();
+        let jitter_deviation = delta.saturating_sub(last_delta).saturating_abs();
         let threshold = self.stats.jitter_ms.saturating_mul(1000);
         if last_delta != 0 && jitter_deviation > threshold {
             self.stats.jitter_ms = jitter_deviation / 1000;
