@@ -188,6 +188,7 @@ impl StageBudget {
         is_video: bool,
         is_keyframe: bool,
     ) -> bool {
+        let _ = is_live;
         if current < self.max_in_flight {
             return true;
         }
@@ -197,15 +198,13 @@ impl StageBudget {
             // in-flight item to make room.
             DropPolicy::DropOldest => current <= self.max_in_flight,
             DropPolicy::DropNonKeyframe => {
-                if is_live && is_video && !is_keyframe {
+                if is_video && !is_keyframe {
                     // Drop the stale non-key video frame itself.
                     false
-                } else if is_live && (!is_video || is_keyframe) {
+                } else {
                     // Audio and keyframes are never dropped; admit one over the
                     // limit so the caller can evict stale non-key video frames.
                     current <= self.max_in_flight
-                } else {
-                    false
                 }
             }
         }
@@ -279,6 +278,19 @@ mod tests {
         // Never drops: backpressure at the limit.
         let never = StageBudget::new(16, 12, 8, DropPolicy::Never);
         assert!(!never.should_admit(16, true, false, false));
+    }
+
+    #[test]
+    fn stage_budget_drop_non_keyframe_preserves_non_video_at_limit() {
+        let budget = StageBudget::new(16, 12, 8, DropPolicy::DropNonKeyframe);
+        // Audio and keyframes are never dropped, even when at the hard limit.
+        assert!(budget.should_admit(16, false, false, false));
+        assert!(budget.should_admit(16, false, true, true));
+        assert!(budget.should_admit(16, true, false, false));
+        assert!(budget.should_admit(16, true, true, true));
+        // Non-key video is dropped regardless of live/non-live.
+        assert!(!budget.should_admit(16, true, true, false));
+        assert!(!budget.should_admit(16, false, true, false));
     }
 
     #[test]

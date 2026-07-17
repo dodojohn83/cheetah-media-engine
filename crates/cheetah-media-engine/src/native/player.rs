@@ -210,6 +210,10 @@ impl NativePlayer {
 
     /// Tear down the player and validate its lifecycle.
     pub fn destroy(mut self) -> Result<Vec<EngineEvent>, NativePlayerError> {
+        // Release backend resources deterministically before dropping so a stuck
+        // network task does not keep the player alive.
+        let _ = self.decoder.flush();
+        let _ = self.source.cancel();
         let out = self.engine.apply(EngineCommand::Destroy)?;
         if !self.lifecycle.is_destroyed() {
             self.lifecycle.record(LifecycleEvent::Destroyed);
@@ -345,7 +349,10 @@ impl NativePlayer {
             if bytes_per_sample == 0 || channels == 0 {
                 return 0;
             }
-            let frame_size = (bytes_per_sample * channels) as u64;
+            let frame_size = u64::from(bytes_per_sample).saturating_mul(u64::from(channels));
+            if frame_size == 0 {
+                return 0;
+            }
             output.data.len() as u64 / frame_size
         } else {
             0

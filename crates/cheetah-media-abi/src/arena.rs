@@ -83,6 +83,18 @@ impl MemoryArena {
         if size == 0 {
             return Err(AbiError::InvalidData);
         }
+        // Keep the allocation representable in a `MemoryDescriptor` and below the
+        // maximum addressable slice length on the target platform. We stay one
+        // below `u32::MAX` so that a rounded-up Vec capacity still fits in the
+        // descriptor's `capacity: u32` field.
+        const MAX_SIZE: usize = if (isize::MAX as usize) < ((u32::MAX - 1) as usize) {
+            isize::MAX as usize
+        } else {
+            (u32::MAX - 1) as usize
+        };
+        if size > MAX_SIZE {
+            return Err(AbiError::OutOfBounds);
+        }
 
         let generation = self.next_generation;
         self.next_generation += 1;
@@ -235,5 +247,17 @@ impl MemoryArena {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_rejects_out_of_bounds_size() {
+        let mut arena = MemoryArena::new(1);
+        assert_eq!(arena.request(usize::MAX), Err(AbiError::OutOfBounds));
+        assert_eq!(arena.request(0), Err(AbiError::InvalidData));
     }
 }
