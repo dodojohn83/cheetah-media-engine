@@ -59,9 +59,9 @@
 - [x] WP-54 C ABI 控制面：config、load、play、pause、stop、destroy、async 回调（PR #61）
 - [x] WP-55 Qt QWidget 接入与窗口生命周期（PR #62）
 - [x] WP-56 Qt QML / Qt Quick surface 接入（PR #63）
-- [~] WP-57 原生 HTTP/WS/TCP transport adapter（tokio）
-- [ ] WP-58 平台硬解探测与回退
-- [ ] WP-59 原生 renderer 与零拷贝 surface
+- [x] WP-57 原生 HTTP/WS/TCP transport adapter（tokio）（PR #64）
+- [x] WP-58 平台硬解探测与回退（PR #65）
+- [~] WP-59 原生 renderer 与零拷贝 surface
 - [ ] WP-60 平台 audio sink 与 A/V sync
 - [ ] WP-61 原生能力协商、diagnostics 与生命周期 soak
 

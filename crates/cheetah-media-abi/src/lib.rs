@@ -4,6 +4,8 @@
 #[macro_use]
 extern crate alloc;
 
+use alloc::vec::Vec;
+
 use cheetah_media_types::{CodecId, MediaTime, TrackId};
 
 pub mod arena;
@@ -28,9 +30,9 @@ pub struct Input<'a> {
 }
 
 /// A decoded or post-processed media sample.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Output<'a> {
-    pub data: &'a [u8],
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Output {
+    pub data: Vec<u8>,
     pub time: MediaTime,
     pub duration_ms: u64,
     pub track_id: TrackId,
@@ -45,7 +47,7 @@ pub trait DecoderProbe {
 /// Compressed sample decoder.
 pub trait Decoder: DecoderProbe {
     /// Feed a compressed sample and return decoded output.
-    fn decode<'a>(&mut self, input: &Input<'a>) -> Result<Output<'a>, AbiError>;
+    fn decode(&mut self, input: &Input<'_>) -> Result<Output, AbiError>;
     /// Flush any buffered frames.
     fn flush(&mut self) -> Result<(), AbiError>;
 }
