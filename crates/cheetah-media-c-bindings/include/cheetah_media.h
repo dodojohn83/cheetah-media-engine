@@ -43,9 +43,61 @@ typedef enum {
  */
 typedef struct CheetahPlayer CheetahPlayer;
 
+/**
+ * Event delivered to a C event callback.
+ *
+ * All pointer fields are valid only for the duration of the callback and must
+ * not be freed or retained by the caller.
+ */
+typedef struct {
+  /**
+   * Event type string, e.g. `state_changed`, `error`, `eof`.
+   */
+  const char *event_type;
+  /**
+   * Track identifier, if any.
+   */
+  const char *track_id;
+  /**
+   * Human-readable payload or error context.
+   */
+  const char *message;
+  /**
+   * Stable error code when `event_type` is `error`, otherwise `0`.
+   */
+  uint32_t error_code;
+} CheetahEvent;
+
+/**
+ * C callback invoked synchronously when the engine produces events.
+ *
+ * # Safety
+ *
+ * Called on the thread that invoked the control function. The `event` pointer
+ * and all of its string fields are valid only until the callback returns and
+ * must not be retained or freed. The callback must not call back into the same
+ * player from a different thread.
+ *
+ * A `NULL` pointer disables callbacks.
+ */
+typedef void (*CheetahEventCallback)(const CheetahPlayer *player,
+                                     const CheetahEvent *event,
+                                     void *userdata);
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * Apply a JSON configuration string to the player.
+ *
+ * # Safety
+ *
+ * `player` must be a valid, non-null handle. `config` must be a valid
+ * null-terminated UTF-8 string. The contents are stored and will be consumed
+ * by later backend ports.
+ */
+int cheetah_player_configure(CheetahPlayer *player, const char *config);
 
 /**
  * Create a new player instance.
@@ -70,6 +122,47 @@ int cheetah_player_create(CheetahPlayer **player);
 int cheetah_player_destroy(CheetahPlayer **player);
 
 /**
+ * Load a media URL and prepare the engine for playback.
+ *
+ * # Safety
+ *
+ * `player` and `url` must be valid, non-null pointers. `url` must be a
+ * null-terminated UTF-8 string containing a scheme (e.g. `http://`).
+ */
+int cheetah_player_load(CheetahPlayer *player, const char *url, bool is_live);
+
+/**
+ * Pause playback.
+ *
+ * # Safety
+ *
+ * `player` must be a valid, non-null handle.
+ */
+int cheetah_player_pause(CheetahPlayer *player);
+
+/**
+ * Begin playback.
+ *
+ * # Safety
+ *
+ * `player` must be a valid, non-null handle.
+ */
+int cheetah_player_play(CheetahPlayer *player);
+
+/**
+ * Register or replace the event callback for a player.
+ *
+ * # Safety
+ *
+ * `player` must be a valid, non-null handle. `callback` may be `NULL` to
+ * disable callbacks. `userdata` is passed unchanged to every callback and may
+ * be `NULL`.
+ */
+int cheetah_player_set_event_callback(CheetahPlayer *player,
+                                      CheetahEventCallback callback,
+                                      void *userdata);
+
+/**
  * Return the current player state as a null-terminated UTF-8 string.
  *
  * # Safety
@@ -79,6 +172,15 @@ int cheetah_player_destroy(CheetahPlayer **player);
  * on the same handle that may mutate state and must not be freed.
  */
 const char *cheetah_player_state(const CheetahPlayer *player);
+
+/**
+ * Stop and release the current session.
+ *
+ * # Safety
+ *
+ * `player` must be a valid, non-null handle.
+ */
+int cheetah_player_stop(CheetahPlayer *player);
 
 /**
  * Return the engine version as a null-terminated UTF-8 string.

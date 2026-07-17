@@ -136,7 +136,7 @@ pub enum EngineEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LoadRequest {
     /// URL or identifier of the source.
-    pub url: &'static str,
+    pub url: alloc::string::String,
     /// Whether the source is expected to be a live stream.
     pub is_live: bool,
 }
@@ -650,7 +650,7 @@ mod tests {
         let e0 = engine.epoch();
         engine
             .apply(EngineCommand::Load(LoadRequest {
-                url: "http://example.com/test.flv",
+                url: "http://example.com/test.flv".to_string(),
                 is_live: false,
             }))
             .unwrap();
