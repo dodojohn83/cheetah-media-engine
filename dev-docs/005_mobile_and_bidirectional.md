@@ -52,7 +52,7 @@
 | 71 | `005/71_capture_sources.md` | 麦克风/摄像头/屏幕采集与平台权限模型 | 70 |
 | 72 | `005/72_encoders.md` | H.264/H.265/Opus/AAC/G.711 平台编码器能力 | 71 |
 | 73 | `005/73_publish_backends.md` | WebRTC/RTMP 发布路径、拥塞反馈与动态码率 | 72 |
-| 74 | `005/74_bidirectional_integration.md` | 播放与发布统一资源预算、A/V sync、diagnostics 与端到端 soak | 71、73 |
+| 74 | `005/74_bidirectional_integration.md` | 播放与发布统一资源预算、A/V sync、diagnostics 与端到端 soak | 73 |
 
 > 后续 WP 的范围、编号和验收标准在进入该 WP 前补充为 `005/XX_name.md`，避免一次性编造无法验证的细节。
 
@@ -69,8 +69,8 @@
 - [x] WP-70 双向引擎抽象（PR #71）
 - [x] WP-71 采集源与权限模型（PR #72）
 - [x] WP-72 平台编码器能力（PR #73）
-- [~] WP-73 发布路径与拥塞控制（本 PR）
-- [ ] WP-74 双向引擎集成与端到端 soak
+- [x] WP-73 发布路径与拥塞控制（PR #74）
+- [~] WP-74 双向引擎集成与端到端 soak（本 PR）
 
 ## 6. 全局完成定义
 

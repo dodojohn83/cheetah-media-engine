@@ -6,6 +6,8 @@
 
 use alloc::vec::Vec;
 
+use cheetah_media_types::MediaError;
+
 /// Resource kinds that can leak across stage boundaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -67,7 +69,7 @@ impl ResourceLedger {
         }
     }
 
-    fn idx(kind: ResourceKind) -> usize {
+    pub(crate) fn idx(kind: ResourceKind) -> usize {
         kind as usize
     }
 
@@ -120,6 +122,90 @@ impl ResourceLedger {
             }
         }
         out
+    }
+}
+
+/// Per-kind and total resource caps used by the broadcast engine.
+///
+/// A default instance places no effective limit on any kind (`u64::MAX`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResourceLimits {
+    max_per_kind: [u64; KIND_COUNT],
+    max_total: u64,
+}
+
+impl Default for ResourceLimits {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ResourceLimits {
+    /// Create limits with all caps set to `u64::MAX`.
+    pub const fn new() -> Self {
+        Self {
+            max_per_kind: [u64::MAX; KIND_COUNT],
+            max_total: u64::MAX,
+        }
+    }
+
+    /// Set the cap for a specific resource kind.
+    pub fn set_max(&mut self, kind: ResourceKind, max: u64) {
+        self.max_per_kind[ResourceLedger::idx(kind)] = max;
+    }
+
+    /// Set the total cap across all kinds.
+    pub fn set_max_total(&mut self, max: u64) {
+        self.max_total = max;
+    }
+
+    /// Return the cap for `kind`.
+    pub fn max_for(&self, kind: ResourceKind) -> u64 {
+        self.max_per_kind[ResourceLedger::idx(kind)]
+    }
+
+    /// Return the total cap.
+    pub fn max_total(&self) -> u64 {
+        self.max_total
+    }
+
+    /// Check whether `ledger` is within these limits.
+    pub fn check(&self, ledger: &ResourceLedger) -> Result<(), MediaError> {
+        let total = ledger.total();
+        if total > self.max_total {
+            return Err(MediaError::ResourceLimit {
+                name: "resource_total",
+                current: total,
+                limit: self.max_total,
+            });
+        }
+        for (i, kind) in ALL_KINDS.iter().enumerate() {
+            let count = ledger.count(*kind);
+            let limit = self.max_per_kind[i];
+            if count > limit {
+                return Err(MediaError::ResourceLimit {
+                    name: resource_kind_name(*kind),
+                    current: count,
+                    limit,
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+fn resource_kind_name(kind: ResourceKind) -> &'static str {
+    match kind {
+        ResourceKind::Network => "network",
+        ResourceKind::Timer => "timer",
+        ResourceKind::Worker => "worker",
+        ResourceKind::WasmHandle => "wasm_handle",
+        ResourceKind::Decoder => "decoder",
+        ResourceKind::Frame => "frame",
+        ResourceKind::Audio => "audio",
+        ResourceKind::Gpu => "gpu",
+        ResourceKind::Url => "url",
+        ResourceKind::Listener => "listener",
     }
 }
 
@@ -243,5 +329,41 @@ mod tests {
             ledger.release(kind);
         }
         assert!(ledger.is_zero());
+    }
+
+    #[test]
+    fn resource_limits_default_allow_anything() {
+        let limits = ResourceLimits::default();
+        let mut ledger = ResourceLedger::new();
+        ledger.acquire(ResourceKind::Network);
+        assert!(limits.check(&ledger).is_ok());
+    }
+
+    #[test]
+    fn resource_limits_reject_per_kind_excess() {
+        let mut limits = ResourceLimits::new();
+        limits.set_max(ResourceKind::Network, 1);
+        let mut ledger = ResourceLedger::new();
+        ledger.acquire(ResourceKind::Network);
+        ledger.acquire(ResourceKind::Network);
+        let err = limits.check(&ledger).unwrap_err();
+        assert_eq!(err.code(), 5001);
+    }
+
+    #[test]
+    fn resource_limits_reject_total_excess() {
+        let mut limits = ResourceLimits::new();
+        limits.set_max_total(1);
+        let mut ledger = ResourceLedger::new();
+        ledger.acquire(ResourceKind::Network);
+        ledger.acquire(ResourceKind::Gpu);
+        let err = limits.check(&ledger).unwrap_err();
+        assert!(matches!(
+            err,
+            MediaError::ResourceLimit {
+                name: "resource_total",
+                ..
+            }
+        ));
     }
 }

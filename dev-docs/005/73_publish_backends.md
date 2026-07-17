@@ -70,9 +70,9 @@ corepack pnpm build
 ## 5. 状态
 
 - [x] 创建 WP-73 计划文档
-- [ ] 扩展 `PublisherBackend` 与 `BitrateFeedback`
-- [ ] 实现 WebRTC/RTMP 占位发布后端
-- [ ] `BroadcastPipeline` 根据反馈调整码率
-- [ ] `BroadcastEngine` 支持 `ApplyFeedback` 命令
-- [ ] Rust/JS 验证矩阵通过
-- [ ] CI / Devin Review 通过并合并
+- [x] 扩展 `PublisherBackend` 与 `BitrateFeedback`
+- [x] 实现 WebRTC/RTMP 占位发布后端
+- [x] `BroadcastPipeline` 根据反馈调整码率
+- [x] `BroadcastEngine` 支持 `ApplyFeedback` 命令
+- [x] Rust/JS 验证矩阵通过
+- [x] CI / Devin Review 通过并合并（PR #74）

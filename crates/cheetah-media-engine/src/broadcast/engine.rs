@@ -7,12 +7,15 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use cheetah_media_types::{MediaError, TrackId};
+use cheetah_media_timeline::clock::{ClockStats, MediaClock};
+use cheetah_media_types::{MediaError, MediaLimits, TrackId};
 
 use crate::broadcast::permission::{
     CaptureSourceKind, HostPermissionModel, PermissionModel, PermissionState,
 };
 use crate::broadcast::pipeline::BroadcastPipeline;
+use crate::metrics::{Metrics, MetricsSnapshot};
+use crate::resource::{ResourceLedger, ResourceLimits};
 
 /// Lifecycle states for the broadcast engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -96,11 +99,27 @@ pub enum BroadcastEvent {
     Error(MediaError),
 }
 
+/// Immutable diagnostics snapshot for the broadcast engine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BroadcastDiagnostics {
+    /// Current engine state.
+    pub state: BroadcastState,
+    /// Latest metrics snapshot.
+    pub metrics: MetricsSnapshot,
+    /// Resource ledger clone.
+    pub resources: ResourceLedger,
+    /// Latest clock statistics.
+    pub clock_stats: ClockStats,
+}
+
 /// Broadcast engine state machine.
 pub struct BroadcastEngine {
     state: BroadcastState,
     pipeline: Option<BroadcastPipeline>,
     permission_model: Box<dyn PermissionModel>,
+    media_limits: MediaLimits,
+    resource_limits: ResourceLimits,
+    clock: MediaClock,
 }
 
 impl BroadcastEngine {
@@ -110,6 +129,9 @@ impl BroadcastEngine {
             state: BroadcastState::Idle,
             pipeline: None,
             permission_model: Box::new(HostPermissionModel),
+            media_limits: MediaLimits::default(),
+            resource_limits: ResourceLimits::default(),
+            clock: MediaClock::new(None, None),
         }
     }
 
@@ -119,12 +141,27 @@ impl BroadcastEngine {
             state: BroadcastState::Ready,
             pipeline: Some(pipeline),
             permission_model: Box::new(HostPermissionModel),
+            media_limits: MediaLimits::default(),
+            resource_limits: ResourceLimits::default(),
+            clock: MediaClock::new(None, None),
         }
     }
 
     /// Replace the permission model.
     pub fn with_permission_model(mut self, model: Box<dyn PermissionModel>) -> Self {
         self.permission_model = model;
+        self
+    }
+
+    /// Replace the media limits used to validate pipeline configuration.
+    pub fn with_media_limits(mut self, limits: MediaLimits) -> Self {
+        self.media_limits = limits;
+        self
+    }
+
+    /// Replace the resource caps checked before capture starts.
+    pub fn with_resource_limits(mut self, limits: ResourceLimits) -> Self {
+        self.resource_limits = limits;
         self
     }
 
@@ -167,6 +204,13 @@ impl BroadcastEngine {
         match pipeline.tick() {
             Ok(None) => Ok(Vec::new()),
             Ok(Some(summary)) => {
+                if let Some(time) = summary.timestamp {
+                    // Update the media clock for jitter/discontinuity diagnostics.
+                    // Errors here are non-fatal: a single bad timestamp should not
+                    // tear down the broadcast.
+                    let _ = self.clock.update(time, summary.stream_epoch);
+                }
+
                 let mut events = vec![BroadcastEvent::PacketPublished {
                     sequence: summary.sequence,
                     track_id: summary.track_id,
@@ -180,6 +224,21 @@ impl BroadcastEngine {
                 self.state = BroadcastState::Failed;
                 Ok(vec![BroadcastEvent::Error(err)])
             }
+        }
+    }
+
+    /// Current diagnostics snapshot.
+    pub fn diagnostics(&self) -> BroadcastDiagnostics {
+        let (metrics, resources) = self
+            .pipeline
+            .as_ref()
+            .map(|p| (p.metrics().snapshot(), p.resources().clone()))
+            .unwrap_or_else(|| (Metrics::new().snapshot(), ResourceLedger::new()));
+        BroadcastDiagnostics {
+            state: self.state,
+            metrics,
+            resources,
+            clock_stats: *self.clock.stats(),
         }
     }
 
@@ -247,6 +306,23 @@ impl BroadcastEngine {
             .pipeline
             .as_mut()
             .ok_or(BroadcastError::PipelineNotSet)?;
+
+        // Validate media and resource limits before starting capture.
+        let config = *pipeline.config();
+        if let Err(err) = self
+            .media_limits
+            .check_resolution(config.width, config.height)
+        {
+            self.state = BroadcastState::Failed;
+            events.push(BroadcastEvent::Error(err));
+            return Ok(events);
+        }
+        if let Err(err) = self.resource_limits.check(pipeline.resources()) {
+            self.state = BroadcastState::Failed;
+            events.push(BroadcastEvent::Error(err));
+            return Ok(events);
+        }
+
         match pipeline.start() {
             Ok(()) => {
                 events.extend(self.transition(BroadcastState::Starting));
@@ -395,7 +471,10 @@ mod tests {
         BitrateFeedback, MockPublisher, UnsupportedPublisherBackend,
     };
     use crate::broadcast::source::UnsupportedCaptureSource;
-    use cheetah_media_types::{CodecId, ColorSpace, PixelFormat, StreamEpoch, TrackId};
+    use crate::resource::{ResourceKind, ResourceLimits};
+    use cheetah_media_types::{
+        CodecId, ColorSpace, MediaLimits, PixelFormat, StreamEpoch, TrackId,
+    };
 
     fn make_engine() -> BroadcastEngine {
         let config = PipelineConfig {
@@ -552,7 +631,7 @@ mod tests {
         )));
     }
 
-    fn broadcasting_engine() -> BroadcastEngine {
+    fn ready_engine() -> BroadcastEngine {
         let config = PipelineConfig {
             track_id: TrackId::new(1).unwrap(),
             stream_epoch: StreamEpoch::new(0),
@@ -580,6 +659,11 @@ mod tests {
         engine
             .apply(BroadcastCommand::Connect("mock://x".into()))
             .unwrap();
+        engine
+    }
+
+    fn broadcasting_engine() -> BroadcastEngine {
+        let mut engine = ready_engine();
         engine.apply(BroadcastCommand::Start).unwrap();
         engine
     }
@@ -673,5 +757,112 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, BroadcastEvent::BitrateChanged { bps: 800_000 }))
         );
+    }
+
+    #[test]
+    fn media_limits_reject_oversized_pipeline() {
+        let mut limits = MediaLimits::default();
+        limits.max_resolution = (1, 1);
+        let mut engine = ready_engine().with_media_limits(limits);
+        let events = engine.apply(BroadcastCommand::Start).unwrap();
+        assert_eq!(engine.state(), BroadcastState::Failed);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, BroadcastEvent::Error(MediaError::ResourceLimit { .. })))
+        );
+    }
+
+    #[test]
+    fn resource_limits_reject_excess_network_and_can_stop() {
+        let mut limits = ResourceLimits::new();
+        limits.set_max(ResourceKind::Network, 0);
+        let mut engine = ready_engine().with_resource_limits(limits);
+        // Connect already acquired a Network resource.
+        let events = engine.apply(BroadcastCommand::Start).unwrap();
+        assert_eq!(engine.state(), BroadcastState::Failed);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, BroadcastEvent::Error(MediaError::ResourceLimit { .. })))
+        );
+
+        engine.apply(BroadcastCommand::Stop).unwrap();
+        let diag = engine.diagnostics();
+        assert!(diag.resources.is_zero());
+    }
+
+    fn soak_engine(frame_count: usize) -> BroadcastEngine {
+        let config = PipelineConfig {
+            track_id: TrackId::new(1).unwrap(),
+            stream_epoch: StreamEpoch::new(0),
+            codec: CodecId::H264,
+            width: 2,
+            height: 2,
+            fps: 30,
+        };
+        let info = VideoFrameInfo {
+            width: 2,
+            height: 2,
+            stride: 8,
+            pixel_format: PixelFormat::Rgba,
+            color_space: ColorSpace::Bt709,
+        };
+        let pipeline = BroadcastPipeline::new(
+            Box::new(MockCaptureSource::with_count(frame_count, info)),
+            Vec::new(),
+            Box::new(MockEncoder::new()),
+            Box::new(MockPublisher::new()),
+            config,
+        );
+        let mut engine = BroadcastEngine::with_pipeline(pipeline)
+            .with_permission_model(Box::new(AlwaysGrantPermissionModel));
+        engine
+            .apply(BroadcastCommand::Connect("mock://x".into()))
+            .unwrap();
+        engine.apply(BroadcastCommand::Start).unwrap();
+        engine
+    }
+
+    #[test]
+    fn end_to_end_soak_publishes_frames_and_releases_resources() {
+        let frame_count = 100;
+        let mut engine = soak_engine(frame_count);
+
+        let mut published = 0;
+        let mut last_sequence = 0;
+        for i in 0..frame_count {
+            let events = engine.tick().unwrap();
+            if events
+                .iter()
+                .any(|e| matches!(e, BroadcastEvent::PacketPublished { sequence, .. }))
+            {
+                published += 1;
+                last_sequence = i as u64;
+            }
+        }
+        assert_eq!(published, frame_count);
+        assert_eq!(last_sequence, (frame_count - 1) as u64);
+
+        let diag = engine.diagnostics();
+        assert_eq!(diag.state, BroadcastState::Broadcasting);
+        assert!(diag.metrics.allocations.count >= frame_count as u64);
+        assert_eq!(diag.resources.count(ResourceKind::Network), 1);
+
+        engine.apply(BroadcastCommand::Stop).unwrap();
+        let diag = engine.diagnostics();
+        assert_eq!(diag.state, BroadcastState::Stopped);
+        assert!(diag.resources.is_zero());
+    }
+
+    #[test]
+    fn diagnostics_contains_clock_and_metrics() {
+        let mut engine = broadcasting_engine();
+        let _ = engine.tick().unwrap();
+        let diag = engine.diagnostics();
+        assert_eq!(diag.state, BroadcastState::Broadcasting);
+        assert!(diag.metrics.allocations.count > 0);
+        // The media clock saw one sample.
+        assert_eq!(diag.clock_stats.discontinuities, 0);
     }
 }

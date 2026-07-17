@@ -24,7 +24,8 @@ pub use capture_sources::{
 pub use encoder::{Encoder, EncoderCapability, UnsupportedEncoder};
 pub use encoders::{AacEncoder, G711Encoder, H264Encoder, H265Encoder, MockEncoder, OpusEncoder};
 pub use engine::{
-    BroadcastCommand, BroadcastEngine, BroadcastError, BroadcastEvent, BroadcastState,
+    BroadcastCommand, BroadcastDiagnostics, BroadcastEngine, BroadcastError, BroadcastEvent,
+    BroadcastState,
 };
 pub use frame::MediaFrame;
 pub use permission::{

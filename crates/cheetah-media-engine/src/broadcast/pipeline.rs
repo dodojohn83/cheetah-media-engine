@@ -3,9 +3,10 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use cheetah_media_types::{CodecId, MediaError, SequenceNumber, StreamEpoch, TrackId};
+use cheetah_media_types::{CodecId, MediaError, MediaTime, SequenceNumber, StreamEpoch, TrackId};
 
 use crate::broadcast::encoder::Encoder;
+use crate::broadcast::frame::MediaFrame;
 use crate::broadcast::processor::Processor;
 use crate::broadcast::publisher::PublisherBackend;
 use crate::broadcast::source::CaptureSource;
@@ -36,6 +37,14 @@ pub struct BroadcastPacketSummary {
     pub sequence: u64,
     /// Track identifier.
     pub track_id: TrackId,
+    /// Stream epoch of the packet.
+    pub stream_epoch: StreamEpoch,
+    /// Packet timestamp, if the source frame carried one.
+    pub timestamp: Option<MediaTime>,
+    /// True if the source frame was audio.
+    pub is_audio: bool,
+    /// True if the encoded packet is a keyframe.
+    pub is_keyframe: bool,
     /// Target bitrate suggested by publisher feedback, if any.
     pub target_bitrate_bps: Option<u32>,
 }
@@ -59,6 +68,11 @@ pub struct BroadcastPipeline {
 }
 
 impl BroadcastPipeline {
+    /// Current configuration.
+    pub fn config(&self) -> &PipelineConfig {
+        &self.config
+    }
+
     /// Create a new pipeline.
     pub fn new(
         source: Box<dyn CaptureSource>,
@@ -137,6 +151,13 @@ impl BroadcastPipeline {
             None => return Ok(None),
         };
 
+        let is_audio = matches!(frame, MediaFrame::Audio(_));
+        let timestamp = if frame.timestamp().has_timestamp() {
+            Some(frame.timestamp())
+        } else {
+            None
+        };
+
         for processor in self.processors.iter_mut() {
             frame = processor.process(&frame)?;
         }
@@ -163,6 +184,10 @@ impl BroadcastPipeline {
         let summary = BroadcastPacketSummary {
             sequence: self.sequence,
             track_id: packet.track_id,
+            stream_epoch: packet.stream_epoch,
+            timestamp,
+            is_audio,
+            is_keyframe: packet.flags.is_keyframe,
             target_bitrate_bps,
         };
         self.sequence += 1;
