@@ -73,4 +73,4 @@ cargo deny check
 - [x] native 模块与能力协商
 - [x] `NativePlayer` 生命周期与 diagnostics
 - [x] Rust 全矩阵验证通过
-- [ ] CI / Devin Review 通过并合并
+- [x] CI / Devin Review 通过并合并

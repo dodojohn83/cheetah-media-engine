@@ -63,7 +63,7 @@
 - [x] WP-58 平台硬解探测与回退（PR #65）
 - [x] WP-59 原生 renderer 与零拷贝 surface（PR #66）
 - [x] WP-60 平台 audio sink 与 A/V sync（PR #67）
-- [~] WP-61 原生能力协商、diagnostics 与生命周期 soak（进行中）
+- [x] WP-61 原生能力协商、diagnostics 与生命周期 soak（PR #68）
 
 ## 6. 全局完成定义
 
