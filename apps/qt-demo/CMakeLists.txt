@@ -4,8 +4,10 @@ project(cheetah-qt-demo LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 find_package(Qt5 REQUIRED COMPONENTS Widgets Test)
+find_package(Qt5 COMPONENTS Quick QuickControls2)
 find_package(Threads REQUIRED)
 
 set(CBINDINGS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../crates/cheetah-media-c-bindings)
@@ -73,6 +75,64 @@ set_target_properties(cheetah-qt-demo-test PROPERTIES
   INSTALL_RPATH "$ORIGIN"
 )
 
+# QML demo (optional; only if Qt5 Quick is available)
+if(Qt5Quick_FOUND AND Qt5QuickControls2_FOUND)
+  add_executable(cheetah-qml-demo
+    src/qml/main.cpp
+    src/cheetah_player_qml.cpp
+    src/cheetah_player_qml.h
+    qml/qml.qrc
+  )
+
+  add_dependencies(cheetah-qml-demo cheetah_c_bindings)
+
+  target_include_directories(cheetah-qml-demo PRIVATE ${CBINDINGS_DIR}/include)
+  target_link_libraries(cheetah-qml-demo PRIVATE
+    ${CBINDINGS_SO}
+    Qt5::Quick
+    Qt5::QuickControls2
+    Threads::Threads
+  )
+
+  add_custom_command(TARGET cheetah-qml-demo POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CBINDINGS_SO} $<TARGET_FILE_DIR:cheetah-qml-demo>
+  )
+
+  set_target_properties(cheetah-qml-demo PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+  )
+
+  # QML smoke test
+  add_executable(cheetah-qml-demo-test
+    tests/test_cheetah_player_qml.cpp
+    tests/test_cheetah_player_qml.h
+    src/cheetah_player_qml.cpp
+    src/cheetah_player_qml.h
+    qml/qml.qrc
+  )
+
+  add_dependencies(cheetah-qml-demo-test cheetah_c_bindings)
+
+  target_include_directories(cheetah-qml-demo-test PRIVATE ${CBINDINGS_DIR}/include)
+  target_link_libraries(cheetah-qml-demo-test PRIVATE
+    ${CBINDINGS_SO}
+    Qt5::Quick
+    Qt5::QuickControls2
+    Qt5::Test
+    Threads::Threads
+  )
+
+  add_custom_command(TARGET cheetah-qml-demo-test POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CBINDINGS_SO} $<TARGET_FILE_DIR:cheetah-qml-demo-test>
+  )
+
+  set_target_properties(cheetah-qml-demo-test PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+  )
+endif()
+
 enable_testing()
 add_test(NAME cheetah-qt-demo-smoke
   COMMAND cheetah-qt-demo-test
@@ -80,3 +140,12 @@ add_test(NAME cheetah-qt-demo-smoke
 set_tests_properties(cheetah-qt-demo-smoke PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+if(Qt5Quick_FOUND AND Qt5QuickControls2_FOUND)
+  add_test(NAME cheetah-qml-demo-smoke
+    COMMAND cheetah-qml-demo-test
+  )
+  set_tests_properties(cheetah-qml-demo-smoke PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+  )
+endif()
