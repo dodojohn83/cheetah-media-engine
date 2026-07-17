@@ -5,20 +5,30 @@
 //! work packages; WP-70 only provides the trait surface, host-side
 //! placeholders and a one-tick pipeline.
 
+pub mod capture_sources;
 pub mod encoder;
 pub mod engine;
 pub mod frame;
+pub mod permission;
 pub mod pipeline;
 pub mod processor;
 pub mod publisher;
 pub mod registry;
 pub mod source;
 
+pub use capture_sources::{
+    CameraCaptureSource, MicrophoneCaptureSource, MockCaptureSource, ScreenCaptureSource,
+    VideoFrameInfo,
+};
 pub use encoder::{Encoder, EncoderCapability, UnsupportedEncoder};
 pub use engine::{
     BroadcastCommand, BroadcastEngine, BroadcastError, BroadcastEvent, BroadcastState,
 };
 pub use frame::MediaFrame;
+pub use permission::{
+    AlwaysDenyPermissionModel, AlwaysGrantPermissionModel, CaptureSourceKind, HostPermissionModel,
+    PermissionModel, PermissionState,
+};
 pub use pipeline::{BroadcastPacketSummary, BroadcastPipeline, PipelineConfig};
 pub use processor::{PassThroughProcessor, Processor};
 pub use publisher::{PublisherBackend, UnsupportedPublisherBackend};

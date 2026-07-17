@@ -7,6 +7,7 @@
 use cheetah_media_types::MediaError;
 
 use crate::broadcast::frame::MediaFrame;
+use crate::broadcast::permission::CaptureSourceKind;
 
 /// A source that produces raw media frames.
 pub trait CaptureSource: Send {
@@ -24,6 +25,11 @@ pub trait CaptureSource: Send {
 
     /// Human-readable source kind (e.g. "camera", "screen", "microphone").
     fn kind(&self) -> &'static str;
+
+    /// Optional capture source kind that requires platform permission.
+    fn required_permission(&self) -> Option<CaptureSourceKind> {
+        None
+    }
 }
 
 /// Placeholder capture source used when no platform source is linked.

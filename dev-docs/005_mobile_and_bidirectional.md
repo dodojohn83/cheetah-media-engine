@@ -66,8 +66,8 @@
 - [~] WP-67 iOS Metal 渲染与 AudioUnit sink（跳过）
 - [~] WP-68 鸿蒙 NAPI/ArkTS wrapper（跳过，无 HarmonyOS SDK）
 - [~] WP-69 跨平台 capability 统一与真机兼容矩阵（跳过）
-- [~] WP-70 双向引擎抽象（本 PR）
-- [ ] WP-71 采集源与权限模型
+- [x] WP-70 双向引擎抽象（PR #71）
+- [~] WP-71 采集源与权限模型（本 PR）
 - [ ] WP-72 平台编码器能力
 - [ ] WP-73 发布路径与拥塞控制
 - [ ] WP-74 双向引擎集成与端到端 soak

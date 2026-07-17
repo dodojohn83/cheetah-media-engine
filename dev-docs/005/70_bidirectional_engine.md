@@ -105,7 +105,7 @@ corepack pnpm build
 ## 5. 状态
 
 - [x] 创建 WP-70 计划文档
-- [ ] 实现 `broadcast` 模块 trait 与占位
-- [ ] 接入 `cheetah-media-engine` 的 `bidirectional` feature
-- [ ] Rust/JS 验证矩阵通过
-- [ ] CI / Devin Review 通过并合并
+- [x] 实现 `broadcast` 模块 trait 与占位
+- [x] 接入 `cheetah-media-engine` 的 `bidirectional` feature
+- [x] Rust/JS 验证矩阵通过
+- [x] CI / Devin Review 通过并合并（PR #71）

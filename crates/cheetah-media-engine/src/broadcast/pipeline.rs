@@ -176,6 +176,11 @@ impl BroadcastPipeline {
     pub fn is_started(&self) -> bool {
         self.started
     }
+
+    /// Permission required by the capture source, if any.
+    pub fn required_permission(&self) -> Option<crate::broadcast::permission::CaptureSourceKind> {
+        self.source.required_permission()
+    }
 }
 
 #[cfg(test)]
