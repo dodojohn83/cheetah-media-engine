@@ -15,6 +15,8 @@ pub enum PlatformApi {
     VaApi,
     /// Vulkan Video decode queue.
     VulkanVideo,
+    /// Android MediaCodec.
+    AndroidMediaCodec,
     /// Pure software fallback.
     Software,
 }

@@ -196,6 +196,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cheetah-media-android"
+version = "0.1.0"
+dependencies = [
+ "cheetah-media-abi",
+ "cheetah-media-native-decoder",
+ "cheetah-media-types",
+]
+
+[[package]]
 name = "cheetah-media-backend-api"
 version = "0.1.0"
 dependencies = [
@@ -239,6 +248,7 @@ name = "cheetah-media-engine"
 version = "0.1.0"
 dependencies = [
  "cheetah-media-abi",
+ "cheetah-media-android",
  "cheetah-media-backend-api",
  "cheetah-media-native-audio",
  "cheetah-media-native-decoder",

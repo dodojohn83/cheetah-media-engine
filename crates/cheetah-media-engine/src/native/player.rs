@@ -12,6 +12,9 @@ use cheetah_media_native_renderer::{DefaultRendererProbe, NativeRenderer, Render
 use cheetah_media_native_transport::NativeByteSource;
 use cheetah_media_types::{MediaTime, TimeBase, Timestamp, TrackInfo, TrackKind};
 
+#[cfg(feature = "android")]
+use cheetah_media_android::AndroidMediaCodecProbe;
+
 use crate::native::diagnostics::{DiagnosticEvent, Diagnostics};
 use crate::native::lifecycle::{LifecycleError, LifecycleEvent, LifecycleSoak};
 use crate::native::negotiator::{AudioTarget, BackendPlan, NegotiationError, VideoTarget};
@@ -401,6 +404,8 @@ impl NativePlayerBuilder {
     pub fn build(self) -> Result<NativePlayer, NativePlayerError> {
         let mut decoder_registry = CapabilityRegistry::new();
         decoder_registry.register(DefaultProbe);
+        #[cfg(feature = "android")]
+        decoder_registry.register(AndroidMediaCodecProbe);
         let renderer_registry = RendererRegistry::with_probe(DefaultRendererProbe);
         let audio_registry = AudioSinkRegistry::with_probe(NullAudioSinkProbe);
 

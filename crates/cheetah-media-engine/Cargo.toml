@@ -26,6 +26,11 @@ native = [
     "cheetah-media-native-renderer/std",
     "cheetah-media-native-transport/std",
 ]
+android = [
+    "native",
+    "dep:cheetah-media-android",
+    "cheetah-media-android/std",
+]
 
 [dependencies]
 cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false }
@@ -37,6 +42,7 @@ cheetah-media-native-audio = { path = "../cheetah-media-native-audio", default-f
 cheetah-media-native-decoder = { path = "../cheetah-media-native-decoder", default-features = false, optional = true }
 cheetah-media-native-renderer = { path = "../cheetah-media-native-renderer", default-features = false, optional = true }
 cheetah-media-native-transport = { path = "../cheetah-media-native-transport", default-features = false, optional = true }
+cheetah-media-android = { path = "../cheetah-media-android", default-features = false, optional = true }
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -58,8 +58,8 @@
 
 ## 5.1 工作包状态
 
-- [x] WP-62 Phase 6/7 执行计划与移动/双向基线（本文档）
-- [ ] WP-63 Android 播放骨架
+- [x] WP-62 Phase 6/7 执行计划与移动/双向基线（PR #69）
+- [x] WP-63 Android 播放骨架（本 PR）
 - [ ] WP-64 Android Surface 渲染与 AudioTrack sink
 - [ ] WP-65 Android 模拟器/真机 smoke
 - [ ] WP-66 iOS 播放骨架
