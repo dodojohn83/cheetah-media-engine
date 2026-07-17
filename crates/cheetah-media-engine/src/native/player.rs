@@ -126,6 +126,7 @@ impl NativePlayer {
     /// Load `url` and transition through `Loading` to `Preroll`.
     pub fn load(&mut self, url: &str) -> Result<Vec<EngineEvent>, NativePlayerError> {
         self.source.start(url)?;
+        let before = self.engine.state();
         let mut out = self
             .engine
             .apply(EngineCommand::Load(LoadRequest {
@@ -153,8 +154,10 @@ impl NativePlayer {
                 .events,
         );
 
-        self.lifecycle
-            .record(LifecycleEvent::Loaded { url: url.into() });
+        if self.engine.state() != before {
+            self.lifecycle
+                .record(LifecycleEvent::Loaded { url: url.into() });
+        }
 
         if self.engine.state() == PlayerState::Preroll {
             self.lifecycle.record(LifecycleEvent::Prerolled);
@@ -172,8 +175,9 @@ impl NativePlayer {
 
     /// Begin playback.
     pub fn play(&mut self) -> Result<Vec<EngineEvent>, NativePlayerError> {
+        let before = self.engine.state();
         let out = self.engine.apply(EngineCommand::Play)?;
-        if !contains_error(&out.events) {
+        if self.engine.state() != before {
             self.lifecycle.record(LifecycleEvent::Played);
         }
         Ok(out.events)
@@ -181,8 +185,9 @@ impl NativePlayer {
 
     /// Pause playback.
     pub fn pause(&mut self) -> Result<Vec<EngineEvent>, NativePlayerError> {
+        let before = self.engine.state();
         let out = self.engine.apply(EngineCommand::Pause)?;
-        if !contains_error(&out.events) {
+        if self.engine.state() != before {
             self.lifecycle.record(LifecycleEvent::Paused);
         }
         Ok(out.events)
@@ -190,8 +195,9 @@ impl NativePlayer {
 
     /// Stop and release the current session.
     pub fn stop(&mut self) -> Result<Vec<EngineEvent>, NativePlayerError> {
+        let before = self.engine.state();
         let out = self.engine.apply(EngineCommand::Stop)?;
-        if !contains_error(&out.events) {
+        if self.engine.state() != before {
             self.lifecycle.record(LifecycleEvent::Stopped);
         }
         let _ = self.decoder.flush();
@@ -202,7 +208,9 @@ impl NativePlayer {
     /// Tear down the player and validate its lifecycle.
     pub fn destroy(mut self) -> Result<Vec<EngineEvent>, NativePlayerError> {
         let out = self.engine.apply(EngineCommand::Destroy)?;
-        self.lifecycle.record(LifecycleEvent::Destroyed);
+        if !self.lifecycle.is_destroyed() {
+            self.lifecycle.record(LifecycleEvent::Destroyed);
+        }
         self.lifecycle.validate()?;
         Ok(out.events)
     }
@@ -340,10 +348,6 @@ impl NativePlayer {
             0
         }
     }
-}
-
-fn contains_error(events: &[EngineEvent]) -> bool {
-    events.iter().any(|e| matches!(e, EngineEvent::Error(_)))
 }
 
 fn byte_source_error_code(e: &ByteSourceError) -> u32 {
@@ -629,6 +633,32 @@ mod tests {
             Some(Box::new(audio_sink) as Box<dyn AudioSink + Send>),
         );
         player.load("memory://").unwrap();
+        player.stop().unwrap();
+        player.destroy().unwrap();
+    }
+
+    #[test]
+    fn repeated_control_commands_are_idempotent() {
+        let data: Vec<u8> = (0..80).map(|i| i as u8).collect();
+        let config = NativePlayerConfig {
+            url: "memory://".into(),
+            track: g711_track(),
+            video: None,
+            audio: Some(audio_target()),
+            autoplay: false,
+        };
+        let mut player = NativePlayerBuilder::new(config)
+            .with_memory_source(data)
+            .chunk_size(40)
+            .build()
+            .unwrap();
+        player.load("memory://").unwrap();
+        player.play().unwrap();
+        player.play().unwrap();
+        player.pause().unwrap();
+        player.pause().unwrap();
+        player.play().unwrap();
+        player.stop().unwrap();
         player.stop().unwrap();
         player.destroy().unwrap();
     }
