@@ -314,11 +314,13 @@ impl BroadcastEngine {
             .check_resolution(config.width, config.height)
         {
             self.state = BroadcastState::Failed;
+            let _ = pipeline.stop();
             events.push(BroadcastEvent::Error(err));
             return Ok(events);
         }
         if let Err(err) = self.resource_limits.check(pipeline.resources()) {
             self.state = BroadcastState::Failed;
+            let _ = pipeline.stop();
             events.push(BroadcastEvent::Error(err));
             return Ok(events);
         }
@@ -835,14 +837,13 @@ mod tests {
 
         let mut published = 0;
         let mut last_sequence = 0;
-        for i in 0..frame_count {
+        for _ in 0..frame_count {
             let events = engine.tick().unwrap();
-            if events
-                .iter()
-                .any(|e| matches!(e, BroadcastEvent::PacketPublished { .. }))
-            {
-                published += 1;
-                last_sequence = i as u64;
+            for e in &events {
+                if let BroadcastEvent::PacketPublished { sequence, .. } = e {
+                    published += 1;
+                    last_sequence = *sequence;
+                }
             }
         }
         assert_eq!(published, frame_count);
