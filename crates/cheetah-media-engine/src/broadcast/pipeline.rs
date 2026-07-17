@@ -152,11 +152,11 @@ impl BroadcastPipeline {
         self.publisher.publish(&packet)?;
 
         let mut target_bitrate_bps = None;
-        if let Some(feedback) = self.publisher.poll_feedback() {
-            if let Some(bps) = feedback.target_bitrate_bps {
-                self.encoder.set_bitrate(bps)?;
-                target_bitrate_bps = Some(bps);
-            }
+        if let Some(feedback) = self.publisher.poll_feedback()
+            && let Some(bps) = feedback.target_bitrate_bps
+        {
+            self.encoder.set_bitrate(bps)?;
+            target_bitrate_bps = Some(bps);
         }
 
         self.metrics.record_allocation(payload_len);
