@@ -250,6 +250,7 @@ dependencies = [
  "cheetah-media-abi",
  "cheetah-media-android",
  "cheetah-media-backend-api",
+ "cheetah-media-bitstream",
  "cheetah-media-native-audio",
  "cheetah-media-native-decoder",
  "cheetah-media-native-renderer",

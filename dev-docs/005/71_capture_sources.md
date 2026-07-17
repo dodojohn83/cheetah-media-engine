@@ -98,8 +98,8 @@ corepack pnpm build
 ## 5. 状态
 
 - [x] 创建 WP-71 计划文档
-- [ ] 实现 `CaptureSourceKind` / `PermissionModel` / 权限状态
-- [ ] 实现 Camera / Microphone / Screen 主机占位 source
-- [ ] 接入 `BroadcastEngine` 启动前权限检查
-- [ ] Rust/JS 验证矩阵通过
-- [ ] CI / Devin Review 通过并合并
+- [x] 实现 `CaptureSourceKind` / `PermissionModel` / 权限状态
+- [x] 实现 Camera / Microphone / Screen 主机占位 source
+- [x] 接入 `BroadcastEngine` 启动前权限检查
+- [x] Rust/JS 验证矩阵通过
+- [x] CI / Devin Review 通过并合并（PR #72）
