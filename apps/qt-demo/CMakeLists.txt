@@ -19,16 +19,14 @@ else()
   set(CBINDINGS_SO ${CMAKE_CURRENT_SOURCE_DIR}/../../target/release/libcheetah_media_c_bindings.so)
 endif()
 
-add_custom_command(
-  OUTPUT ${CBINDINGS_SO}
+# Always invoke cargo so it can do its own incremental up-to-date checks.
+# Depending only on lib.rs/header would miss transitive crate changes.
+add_custom_target(cheetah_c_bindings ALL
   COMMAND cargo build -p cheetah-media-c-bindings ${CARGO_PROFILE}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  DEPENDS ${CBINDINGS_DIR}/src/lib.rs ${CBINDINGS_HEADER}
   COMMENT "Building cheetah-media-c-bindings (${CBINDINGS_SO})"
   VERBATIM
 )
-
-add_custom_target(cheetah_c_bindings DEPENDS ${CBINDINGS_SO})
 
 # Demo executable
 add_executable(cheetah-qt-demo
