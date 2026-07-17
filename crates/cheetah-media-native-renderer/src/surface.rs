@@ -45,7 +45,7 @@ impl Surface {
             }
             PixelFormat::Nv12 => {
                 let y = self.width as usize * self.height as usize;
-                let uv = self.width as usize * self.height.div_ceil(2) as usize;
+                let uv = self.width.div_ceil(2) as usize * 2 * self.height.div_ceil(2) as usize;
                 y + uv
             }
         }
@@ -129,5 +129,12 @@ mod tests {
         // 4x4 NV12: 16 Y + 8 UV = 24
         let s = Surface::new(4, 4, PixelFormat::Nv12);
         assert_eq!(s.expected_size(), 24);
+    }
+
+    #[test]
+    fn nv12_odd_dimensions_use_rounded_chroma_size() {
+        // 3x3 NV12: 9 Y + ceil(3/2)*2 * ceil(3/2) = 8 UV = 17
+        let s = Surface::new(3, 3, PixelFormat::Nv12);
+        assert_eq!(s.expected_size(), 17);
     }
 }
