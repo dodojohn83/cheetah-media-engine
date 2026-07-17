@@ -10,6 +10,8 @@ pub(crate) async fn run(url: String, tx: mpsc::Sender<Chunk>) {
             // Drive the combined Stream+Sink. Tungstenite queues and flushes
             // automatic Pong replies while polling the stream, so we do not
             // split off the write half.
+            let mut errored = false;
+            let mut eof_sent = false;
             while let Some(msg) = ws_stream.next().await {
                 match msg {
                     Ok(Message::Binary(data)) => {
@@ -24,6 +26,7 @@ pub(crate) async fn run(url: String, tx: mpsc::Sender<Chunk>) {
                     }
                     Ok(Message::Close(_)) => {
                         let _ = tx.send(Chunk::Eof).await;
+                        eof_sent = true;
                         break;
                     }
                     Ok(_) => {}
@@ -34,9 +37,13 @@ pub(crate) async fn run(url: String, tx: mpsc::Sender<Chunk>) {
                                 context: Some("ws_read_error"),
                             }))
                             .await;
+                        errored = true;
                         break;
                     }
                 }
+            }
+            if !errored && !eof_sent {
+                let _ = tx.send(Chunk::Eof).await;
             }
         }
         Err(_) => {

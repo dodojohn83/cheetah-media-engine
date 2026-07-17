@@ -109,6 +109,8 @@ impl MediaClock {
     /// MPEG-TS/H.264). `discontinuity_threshold_us` is the maximum backward
     /// jump before treating it as a wrap or discontinuity (default 5 s).
     pub fn new(wrap_bits: Option<u8>, discontinuity_threshold_us: Option<i64>) -> Self {
+        // Timestamp unwrap is only defined for 1..=62 bit counters.
+        let wrap_bits = wrap_bits.filter(|b| (1..=62).contains(b));
         Self {
             epochs: BTreeMap::new(),
             last_overall_clock_us: 0,
@@ -328,5 +330,22 @@ mod tests {
             2001
         );
         assert_eq!(clock.stats().jitter_ms, 1);
+    }
+
+    #[test]
+    fn invalid_wrap_bits_are_ignored() {
+        // 0 and 63 are outside the supported unwrap range and must not cause
+        // an assertion when the first timestamp is fed.
+        for bits in [Some(0), Some(63)] {
+            let mut clock = MediaClock::new(bits, Some(5_000_000));
+            let tb = TimeBase::new(1, 1_000_000).unwrap();
+            let time = MediaTime::new(
+                Some(Timestamp::new(1000)),
+                Some(Timestamp::new(1000)),
+                None,
+                tb,
+            );
+            assert_eq!(clock.update(time, StreamEpoch::new(0)).unwrap().us(), 1000);
+        }
     }
 }
