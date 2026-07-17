@@ -17,6 +17,7 @@ pub enum H264Error {
     InvalidNalLength,
     InvalidStartCode,
     InvalidSps,
+    InvalidDimensions,
     UnsupportedProfile,
 }
 
@@ -27,6 +28,7 @@ impl core::fmt::Display for H264Error {
             Self::InvalidNalLength => write!(f, "H.264 invalid NAL length"),
             Self::InvalidStartCode => write!(f, "H.264 invalid Annex-B start code"),
             Self::InvalidSps => write!(f, "H.264 invalid SPS"),
+            Self::InvalidDimensions => write!(f, "H.264 invalid SPS dimensions"),
             Self::UnsupportedProfile => write!(f, "H.264 unsupported profile for SPS parsing"),
         }
     }
@@ -103,23 +105,28 @@ impl<'a> NalUnit<'a> {
 }
 
 /// Find the next Annex-B start code (`00 00 01` or `00 00 00 01`) in `data`
-/// starting at `start`.
-fn find_start_code(data: &[u8], start: usize) -> Option<usize> {
-    if data.len() < start + 3 {
+/// starting at `start`, skipping H.264/HEVC emulation prevention sequences.
+///
+/// Returns `(position, code_len)` where `code_len` is 3 or 4.
+fn find_start_code(data: &[u8], start: usize) -> Option<(usize, usize)> {
+    if data.len() < start.saturating_add(3) {
         return None;
     }
     let mut i = start;
-    while i + 2 < data.len() {
-        if data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01 {
-            return Some(i);
-        }
-        if data[i] == 0x00
-            && data[i + 1] == 0x00
-            && data[i + 2] == 0x00
-            && i + 3 < data.len()
-            && data[i + 3] == 0x01
-        {
-            return Some(i);
+    while i.saturating_add(2) < data.len() {
+        if data[i] == 0x00 && data[i + 1] == 0x00 {
+            if i + 3 < data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
+                return Some((i, 4));
+            }
+            if data[i + 2] == 0x01 {
+                return Some((i, 3));
+            }
+            if data[i + 2] == 0x03 && i + 3 < data.len() && data[i + 3] <= 0x03 {
+                // Emulation prevention: skip the entire 0x00 0x00 0x03 XX sequence
+                // and resume scanning from the byte after the protected value.
+                i += 4;
+                continue;
+            }
         }
         i += 1;
     }
@@ -132,11 +139,7 @@ pub fn split_annexb<'a>(data: &'a [u8]) -> Result<Vec<NalUnit<'a>>, H264Error> {
     let mut pos = 0usize;
 
     while pos < data.len() {
-        let start = find_start_code(data, pos).ok_or(H264Error::InvalidStartCode)?;
-        let mut code_len = 3usize;
-        if start + 3 < data.len() && data[start + 2] == 0x00 && data[start + 3] == 0x01 {
-            code_len = 4;
-        }
+        let (start, code_len) = find_start_code(data, pos).ok_or(H264Error::InvalidStartCode)?;
         let header_pos = start + code_len;
         if header_pos >= data.len() {
             break;
@@ -145,7 +148,7 @@ pub fn split_annexb<'a>(data: &'a [u8]) -> Result<Vec<NalUnit<'a>>, H264Error> {
         let nal_ref_idc = (nal_header >> 5) & 0x03;
         let nal_type = nal_header & 0x1f;
 
-        let next = find_start_code(data, header_pos + 1).unwrap_or(data.len());
+        let (next, _) = find_start_code(data, header_pos + 1).unwrap_or((data.len(), 3));
         let unit_data = &data[header_pos..next];
         let payload = if !unit_data.is_empty() {
             &unit_data[1..]
@@ -285,7 +288,9 @@ impl Sps {
                         for _ in 0..size {
                             if next_scale != 0 {
                                 let delta_scale = cursor.read_se()?;
-                                next_scale = (last_scale + delta_scale + 256) % 256;
+                                next_scale = ((last_scale as i128 + delta_scale as i128 + 256)
+                                    .rem_euclid(256))
+                                    as i64;
                             }
                             last_scale = next_scale;
                         }
@@ -330,31 +335,76 @@ impl Sps {
             sps.frame_crop_bottom_offset = cursor.read_ue()?;
         }
 
-        let width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
-        let height_in_map_units = sps.pic_height_in_map_units_minus1 + 1;
-        let mb_height = if sps.frame_mbs_only_flag { 1 } else { 2 };
+        let width_in_mbs = sps
+            .pic_width_in_mbs_minus1
+            .checked_add(1)
+            .ok_or(H264Error::InvalidDimensions)?;
+        let height_in_map_units = sps
+            .pic_height_in_map_units_minus1
+            .checked_add(1)
+            .ok_or(H264Error::InvalidDimensions)?;
+        let mb_height: u64 = if sps.frame_mbs_only_flag { 1 } else { 2 };
 
         // SubWidthC / SubHeightC per H.264 Table 6-1.
-        let sub_width_c = if sps.chroma_format_idc == 1 || sps.chroma_format_idc == 2 {
+        let sub_width_c: u64 = if sps.chroma_format_idc == 1 || sps.chroma_format_idc == 2 {
             2
         } else {
             1
         };
-        let sub_height_c = if sps.chroma_format_idc == 1 { 2 } else { 1 };
+        let sub_height_c: u64 = if sps.chroma_format_idc == 1 { 2 } else { 1 };
         let crop_unit_x = sub_width_c;
         // CropUnitY includes the frame_mbs_only_flag factor per spec.
-        let crop_unit_y = sub_height_c * mb_height;
+        let crop_unit_y = sub_height_c
+            .checked_mul(mb_height)
+            .ok_or(H264Error::InvalidDimensions)?;
 
-        let mut width = (width_in_mbs * 16) as u32;
-        let mut height = (height_in_map_units * 16 * mb_height) as u32;
+        let mut raw_width = width_in_mbs
+            .checked_mul(16)
+            .ok_or(H264Error::InvalidDimensions)?;
+        let mut raw_height = height_in_map_units
+            .checked_mul(16)
+            .and_then(|v| v.checked_mul(mb_height))
+            .ok_or(H264Error::InvalidDimensions)?;
         if sps.frame_cropping_flag {
-            width -=
-                ((sps.frame_crop_left_offset + sps.frame_crop_right_offset) * crop_unit_x) as u32;
-            height -=
-                ((sps.frame_crop_top_offset + sps.frame_crop_bottom_offset) * crop_unit_y) as u32;
+            let crop_left = sps
+                .frame_crop_left_offset
+                .checked_mul(crop_unit_x)
+                .ok_or(H264Error::InvalidDimensions)?;
+            let crop_right = sps
+                .frame_crop_right_offset
+                .checked_mul(crop_unit_x)
+                .ok_or(H264Error::InvalidDimensions)?;
+            let crop_top = sps
+                .frame_crop_top_offset
+                .checked_mul(crop_unit_y)
+                .ok_or(H264Error::InvalidDimensions)?;
+            let crop_bottom = sps
+                .frame_crop_bottom_offset
+                .checked_mul(crop_unit_y)
+                .ok_or(H264Error::InvalidDimensions)?;
+            let crop_total_x = crop_left
+                .checked_add(crop_right)
+                .ok_or(H264Error::InvalidDimensions)?;
+            let crop_total_y = crop_top
+                .checked_add(crop_bottom)
+                .ok_or(H264Error::InvalidDimensions)?;
+            raw_width = raw_width
+                .checked_sub(crop_total_x)
+                .ok_or(H264Error::InvalidDimensions)?;
+            raw_height = raw_height
+                .checked_sub(crop_total_y)
+                .ok_or(H264Error::InvalidDimensions)?;
         }
-        sps.width = width;
-        sps.height = height;
+
+        if raw_width == 0
+            || raw_height == 0
+            || raw_width > u32::MAX as u64
+            || raw_height > u32::MAX as u64
+        {
+            return Err(H264Error::InvalidDimensions);
+        }
+        sps.width = raw_width as u32;
+        sps.height = raw_height as u32;
 
         Ok(sps)
     }
@@ -569,6 +619,25 @@ mod tests {
         let rebuilt = H264CodecConfig::parse(&config.build()).unwrap();
         assert_eq!(rebuilt.sps_list, config.sps_list);
         assert_eq!(rebuilt.pps_list, config.pps_list);
+    }
+
+    #[test]
+    fn annexb_skips_emulation_prevention_3byte() {
+        // NAL1 payload contains an emulation-prevention sequence 00 00 03 01,
+        // which would otherwise look like a 3-byte start code 00 00 01.
+        let data = [
+            0x00, 0x00, 0x00, 0x01, // start code
+            0x67, 0x42, 0x00, 0x1e, // SPS header + 3 bytes
+            0x00, 0x00, 0x03, 0x01, 0xab, // EPB + escaped 0x01 + extra byte
+            0x00, 0x00, 0x00, 0x01, // next start code
+            0x65, 0x88, // IDR slice
+        ];
+        let units = split_annexb(&data).unwrap();
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[0].nal_type, 7);
+        assert_eq!(units[1].nal_type, 5);
+        // The first unit data must include the escaped bytes, not stop at the EPB.
+        assert!(units[0].data.len() > 4);
     }
 
     #[test]

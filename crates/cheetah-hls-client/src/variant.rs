@@ -98,7 +98,13 @@ pub fn select_initial_variant<'a>(
         }
     });
 
-    Ok(*candidates.last().expect("non-empty candidates"))
+    if let Some(&variant) = candidates.last() {
+        Ok(variant)
+    } else {
+        Err(HlsError::Unsupported {
+            feature: "no decodable variant".into(),
+        })
+    }
 }
 
 fn codec_compatible(variant: &Variant, caps: &VariantCapabilities) -> bool {

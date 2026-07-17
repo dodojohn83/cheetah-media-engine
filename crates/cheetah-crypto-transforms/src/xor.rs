@@ -31,11 +31,15 @@ impl Transform for XorTransform {
         self.out.clear();
         self.out.reserve(data.len());
         let key_len = self.key.len();
-        for (i, &b) in data.iter().enumerate() {
-            let key_byte = self.key[(self.pos + i) % key_len];
+        for &b in data {
+            let key_byte = self.key[self.pos];
             self.out.push(b ^ key_byte);
+            self.pos = if self.pos + 1 == key_len {
+                0
+            } else {
+                self.pos + 1
+            };
         }
-        self.pos = (self.pos + data.len()) % key_len;
         Ok(&self.out)
     }
 
@@ -68,6 +72,20 @@ mod tests {
                 got: 0
             })
         ));
+    }
+
+    #[test]
+    fn incremental_xor_state_carries_across_updates() {
+        let key = b"abc";
+        let mut full = XorTransform::new(key).unwrap();
+        let expected = full.update(b"hello world").unwrap().to_vec();
+
+        let mut incremental = XorTransform::new(key).unwrap();
+        let mut out = Vec::new();
+        for chunk in ["he", "ll", "o ", "wo", "rl", "d"] {
+            out.extend_from_slice(incremental.update(chunk.as_bytes()).unwrap());
+        }
+        assert_eq!(out, expected);
     }
 
     #[test]

@@ -105,19 +105,21 @@ impl<T> BoundedQueue<T> {
             // Evict the oldest item with the lowest priority (highest numeric
             // value). `Reverse` lets `min_by_key` pick the first maximum, which
             // is the stalest item among ties.
-            let (victim_idx, victim_priority) = self
+            let victim = self
                 .items
                 .iter()
                 .enumerate()
                 .min_by_key(|(_, (p, _))| core::cmp::Reverse(*p))
-                .map(|(i, (p, _))| (i, *p))
-                .expect("non-empty when at capacity");
-            if priority < victim_priority {
-                self.items.remove(victim_idx);
-                self.dropped += 1;
-            } else {
-                self.dropped += 1;
-                return 1;
+                .map(|(i, (p, _))| (i, *p));
+            match victim {
+                Some((victim_idx, victim_priority)) if priority < victim_priority => {
+                    self.items.remove(victim_idx);
+                    self.dropped += 1;
+                }
+                _ => {
+                    self.dropped += 1;
+                    return 1;
+                }
             }
         }
         self.items.push_back((priority, item));
@@ -245,7 +247,18 @@ impl<T> Scheduler<T> {
         priority: Priority,
         item: T,
     ) -> (u64, Vec<SchedulerEvent>) {
-        let idx = self.index_of(queue).expect("valid queue");
+        let idx = match self.index_of(queue) {
+            Some(i) => i,
+            None => {
+                return (
+                    1,
+                    alloc::vec![SchedulerEvent::Dropped {
+                        queue: queue.as_str(),
+                        count: 1,
+                    }],
+                );
+            }
+        };
         let prev_dropped = self.queues[idx].dropped();
         self.queues[idx].push(priority, item);
         let dropped = self.queues[idx].dropped() - prev_dropped;
@@ -350,6 +363,22 @@ mod tests {
         assert_eq!(q.push(Priority::Control, 0), 0);
         assert_eq!(q.pop(), Some(0));
         assert_eq!(q.pop(), Some(2));
+    }
+
+    #[test]
+    fn bounded_queue_push_does_not_panic_when_empty_at_capacity() {
+        // A capacity of 1 with an empty VecDeque should still drop correctly.
+        let mut q = BoundedQueue::new(
+            "test",
+            QueueConfig {
+                capacity: 1,
+                high: 1,
+                low: 0,
+            },
+        );
+        assert_eq!(q.push(Priority::Data, 1), 0);
+        assert_eq!(q.push(Priority::Data, 2), 1);
+        assert_eq!(q.len(), 1);
     }
 
     #[test]

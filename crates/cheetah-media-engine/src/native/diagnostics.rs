@@ -101,9 +101,11 @@ impl Default for Diagnostics {
 
 impl MetricsSink for Diagnostics {
     fn frame_rendered(&mut self, _pts_ms: i64, _wall_ms: i64) {
-        self.record(DiagnosticEvent::FrameRendered {
-            track_id: TrackId::new(1).expect("valid track id"),
-        });
+        // Track ID 1 is valid by construction; guard the creation so the
+        // trait implementation never panics even if the constructor changes.
+        if let Some(track_id) = TrackId::new(1) {
+            self.record(DiagnosticEvent::FrameRendered { track_id });
+        }
     }
 
     fn decoder_error(&mut self, codec: CodecId, error: String) {

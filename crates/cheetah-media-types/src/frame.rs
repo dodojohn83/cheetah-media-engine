@@ -6,6 +6,14 @@ use crate::{
     AudioFormat, BufferLifecycle, BufferRef, MediaError, MediaLimits, MediaTime, VideoFormat,
 };
 
+fn total_payload_len(payload: &BufferRef<'_>, planes: &[BufferRef<'_>]) -> u64 {
+    let mut total = payload.len();
+    for p in planes {
+        total = total.saturating_add(p.len());
+    }
+    total as u64
+}
+
 /// Opaque external frame resource handle.
 ///
 /// A handle value of `0` means no external resource. This keeps platform pointers
@@ -81,10 +89,11 @@ impl<'a> VideoFrame<'a> {
     /// Validate the frame against resource limits.
     pub fn check_limits(&self, limits: &MediaLimits) -> Result<(), MediaError> {
         limits.check_resolution(self.format.visible_width, self.format.visible_height)?;
-        if self.payload.len() as u64 > limits.max_frame_size_bytes {
+        let total = total_payload_len(&self.payload, &self.planes);
+        if total > limits.max_frame_size_bytes {
             return Err(MediaError::ResourceLimit {
                 name: "frame_size_bytes",
-                current: self.payload.len() as u64,
+                current: total,
                 limit: limits.max_frame_size_bytes,
             });
         }
@@ -133,14 +142,17 @@ impl<'a> AudioFrame<'a> {
 
     /// Expected byte size for the configured sample count and layout.
     pub fn expected_size(&self) -> u64 {
-        self.format.total_samples() * u64::from(self.format.bytes_per_sample())
+        self.format
+            .total_samples()
+            .saturating_mul(u64::from(self.format.bytes_per_sample()))
     }
 
     pub fn check_limits(&self, limits: &MediaLimits) -> Result<(), MediaError> {
-        if self.payload.len() as u64 > limits.max_frame_size_bytes {
+        let total = total_payload_len(&self.payload, &self.planes);
+        if total > limits.max_frame_size_bytes {
             return Err(MediaError::ResourceLimit {
                 name: "frame_size_bytes",
-                current: self.payload.len() as u64,
+                current: total,
                 limit: limits.max_frame_size_bytes,
             });
         }
@@ -160,8 +172,8 @@ impl<'a> AudioFrame<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ColorSpace, PixelFormat};
-    use crate::{TimeBase, Timestamp};
+    use crate::{ChannelLayout, TimeBase, Timestamp};
+    use crate::{ColorSpace, PixelFormat, SampleFormat};
 
     #[test]
     fn video_frame_min_size() {
@@ -214,6 +226,65 @@ mod tests {
         let limits = MediaLimits::default();
         let err = frame.check_limits(&limits).unwrap_err();
         assert_eq!(err.code(), 5001);
+    }
+
+    #[test]
+    fn video_frame_planes_count_toward_limit() {
+        let fmt = VideoFormat {
+            pixel_format: PixelFormat::Yuv420P,
+            coded_width: 64,
+            coded_height: 64,
+            visible_width: 64,
+            visible_height: 64,
+            stride: 64,
+            color_space: ColorSpace::Bt709,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        // Empty payload but planes exceed the configured max_frame_size_bytes.
+        let frame = VideoFrame::new(vec![0u8; 0], fmt, ts)
+            .with_plane(vec![0u8; 6])
+            .with_plane(vec![0u8; 6]);
+        let limits = MediaLimits {
+            max_frame_size_bytes: 10,
+            ..Default::default()
+        };
+        assert!(frame.check_limits(&limits).is_err());
+    }
+
+    #[test]
+    fn audio_frame_planes_count_toward_limit() {
+        let fmt = AudioFormat {
+            sample_format: SampleFormat::S16,
+            sample_rate: 44100,
+            channel_layout: ChannelLayout::Mono,
+            sample_count: 1,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let frame = AudioFrame::new(vec![0u8; 0], fmt, ts)
+            .with_plane(vec![0u8; 6])
+            .with_plane(vec![0u8; 6]);
+        let limits = MediaLimits {
+            max_frame_size_bytes: 10,
+            ..Default::default()
+        };
+        assert!(frame.check_limits(&limits).is_err());
+    }
+
+    #[test]
+    fn audio_expected_size_with_max_channels_does_not_overflow() {
+        // Unknown(u64::MAX) reports 64 channels via count_ones. With the
+        // maximum sample_count and F64 (8 bytes) the product is large but
+        // still well within u64; the important check is that no panic occurs.
+        let fmt = AudioFormat {
+            sample_format: SampleFormat::F64,
+            sample_rate: 48000,
+            channel_layout: ChannelLayout::Unknown(u64::MAX),
+            sample_count: u32::MAX,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let frame = AudioFrame::new(vec![0u8; 0], fmt, ts);
+        let expected = (u32::MAX as u64) * 64 * 8;
+        assert_eq!(frame.expected_size(), expected);
     }
 
     #[test]

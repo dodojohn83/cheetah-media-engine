@@ -189,22 +189,31 @@ impl<'a> NalUnit<'a> {
     }
 }
 
-fn find_start_code(data: &[u8], start: usize) -> Option<usize> {
-    if data.len() < start + 3 {
+/// Find the next Annex-B start code (`00 00 01` or `00 00 00 01`) in `data`
+/// starting at `start`, skipping H.264/HEVC emulation prevention sequences.
+///
+/// Returns `(position, code_len)` where `code_len` is 3 or 4.
+fn find_start_code(data: &[u8], start: usize) -> Option<(usize, usize)> {
+    if data.len() < start.saturating_add(3) {
         return None;
     }
-    for i in start..=data.len() - 3 {
-        if data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01 {
-            return Some(i);
+    let mut i = start;
+    while i.saturating_add(2) < data.len() {
+        if data[i] == 0x00 && data[i + 1] == 0x00 {
+            if i + 3 < data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
+                return Some((i, 4));
+            }
+            if data[i + 2] == 0x01 {
+                return Some((i, 3));
+            }
+            if data[i + 2] == 0x03 && i + 3 < data.len() && data[i + 3] <= 0x03 {
+                // Emulation prevention: skip the entire 0x00 0x00 0x03 XX sequence
+                // and resume scanning from the byte after the protected value.
+                i += 4;
+                continue;
+            }
         }
-        if i + 3 < data.len()
-            && data[i] == 0x00
-            && data[i + 1] == 0x00
-            && data[i + 2] == 0x00
-            && data[i + 3] == 0x01
-        {
-            return Some(i);
-        }
+        i += 1;
     }
     None
 }
@@ -215,11 +224,7 @@ pub fn split_annexb<'a>(data: &'a [u8]) -> Result<Vec<NalUnit<'a>>, H265Error> {
     let mut pos = 0usize;
 
     while pos < data.len() {
-        let start = find_start_code(data, pos).ok_or(H265Error::InvalidStartCode)?;
-        let mut code_len = 3usize;
-        if start + 3 < data.len() && data[start + 2] == 0x00 && data[start + 3] == 0x01 {
-            code_len = 4;
-        }
+        let (start, code_len) = find_start_code(data, pos).ok_or(H265Error::InvalidStartCode)?;
         let header_pos = start + code_len;
         if header_pos + 1 >= data.len() {
             break;
@@ -231,7 +236,7 @@ pub fn split_annexb<'a>(data: &'a [u8]) -> Result<Vec<NalUnit<'a>>, H265Error> {
         let nuh_layer_id = ((h0 & 0x01) << 5) | ((h1 >> 3) & 0x1f);
         let nuh_temporal_id_plus1 = h1 & 0x07;
 
-        let next = find_start_code(data, header_pos + 2).unwrap_or(data.len());
+        let (next, _) = find_start_code(data, header_pos + 2).unwrap_or((data.len(), 3));
         let unit_data = &data[header_pos..next];
         let payload = if unit_data.len() >= 2 {
             &unit_data[2..]
@@ -575,6 +580,25 @@ mod tests {
         assert_eq!(rebuilt.vps_list, parsed.vps_list);
         assert_eq!(rebuilt.sps_list, parsed.sps_list);
         assert_eq!(rebuilt.pps_list, parsed.pps_list);
+    }
+
+    #[test]
+    fn annexb_skips_emulation_prevention_3byte() {
+        // NAL1 payload contains an emulation-prevention sequence 00 00 03 01,
+        // which must not be mistaken for a 3-byte start code.
+        let data = [
+            0x00, 0x00, 0x00, 0x01, // start code
+            0x40, 0x01, // H.265 NAL header: nal_type=32 (VPS), layer=0, temporal=1
+            0x0a, 0x00, 0x00, 0x03, 0x01, 0xab, // payload with EPB
+            0x00, 0x00, 0x00, 0x01, // next start code
+            0x26, 0x01, // NAL header: nal_type=19 (IDR_W_RADL)
+            0x88,
+        ];
+        let units = split_annexb(&data).unwrap();
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[0].nal_unit_type, 32);
+        assert_eq!(units[1].nal_unit_type, 19);
+        assert!(units[0].data.len() > 2);
     }
 
     #[test]
