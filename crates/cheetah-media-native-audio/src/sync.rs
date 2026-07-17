@@ -110,8 +110,9 @@ impl<A: AudioSink, C: Clock, R: Renderer> AvSync<A, C, R> {
 impl<C: Clock, R: Renderer> AvSync<NullAudioSink, C, R> {
     /// Convenience constructor for a headless A/V sync test harness.
     pub fn headless(renderer: R, clock: C, max_video_drift_ms: i64) -> Self {
+        use cheetah_media_types::SampleFormat;
         Self::new(
-            NullAudioSink::new(48000, 2),
+            NullAudioSink::new(48000, 2, SampleFormat::S16),
             renderer,
             clock,
             max_video_drift_ms,

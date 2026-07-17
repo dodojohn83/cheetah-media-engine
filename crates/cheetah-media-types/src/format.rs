@@ -108,19 +108,23 @@ pub struct AudioFormat {
     pub sample_count: u32,
 }
 
+impl SampleFormat {
+    /// Number of bytes per sample for the base element.
+    pub const fn bytes_per_sample(self) -> u32 {
+        match self {
+            Self::U8 => 1,
+            Self::S16 | Self::S16Planar => 2,
+            Self::S32 | Self::F32 | Self::S32Planar | Self::F32Planar => 4,
+            Self::F64 | Self::F64Planar => 8,
+            Self::Unknown(_) => 0,
+        }
+    }
+}
+
 impl AudioFormat {
     /// Number of bytes per sample for the base element.
     pub const fn bytes_per_sample(self) -> u32 {
-        match self.sample_format {
-            SampleFormat::U8 => 1,
-            SampleFormat::S16 | SampleFormat::S16Planar => 2,
-            SampleFormat::S32
-            | SampleFormat::F32
-            | SampleFormat::S32Planar
-            | SampleFormat::F32Planar => 4,
-            SampleFormat::F64 | SampleFormat::F64Planar => 8,
-            SampleFormat::Unknown(_) => 0,
-        }
+        self.sample_format.bytes_per_sample()
     }
 
     /// Total samples in the frame across all channels.

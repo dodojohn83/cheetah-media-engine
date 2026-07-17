@@ -3,6 +3,7 @@
 use alloc::boxed::Box;
 
 use cheetah_media_abi::{AbiError, AudioSink, Output};
+use cheetah_media_types::SampleFormat;
 
 use crate::capability::PlatformAudioSink;
 use crate::registry::AudioSinkRegistry;
@@ -14,6 +15,7 @@ use crate::registry::AudioSinkRegistry;
 /// non-corrupt, then queues a frame record.
 pub struct NullAudioSink {
     _sample_rate: u32,
+    sample_format: SampleFormat,
     channels: u8,
     volume: f32,
     paused: bool,
@@ -23,9 +25,10 @@ pub struct NullAudioSink {
 
 impl NullAudioSink {
     /// Create a null sink for the given audio format.
-    pub fn new(sample_rate: u32, channels: u8) -> Self {
+    pub fn new(sample_rate: u32, channels: u8, sample_format: SampleFormat) -> Self {
         Self {
             _sample_rate: sample_rate,
+            sample_format,
             channels,
             volume: 1.0,
             paused: false,
@@ -45,7 +48,7 @@ impl NullAudioSink {
     }
 
     fn frame_count(&self, data_len: usize) -> u64 {
-        let bytes_per_sample = 2u64; // S16
+        let bytes_per_sample = self.sample_format.bytes_per_sample() as u64;
         let sample_frame_size = self.channels as u64 * bytes_per_sample;
         if sample_frame_size == 0 {
             return 0;
@@ -115,6 +118,7 @@ pub fn create_sink(
         Some(PlatformAudioSink::Null) | None => Ok(Box::new(NullAudioSink::new(
             format.sample_rate,
             format.channel_layout.channels() as u8,
+            format.sample_format,
         ))),
         Some(api) => Ok(Box::new(UnsupportedAudioSink::new(api))),
     }
@@ -148,16 +152,24 @@ mod tests {
     }
 
     #[test]
-    fn null_sink_counts_submitted_frames() {
-        let mut sink = NullAudioSink::new(48000, 2);
+    fn null_sink_counts_submitted_frames_s16() {
+        let mut sink = NullAudioSink::new(48000, 2, SampleFormat::S16);
         // 4 bytes per stereo S16 frame; 8 bytes = 2 frames.
         sink.play(&output(vec![0u8; 8], 10)).unwrap();
         assert_eq!(sink.submitted_samples(), 2);
     }
 
     #[test]
+    fn null_sink_counts_submitted_frames_f32() {
+        let mut sink = NullAudioSink::new(48000, 2, SampleFormat::F32);
+        // 8 bytes per stereo F32 frame; 16 bytes = 2 frames.
+        sink.play(&output(vec![0u8; 16], 10)).unwrap();
+        assert_eq!(sink.submitted_samples(), 2);
+    }
+
+    #[test]
     fn null_sink_rejects_empty_output() {
-        let mut sink = NullAudioSink::new(48000, 2);
+        let mut sink = NullAudioSink::new(48000, 2, SampleFormat::S16);
         assert_eq!(
             sink.play(&output(Vec::new(), 0)).unwrap_err(),
             AbiError::InvalidData
@@ -166,7 +178,7 @@ mod tests {
 
     #[test]
     fn null_sink_rejects_invalid_volume() {
-        let mut sink = NullAudioSink::new(48000, 2);
+        let mut sink = NullAudioSink::new(48000, 2, SampleFormat::S16);
         assert_eq!(sink.set_volume(2.0).unwrap_err(), AbiError::InvalidData);
         assert_eq!(sink.set_volume(-0.1).unwrap_err(), AbiError::InvalidData);
     }
