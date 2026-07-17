@@ -134,6 +134,14 @@ impl NativeByteSource {
     }
 }
 
+impl Drop for NativeByteSource {
+    fn drop(&mut self) {
+        // Abort any running transport task so dropping the runtime does not
+        // block on a stuck network connection.
+        self.reset();
+    }
+}
+
 impl ByteSource for NativeByteSource {
     fn start(&mut self, url: &str) -> Result<(), ByteSourceError> {
         self.cancel()?;
@@ -223,7 +231,14 @@ impl ByteSource for NativeByteSource {
             };
         }
 
-        let rx = self.rx.as_mut().expect("rx checked non-None above");
+        let Some(rx) = self.rx.as_mut() else {
+            // The rx was cleared after the non-None check above; treat as a
+            // fatal transport inconsistency rather than panicking.
+            return ByteSourceEvent::Error(ByteSourceError::Fatal {
+                code: 12,
+                context: Some("transport_receiver_missing"),
+            });
+        };
 
         match rx.try_recv() {
             Ok(Chunk::Data(data)) => {

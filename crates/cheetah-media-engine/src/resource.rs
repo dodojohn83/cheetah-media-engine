@@ -98,7 +98,10 @@ impl ResourceLedger {
 
     /// Total count across all kinds.
     pub fn total(&self) -> u64 {
-        self.counts.iter().copied().sum()
+        self.counts
+            .iter()
+            .copied()
+            .fold(0u64, |a, b| a.saturating_add(b))
     }
 
     /// Whether every kind is at zero.
@@ -365,5 +368,12 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn ledger_total_saturates_on_overflow() {
+        let mut ledger = ResourceLedger::new();
+        ledger.counts = [u64::MAX; KIND_COUNT];
+        assert_eq!(ledger.total(), u64::MAX);
     }
 }

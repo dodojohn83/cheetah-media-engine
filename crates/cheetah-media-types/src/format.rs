@@ -128,8 +128,8 @@ impl AudioFormat {
     }
 
     /// Total samples in the frame across all channels.
-    pub const fn total_samples(self) -> u32 {
-        self.sample_count * self.channel_layout.channels()
+    pub const fn total_samples(self) -> u64 {
+        (self.sample_count as u64) * (self.channel_layout.channels() as u64)
     }
 }
 

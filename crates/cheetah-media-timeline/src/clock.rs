@@ -211,11 +211,13 @@ impl MediaClock {
             self.stats.wraps += 1;
         }
 
-        // Update running jitter estimate: maximum deviation of consecutive deltas.
-        // Skip when `last_delta` is zero (first sample or after a reset/wrap/discontinuity)
-        // so the metric is not seeded with the first interval.
-        let jitter_deviation = delta.saturating_sub(last_delta).abs();
-        if last_delta != 0 && jitter_deviation > self.stats.jitter_ms * 1000 {
+        // Update running jitter estimate: maximum absolute deviation of
+        // consecutive deltas. Skip when `last_delta` is zero (first sample or
+        // after a reset/wrap/discontinuity) so the metric is not seeded with
+        // the first interval.
+        let jitter_deviation = delta.saturating_sub(last_delta).saturating_abs();
+        let threshold = self.stats.jitter_ms.saturating_mul(1000);
+        if last_delta != 0 && jitter_deviation > threshold {
             self.stats.jitter_ms = jitter_deviation / 1000;
         }
 
@@ -275,4 +277,56 @@ impl MediaClock {
 fn raw_ticks_and_timebase(time: &MediaTime) -> Option<(i64, TimeBase)> {
     let ts = time.pts.or(time.dts)?;
     Some((ts.ticks(), time.timebase))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cheetah_media_types::{MediaTime, StreamEpoch, TimeBase, Timestamp};
+
+    #[test]
+    fn jitter_captures_decreasing_delta() {
+        let mut clock = MediaClock::new(None, Some(5_000_000));
+        let tb = TimeBase::new(1, 1_000_000).unwrap();
+
+        let sample = |ticks: i64| {
+            MediaTime::new(
+                Some(Timestamp::new(ticks)),
+                Some(Timestamp::new(ticks)),
+                None,
+                tb,
+            )
+        };
+
+        assert_eq!(
+            clock
+                .update(sample(1000), StreamEpoch::new(0))
+                .unwrap()
+                .us(),
+            1000
+        );
+        assert_eq!(clock.stats().jitter_ms, 0);
+
+        // Second sample establishes a non-zero delta.
+        assert_eq!(
+            clock
+                .update(sample(2000), StreamEpoch::new(0))
+                .unwrap()
+                .us(),
+            2000
+        );
+        assert_eq!(clock.stats().jitter_ms, 0);
+
+        // A smaller timestamp within the discontinuity threshold produces a
+        // delta of zero after saturation. The jitter estimate must still see
+        // the absolute deviation from the previous delta.
+        assert_eq!(
+            clock
+                .update(sample(1500), StreamEpoch::new(0))
+                .unwrap()
+                .us(),
+            2001
+        );
+        assert_eq!(clock.stats().jitter_ms, 1);
+    }
 }

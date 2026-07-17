@@ -21,7 +21,7 @@ pub struct Surface {
 impl Surface {
     /// Create an empty surface with the given dimensions and format.
     pub fn new(width: u32, height: u32, format: PixelFormat) -> Self {
-        let stride = width * bytes_per_pixel(format);
+        let stride = width.saturating_mul(bytes_per_pixel(format));
         Self {
             width,
             height,
@@ -35,18 +35,27 @@ impl Surface {
     ///
     /// For packed RGB/RGBA this is `height * stride`. For planar YUV formats
     /// it includes the luma plane plus the chroma planes.
+    ///
+    /// Uses saturating arithmetic so malformed dimensions cannot trigger a
+    /// panic; callers receive an `UploadError` instead.
     pub fn expected_size(&self) -> usize {
         match self.format {
-            PixelFormat::Rgba32 | PixelFormat::Rgb24 => self.height as usize * self.stride as usize,
+            PixelFormat::Rgba32 | PixelFormat::Rgb24 => {
+                (self.height as usize).saturating_mul(self.stride as usize)
+            }
             PixelFormat::I420 => {
-                let y = self.width as usize * self.height as usize;
-                let c = self.width.div_ceil(2) as usize * self.height.div_ceil(2) as usize * 2;
-                y + c
+                let y = (self.width as usize).saturating_mul(self.height as usize);
+                let c = (self.width.div_ceil(2) as usize)
+                    .saturating_mul(self.height.div_ceil(2) as usize)
+                    .saturating_mul(2);
+                y.saturating_add(c)
             }
             PixelFormat::Nv12 => {
-                let y = self.width as usize * self.height as usize;
-                let uv = self.width.div_ceil(2) as usize * 2 * self.height.div_ceil(2) as usize;
-                y + uv
+                let y = (self.width as usize).saturating_mul(self.height as usize);
+                let uv = (self.width.div_ceil(2) as usize)
+                    .saturating_mul(2)
+                    .saturating_mul(self.height.div_ceil(2) as usize);
+                y.saturating_add(uv)
             }
         }
     }
@@ -136,5 +145,14 @@ mod tests {
         // 3x3 NV12: 9 Y + ceil(3/2)*2 * ceil(3/2) = 8 UV = 17
         let s = Surface::new(3, 3, PixelFormat::Nv12);
         assert_eq!(s.expected_size(), 17);
+    }
+
+    #[test]
+    fn huge_dimensions_do_not_panic() {
+        let mut s = Surface::new(u32::MAX, u32::MAX, PixelFormat::I420);
+        assert!(s.upload(&[]).is_err());
+
+        let mut s = Surface::new(u32::MAX, 2, PixelFormat::Rgba32);
+        assert!(s.upload(&[0u8; 0]).is_err());
     }
 }

@@ -66,13 +66,16 @@ impl<'a> VideoFrame<'a> {
     /// stride. This is a conservative estimate for common 8-bit formats.
     pub fn min_required_size(&self) -> u64 {
         let planes = if self.planes.is_empty() {
-            1
+            1u64
         } else {
-            self.planes.len() as u32
+            self.planes.len() as u64
         };
         let height = u64::from(self.format.coded_height);
         let stride = u64::from(self.format.stride);
-        u64::from(planes) * height * stride
+        planes
+            .checked_mul(height)
+            .and_then(|v| v.checked_mul(stride))
+            .unwrap_or(u64::MAX)
     }
 
     /// Validate the frame against resource limits.
@@ -130,7 +133,7 @@ impl<'a> AudioFrame<'a> {
 
     /// Expected byte size for the configured sample count and layout.
     pub fn expected_size(&self) -> u64 {
-        u64::from(self.format.total_samples()) * u64::from(self.format.bytes_per_sample())
+        self.format.total_samples() * u64::from(self.format.bytes_per_sample())
     }
 
     pub fn check_limits(&self, limits: &MediaLimits) -> Result<(), MediaError> {

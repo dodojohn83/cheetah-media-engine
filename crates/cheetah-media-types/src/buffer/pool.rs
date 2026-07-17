@@ -176,9 +176,18 @@ impl BufferPool for SimpleBufferPool {
         }
 
         let prev_bytes = self.inner.in_use_bytes.fetch_add(size, Ordering::Relaxed);
-        let new_bytes = prev_bytes + size;
-        if new_bytes > cfg.max_total_bytes || new_bytes < prev_bytes {
-            // Overflow or over total-byte limit: release the reservation.
+        let Some(new_bytes) = prev_bytes.checked_add(size) else {
+            // Overflow: release the reservation.
+            self.inner.in_use_count.fetch_sub(1, Ordering::Relaxed);
+            self.inner.in_use_bytes.fetch_sub(size, Ordering::Relaxed);
+            return Err(MediaError::ResourceLimit {
+                name: "buffer_pool_total_bytes",
+                current: usize::MAX as u64,
+                limit: cfg.max_total_bytes as u64,
+            });
+        };
+        if new_bytes > cfg.max_total_bytes {
+            // Over total-byte limit: release the reservation.
             self.inner.in_use_count.fetch_sub(1, Ordering::Relaxed);
             self.inner.in_use_bytes.fetch_sub(size, Ordering::Relaxed);
             return Err(MediaError::ResourceLimit {

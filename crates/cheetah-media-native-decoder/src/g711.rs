@@ -38,6 +38,9 @@ impl Decoder for G711Decoder {
         }
 
         let samples = input.data.len();
+        if samples > usize::MAX / 2 {
+            return Err(AbiError::OutOfBounds);
+        }
         self.output.clear();
         self.output.reserve(samples * 2);
 
