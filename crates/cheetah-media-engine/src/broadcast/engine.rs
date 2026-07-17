@@ -335,6 +335,7 @@ impl BroadcastEngine {
             }
             Err(err) => {
                 self.state = BroadcastState::Failed;
+                let _ = pipeline.stop();
                 events.push(BroadcastEvent::Error(err));
                 Ok(events)
             }
