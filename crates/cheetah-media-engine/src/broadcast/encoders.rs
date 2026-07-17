@@ -325,7 +325,12 @@ impl Encoder for G711Encoder {
 
         let bps = format.bytes_per_sample() as usize;
         let sample_count = format.sample_count as usize;
-        let expected = sample_count * bps;
+        let expected = sample_count
+            .checked_mul(bps)
+            .ok_or(MediaError::InvalidInput {
+                code: 7209,
+                context: Some("G711Encoder sample count overflow"),
+            })?;
 
         let is_planar = matches!(
             format.sample_format,
@@ -346,7 +351,7 @@ impl Encoder for G711Encoder {
             audio.payload.as_ref()
         };
 
-        if input.len() < expected || input.len() % bps != 0 {
+        if bps == 0 || input.len() < expected || input.len() % bps != 0 {
             return Err(MediaError::InvalidInput {
                 code: 7209,
                 context: Some("G711Encoder input length is not sample-aligned"),
@@ -653,6 +658,30 @@ mod tests {
             ts,
         ));
 
+        assert!(
+            enc.encode(
+                &frame,
+                TrackId::new(1).unwrap(),
+                StreamEpoch::new(0),
+                SequenceNumber::new(0),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn g711_encoder_rejects_unknown_sample_format() {
+        let mut enc = G711Encoder::new(G711Kind::ALaw);
+        enc.configure(CodecId::G711A, 0, 0, 0).unwrap();
+
+        let format = AudioFormat {
+            sample_format: SampleFormat::Unknown(99),
+            sample_rate: 8000,
+            channel_layout: ChannelLayout::Mono,
+            sample_count: 1,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let frame = MediaFrame::Audio(cheetah_media_types::AudioFrame::new(Vec::new(), format, ts));
         assert!(
             enc.encode(
                 &frame,
