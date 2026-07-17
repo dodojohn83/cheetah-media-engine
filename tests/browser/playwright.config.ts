@@ -13,15 +13,23 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'pnpm --filter @cheetah-media/web-demo build && pnpm --filter @cheetah-media/web-demo preview --port 5173',
+    command: 'pnpm --filter @cheetah-media/web-demo build && pnpm --filter @cheetah-media/web-demo exec node scripts/preview.js --port=5173',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
+    timeout: 180 * 1000,
   },
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
     },
   ],
 });

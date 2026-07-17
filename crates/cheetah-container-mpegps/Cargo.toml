@@ -1,0 +1,21 @@
+[package]
+name = "cheetah-container-mpegps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "MPEG-PS (Program Stream) container parser."
+
+[features]
+default = ["std"]
+std = ["cheetah-media-types/std", "cheetah-media-bitstream/std", "cheetah-container-annexb/std", "cheetah-container-mpegts/std"]
+
+[dependencies]
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
+cheetah-media-bitstream = { path = "../cheetah-media-bitstream", default-features = false }
+cheetah-container-annexb = { path = "../cheetah-container-annexb", default-features = false }
+cheetah-container-mpegts = { path = "../cheetah-container-mpegts", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"

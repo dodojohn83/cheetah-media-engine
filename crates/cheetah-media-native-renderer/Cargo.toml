@@ -1,0 +1,19 @@
+[package]
+name = "cheetah-media-native-renderer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Native renderer capability probe, zero-copy surface model and CPU fallback for the Cheetah media engine."
+
+[features]
+default = ["std"]
+std = ["cheetah-media-abi/std", "cheetah-media-types/std"]
+
+[dependencies]
+cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false, features = ["std"] }
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false, features = ["std"] }
+
+[lints.rust]
+unsafe_code = "deny"

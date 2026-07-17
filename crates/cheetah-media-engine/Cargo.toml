@@ -7,9 +7,36 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Engine orchestration, state machine, and pipeline planner."
 
+[features]
+std = [
+    "cheetah-media-abi/std",
+    "cheetah-media-backend-api/std",
+    "cheetah-media-pipeline-core/std",
+    "cheetah-media-timeline/std",
+    "cheetah-media-types/std",
+]
+native = [
+    "std",
+    "dep:cheetah-media-native-audio",
+    "dep:cheetah-media-native-decoder",
+    "dep:cheetah-media-native-renderer",
+    "dep:cheetah-media-native-transport",
+    "cheetah-media-native-audio/std",
+    "cheetah-media-native-decoder/std",
+    "cheetah-media-native-renderer/std",
+    "cheetah-media-native-transport/std",
+]
+
 [dependencies]
-cheetah-media-types = { path = "../cheetah-media-types" }
-cheetah-media-backend-api = { path = "../cheetah-media-backend-api" }
+cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false }
+cheetah-media-backend-api = { path = "../cheetah-media-backend-api", default-features = false }
+cheetah-media-pipeline-core = { path = "../cheetah-media-pipeline-core", default-features = false }
+cheetah-media-timeline = { path = "../cheetah-media-timeline", default-features = false }
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
+cheetah-media-native-audio = { path = "../cheetah-media-native-audio", default-features = false, optional = true }
+cheetah-media-native-decoder = { path = "../cheetah-media-native-decoder", default-features = false, optional = true }
+cheetah-media-native-renderer = { path = "../cheetah-media-native-renderer", default-features = false, optional = true }
+cheetah-media-native-transport = { path = "../cheetah-media-native-transport", default-features = false, optional = true }
 
 [lints.rust]
 unsafe_code = "forbid"

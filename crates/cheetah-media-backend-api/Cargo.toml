@@ -7,8 +7,12 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Platform-neutral backend port definitions for the Cheetah media engine."
 
+[features]
+std = ["cheetah-media-abi/std", "cheetah-media-types/std"]
+
 [dependencies]
-cheetah-media-types = { path = "../cheetah-media-types" }
+cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false }
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
 
 [lints.rust]
 unsafe_code = "forbid"

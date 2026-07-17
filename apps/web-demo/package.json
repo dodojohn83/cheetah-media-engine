@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc && vite build",
+    "build": "node scripts/build-wasm.js && tsc && vite build",
     "dev": "vite",
-    "preview": "vite preview",
+    "preview": "node scripts/preview.js",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@cheetah-media/components": "workspace:*"
+    "@cheetah-media/components": "workspace:*",
+    "@cheetah-media/runtime": "workspace:*"
   },
   "devDependencies": {
     "typescript": "7.0.2",

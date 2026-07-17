@@ -1,0 +1,30 @@
+[package]
+name = "cheetah-media-pipeline-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Core media pipeline planner and scheduler."
+
+[features]
+default = ["std"]
+std = [
+    "cheetah-media-types/std",
+    "cheetah-media-abi/std",
+    "cheetah-container-flv/std",
+    "cheetah-container-mpegts/std",
+    "cheetah-container-isobmff/std",
+    "cheetah-media-timeline/std",
+]
+
+[dependencies]
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
+cheetah-media-abi = { path = "../cheetah-media-abi", default-features = false }
+cheetah-media-timeline = { path = "../cheetah-media-timeline", default-features = false }
+cheetah-container-flv = { path = "../cheetah-container-flv", default-features = false }
+cheetah-container-mpegts = { path = "../cheetah-container-mpegts", default-features = false }
+cheetah-container-isobmff = { path = "../cheetah-container-isobmff", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"

@@ -1,9 +1,166 @@
 export const RUNTIME_VERSION = '0.1.0';
 
-export interface EngineRuntime {
-  version: string;
-}
+export {
+  detectCapabilities,
+  type CapabilityReport,
+  type ProbedCapabilityReport,
+  type ProbeDetails,
+  CapabilityCache,
+  probeCapabilities,
+  computeFingerprint,
+} from './capabilities';
+export {
+  plan,
+  explain,
+  type Backend,
+  type LatencyTarget,
+  type PlanCandidate,
+  type PlanRequest,
+  type PlaybackPlan,
+  type Protocol,
+  type Renderer,
+  type TrackProfile,
+  type TransportMode,
+} from './planner';
+export {
+  FallbackController,
+  type MediaBackend,
+  type BackendContext,
+  type MediaBackendFactory,
+  type FallbackEvent,
+  type FallbackOptions,
+  type FallbackState,
+} from './fallback';
+export {
+  decodeEnvelope,
+  encodeEnvelope,
+  PROTOCOL_VERSION,
+  type Envelope,
+  type CapabilityPayload,
+  type EventPayload,
+  type LoadPayload,
+  type MessageType,
+  type MetricsPayload,
+  type SeekPayload,
+  type SetPlaybackRatePayload,
+  type FrameStepPayload,
+  type PauseDisplayPayload,
+  type OutputPayload,
+  type PacketPayload,
+  type WorkerErrorPayload,
+} from './messages';
+export { MemoryArenaView } from './memory';
+export { createRuntime, type EngineRuntime, type RuntimeOptions } from './runtime';
+export {
+  BlobSink,
+  StreamDownloader,
+  type DownloadOptions,
+  type DownloadProgress,
+  type DownloadResult,
+  type DownloadSink,
+  type DownloadState,
+} from './fetch';
+export {
+  createTransport,
+  FetchTransport,
+  WebRtcTransport,
+  WebSocketTransport,
+  WebTransportTransport,
+  TransportErrorCode,
+  type Transport,
+  type TransportConfig,
+  type TransportError,
+  type TransportStats,
+  type Chunk,
+} from './transport';
+export {
+  WebCodecsBackend,
+  webcodecsBackendFactory,
+  type CloseableVideoFrame,
+  type CloseableAudioData,
+  type WebCodecsCallbacks,
+  type WebCodecsBackendOptions,
+  type WebCodecsMetrics,
+} from './webcodecs';
+export {
+  MseBackend,
+  mseBackendFactory,
+  MseError,
+  type MseErrorCode,
+  type MseCallbacks,
+  type MseBackendOptions,
+  type MseMetrics,
+  type HTMLVideoElementLike,
+  type TimeRangesLike,
+  type SourceBufferLike,
+  type MediaSourceLike,
+} from './mse';
+export {
+  FfmpegPackImpl,
+  FfmpegPackError,
+  PackReturnCode,
+  PackFeatureFlags,
+  PackCodecId,
+  type FfmpegPack,
+  type FfmpegPackModule,
+  type FfmpegPackOptions,
+  type FfmpegPacket,
+  type MemoryDescriptor as FfmpegMemoryDescriptor,
+  type PacketDescriptor as FfmpegPacketDescriptor,
+  type FrameDescriptor as FfmpegFrameDescriptor,
+} from './ffmpeg-pack';
+export * from './audio';
+export {
+  createRenderer,
+  VideoRenderer,
+  Canvas2DRenderer,
+  WebGL2Renderer,
+  WebGpuRenderer,
+  RendererSurface,
+  resolveColorSpace,
+  buildYuvToRgbCoeffs,
+  getYuvMatrix,
+  getColorRange,
+  type RendererConfig,
+  type RendererMetrics,
+  type RenderFrame,
+  type VisibleRect,
+  type FitMode,
+  type SnapshotOptions,
+  type SnapshotResult,
+  type ColorSpaceInfo,
+  RendererError,
+  CompositeRecorder,
+  type CompositeRecordingOptions,
+  type CompositeRecordingResult,
+  type CompositeRecordingProgress,
+  type CompositeRecordingState,
+  type CompositeWatermark,
+} from './video';
 
-export function createRuntime(): EngineRuntime {
-  return { version: RUNTIME_VERSION };
-}
+export {
+  MetricRegistry,
+  startTrace,
+  endTrace,
+  childSpan,
+  endSpan,
+  addChild,
+  buildDiagnostics,
+  sanitizeUrl,
+  redactHeaders,
+  DIAGNOSTICS_VERSION,
+  type MetricCategory,
+  type MetricType,
+  type MetricDefinition,
+  type CounterSnapshot,
+  type GaugeSnapshot,
+  type HistogramBucket,
+  type HistogramSnapshot,
+  type MetricSnapshot,
+  type MetricsSnapshot,
+  type TraceSpan,
+  type TraceContext,
+  type DiagnosticsEvent,
+  type DiagnosticsOptions,
+  type DiagnosticsBundle,
+} from './observability';

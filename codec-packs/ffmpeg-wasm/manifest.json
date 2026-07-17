@@ -1,36 +1,79 @@
 {
   "name": "cheetah-ffmpeg-wasm",
   "version": "0.1.0",
+  "abi": {
+    "major": 0,
+    "minor": 1
+  },
   "ffmpeg": {
     "version": "8.1.2",
-    "source": "https://git.ffmpeg.org/gitweb/ffmpeg.git/snapshot/n8.1.2.tar.gz",
+    "source": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz",
+    "source_hash": "sha256:464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c",
     "configure_flags": [
       "--disable-gpl",
       "--disable-nonfree",
-      "--enable-shared",
+      "--enable-version3",
       "--disable-programs",
       "--disable-doc",
       "--disable-avdevice",
-      "--disable-swresample",
       "--disable-postproc",
       "--disable-avfilter",
+      "--disable-network",
+      "--disable-iconv",
       "--disable-encoders",
       "--disable-muxers",
+      "--disable-demuxers",
       "--enable-decoder=h264",
       "--enable-decoder=hevc",
       "--enable-decoder=aac",
       "--enable-decoder=mp3",
-      "--enable-demuxer=flv",
-      "--enable-demuxer=hls",
-      "--enable-demuxer=mov,mp4,m4a,3gp,3g2,mj2"
+      "--enable-parser=h264",
+      "--enable-parser=hevc",
+      "--enable-parser=aac",
+      "--enable-parser=mpegaudio",
+      "--enable-swresample",
+      "--enable-avutil"
     ]
   },
   "emscripten": {
     "version": "6.0.2"
   },
-  "license": "LGPL-2.1-or-later",
+  "variants": {
+    "threads-simd": {
+      "features": ["threads", "simd", "shared-memory"],
+      "emscripten_flags": [
+        "-sUSE_PTHREADS=1",
+        "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency>8?8:navigator.hardwareConcurrency",
+        "-msimd128"
+      ],
+      "max_memory_mb": 512,
+      "output": {
+        "wasm": "cheetah_ffmpeg.threads-simd.wasm",
+        "js": "cheetah_ffmpeg.threads-simd.js"
+      }
+    },
+    "simd": {
+      "features": ["simd"],
+      "emscripten_flags": ["-msimd128"],
+      "max_memory_mb": 256,
+      "output": {
+        "wasm": "cheetah_ffmpeg.simd.wasm",
+        "js": "cheetah_ffmpeg.simd.js"
+      }
+    },
+    "baseline": {
+      "features": [],
+      "emscripten_flags": [],
+      "max_memory_mb": 256,
+      "output": {
+        "wasm": "cheetah_ffmpeg.baseline.wasm",
+        "js": "cheetah_ffmpeg.baseline.js"
+      }
+    }
+  },
   "output": {
-    "wasm": "cheetah_ffmpeg.wasm",
-    "js": "cheetah_ffmpeg.js"
-  }
+    "wasm": "cheetah_ffmpeg.baseline.wasm",
+    "js": "cheetah_ffmpeg.baseline.js"
+  },
+  "license": "LGPL-2.1-or-later"
 }

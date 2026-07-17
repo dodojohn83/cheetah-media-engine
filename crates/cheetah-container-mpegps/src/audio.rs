@@ -1,0 +1,126 @@
+//! Audio elementary stream assembly for MPEG-PS.
+
+use alloc::collections::VecDeque;
+
+use cheetah_media_bitstream::aac::{AdtsHeader, AudioSpecificConfig};
+use cheetah_media_types::{
+    AudioFormat, ChannelLayout, CodecConfig, CodecId, MediaPacket, MediaTime, PacketFlags,
+    SampleFormat, SequenceNumber, StreamEpoch, TimeBase, Timestamp, TrackId, TrackInfo, TrackKind,
+};
+
+use crate::MpegPsError;
+use crate::types::{AUDIO_TRACK_ID, MpegPsEvent};
+
+/// Assembler that extracts AAC ADTS frames from audio PES payloads and emits
+/// timestamped `MediaPacket`s.
+#[derive(Debug)]
+pub(crate) struct AudioAssembler {
+    track: Option<TrackInfo>,
+    sequence: u64,
+}
+
+impl AudioAssembler {
+    pub(crate) fn new() -> Self {
+        Self {
+            track: None,
+            sequence: 0,
+        }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        self.track = None;
+        self.sequence = 0;
+    }
+
+    pub(crate) fn process_payload(
+        &mut self,
+        payload: &[u8],
+        media_time: MediaTime,
+        events: &mut VecDeque<MpegPsEvent>,
+    ) -> Result<(), MpegPsError> {
+        let track_id = TrackId::new(AUDIO_TRACK_ID).expect("audio track id 2 is valid");
+
+        let mut offset = 0;
+        let mut pts = media_time.pts;
+        let mut dts = media_time.dts;
+        while offset < payload.len() {
+            let header = match AdtsHeader::parse(&payload[offset..]) {
+                Ok(h) => h,
+                Err(_) => break,
+            };
+            let frame_len = header.frame_length as usize;
+            if frame_len == 0 || payload.len() - offset < frame_len {
+                break;
+            }
+
+            if self.track.is_none() {
+                let track = self.build_track(&header, track_id)?;
+                self.track = Some(track.clone());
+                events.push_back(MpegPsEvent::Track(track));
+            }
+
+            let frame = &payload[offset..offset + frame_len];
+            let flags = PacketFlags {
+                is_keyframe: true,
+                is_corrupt: false,
+                is_discontinuity: false,
+            };
+            let duration_ticks = (u64::from(header.samples_per_frame) * 90_000
+                / u64::from(header.sampling_frequency)) as i64;
+            let packet_time = MediaTime::new(
+                pts,
+                dts,
+                Some(Timestamp::new(duration_ticks)),
+                TimeBase::TS_90K,
+            );
+            let mut packet = MediaPacket::new(
+                frame.to_vec(),
+                track_id,
+                StreamEpoch::new(0),
+                SequenceNumber::new(self.sequence),
+                packet_time,
+            );
+            packet.flags = flags;
+            self.sequence += 1;
+            events.push_back(MpegPsEvent::Packet(packet));
+
+            offset += frame_len;
+            pts = pts.map(|p| Timestamp::new(p.ticks() + duration_ticks));
+            dts = dts.map(|d| Timestamp::new(d.ticks() + duration_ticks));
+        }
+        Ok(())
+    }
+
+    fn build_track(
+        &self,
+        header: &AdtsHeader,
+        track_id: TrackId,
+    ) -> Result<TrackInfo, MpegPsError> {
+        let audio_object_type = header.profile + 1;
+        let asc = AudioSpecificConfig {
+            audio_object_type,
+            sampling_frequency_index: header.sampling_frequency_index,
+            sampling_frequency: header.sampling_frequency,
+            channel_configuration: header.channel_configuration,
+            channel_count: header.channel_count,
+        };
+        let config_bytes = asc.build();
+
+        let channel_layout = match header.channel_count {
+            1 => ChannelLayout::Mono,
+            2 => ChannelLayout::Stereo,
+            n => ChannelLayout::Unknown(u64::from(n)),
+        };
+        let audio_format = AudioFormat {
+            sample_format: SampleFormat::Unknown(0),
+            sample_rate: header.sampling_frequency,
+            channel_layout,
+            sample_count: u32::from(header.samples_per_frame),
+        };
+
+        let mut track = TrackInfo::new(track_id, TrackKind::Audio, CodecId::Aac, TimeBase::TS_90K);
+        track.codec_config = CodecConfig::AacAudioSpecificConfig(config_bytes);
+        track.audio_format = Some(audio_format);
+        Ok(track)
+    }
+}

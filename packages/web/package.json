@@ -1,19 +1,45 @@
 {
   "name": "@cheetah-media/web",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./src/index.ts",
+  "description": "Cheetah Media Engine Web SDK — public player API and runtime bindings.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dodojohn83/cheetah-media-engine.git",
+    "directory": "packages/web"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "unpkg": "./dist/cheetah-media.iife.js",
+  "jsdelivr": "./dist/cheetah-media.iife.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./dist/index.js"
-    }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "default": "./dist/cheetah-media.iife.js"
+    },
+    "./iife": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/cheetah-media.iife.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
+    "build": "vite build && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "echo 'lint placeholder'"
   },
@@ -22,6 +48,7 @@
   },
   "devDependencies": {
     "typescript": "7.0.2",
+    "vite": "8.1.4",
     "vitest": "4.1.10"
   }
 }

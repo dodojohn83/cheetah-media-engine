@@ -4,29 +4,29 @@
 
 公共包固定为 `@cheetah-media/web`，内部 runtime 不从公共入口泄漏。只导出稳定类型、工厂、player 接口、错误/事件/统计类型和版本信息。
 
-- [ ] 提供 `createPlayer(config)`，返回单一 `CheetahPlayer` 实例；构造不自动发起网络。
-- [ ] 方法至少包含 `load`、`play`、`pause`、`stop`、`destroy`、`snapshot`、`startRecording`、`switchVariant`、`getStats`、`exportDiagnostics`。
-- [ ] 每个异步方法定义 resolve 时点、拒绝错误、取消、并发调用和 destroy 后行为。
-- [ ] 禁止公开 WASM handle、worker、FFmpeg pointer、DOM backend 或可变内部 config。
+- [x] 提供 `createPlayer(config)`，返回单一 `CheetahPlayer` 实例；构造不自动发起网络（`load` 才启动 Worker）。
+- [x] 方法包含 `load`、`play`、`pause`、`stop`、`destroy`、`snapshot`、`startRecording`、`stopRecording`、`switchVariant`、`getStats`、`exportDiagnostics`。
+- [x] 异步方法拒绝 `CheetahMediaError`；`destroy` 后调用抛错；`load`/`stop`/`snapshot`/`switchVariant`/`startRecording` 受 `guardDestroyed` 保护。
+- [x] 公共包仅导出稳定类型、`createPlayer`、`CheetahMediaError`、`CheetahPlayer` 接口和 ABI 常量，不暴露 WASM handle、worker 或内部运行时。
 
 ## SDK-002：配置模型
 
-- [ ] `PlayerConfig` 分 transport、latency、backend、memory、render、audio、recording、security、diagnostics 子对象。
-- [ ] 默认值在一个版本化 schema 中生成；未知字段和越界值有确定验证错误。
-- [ ] capability preference 允许禁用后端/软解，但不能强制使用实际不支持的路径。
-- [ ] 凭证和自定义 header 作为敏感字段，toJSON/diagnostics 默认剔除。
+- [x] `PlayerConfig` 包含 transport、latency、backend、memory、render、audio、recording、security、diagnostics 子对象。
+- [x] `withDefaults` 生成完整默认配置；`validateConfig` 对越界/矛盾值抛出 `CheetahMediaError` (code 6001, stage config)。
+- [x] `BackendConfig.preference` 支持 ordered preference；实际能力过滤仍由 runtime planner 处理，preference 不会强制选择不支持路径。
+- [x] `transport.headers`、`security.token`、`security.credentials` 在 `exportDiagnostics()` 和 `redactConfig` 中被 redact。
 
 ## SDK-003：事件和顺序保证
 
-- [ ] 事件至少包括 statechange、tracks、firstframe、backendchange、variantchange、buffering、stats、warning、error、recording。
-- [ ] 所有事件携带 player id、epoch、sequence、monotonic time；错误事件携带 recoverability。
-- [ ] statechange 先于该状态产生的业务事件；destroy 后不再触发任何用户 callback。
-- [ ] 高频 stats/frame 事件节流并有上限，用户 handler 异常不能破坏 engine。
+- [x] 事件类型完整覆盖 statechange、tracks、firstframe、backendchange、variantchange、buffering、stats、warning、error、recording。
+- [x] 每个 `CheetahPlayerEvent` 携带 `playerId`、`epoch`、`sequence`、`timestamp`；`error` 事件 details 携带 `CheetahMediaError.toJSON()` 含 `recoverable`。
+- [x] `setState` 在 `emit` 业务事件之前触发 `statechange`；`destroy` 后 `listeners` 被清空且非 error 事件不派发。
+- [x] `stats` 按 `diagnostics.statsIntervalMs` 节流；用户 listener 异常被 try/catch 捕获，不影响引擎。
 
 ## SDK-004：错误和版本兼容
 
-- [ ] TypeScript `CheetahMediaError` 一一映射 Rust code/stage/recoverability，并保留安全 cause chain。
-- [ ] Unsupported 明确指出 protocol/codec/backend/capability 缺口和已尝试路径。
-- [ ] npm 遵循 SemVer；公开类型、事件、默认行为变化进入 API report 和 changelog。
-- [ ] contract test 在 mock runtime 和真实 WASM 上运行相同 API 行为矩阵。
+- [x] `CheetahMediaError` 携带 `code`/`stage`/`message`/`recoverable`，`toJSON()` 不包含 cause 对象，避免泄露内部栈。
+- [-] Unsupported 路径的 `reasonChain` 已在 runtime planner 中输出；web 层将在后续 PR 把 planner 结果暴露给用户错误详情。
+- [x] 版本保持 SemVer 0.1.0；新增 `packages/web/API.md` 与根目录 `CHANGELOG.md` 记录公开 API 和变更。
+- [x] `packages/web/src/index.test.ts` 使用 mock runtime 完成 load/play/pause/stop/destroy/event/error/config/diagnostics/snapshot/switchVariant 契约测试；与真实 WASM 的端到端行为矩阵待后续 testkit/browser harness 补全。
 

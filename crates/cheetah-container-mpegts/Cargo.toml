@@ -1,0 +1,22 @@
+[package]
+name = "cheetah-container-mpegts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "MPEG-TS container parser."
+
+[features]
+default = ["std"]
+std = ["cheetah-media-types/std", "cheetah-media-bitstream/std"]
+
+[dependencies]
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
+cheetah-media-bitstream = { path = "../cheetah-media-bitstream", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dev-dependencies]
+proptest = "1.5.0"

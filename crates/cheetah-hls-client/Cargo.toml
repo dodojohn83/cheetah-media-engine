@@ -1,0 +1,26 @@
+[package]
+name = "cheetah-hls-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "HLS / LL-HLS playlist and segment client."
+
+[features]
+default = ["std"]
+std = [
+    "cheetah-media-types/std",
+    "cheetah-media-timeline/std",
+    "cheetah-container-isobmff/std",
+    "cheetah-container-mpegts/std",
+]
+
+[dependencies]
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
+cheetah-media-timeline = { path = "../cheetah-media-timeline", default-features = false }
+cheetah-container-isobmff = { path = "../cheetah-container-isobmff", default-features = false }
+cheetah-container-mpegts = { path = "../cheetah-container-mpegts", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"

@@ -1,0 +1,288 @@
+{
+  "schema_version": "1.0",
+  "fixtures": [
+    {
+      "id": "h264-1280x720-30fps-2s",
+      "description": "Minimal H.264 video with 2-second duration and 30 fps.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "elementary",
+      "codec": "h264",
+      "resolution": "1280x720",
+      "frame_rate": 30,
+      "duration_ms": 2000,
+      "expected": "idr-and-p-frames with monotonic pts"
+    },
+    {
+      "id": "aac-48khz-2ch-2s",
+      "description": "Minimal AAC audio with 48 kHz sample rate and 2 channels.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "adts",
+      "codec": "aac",
+      "sample_rate": 48000,
+      "channels": 2,
+      "duration_ms": 2000,
+      "expected": "continuous audio frames"
+    },
+    {
+      "id": "g711a-8khz-1ch-500ms",
+      "description": "G.711 A-law mono PCM 8 kHz 500 ms.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "pcm",
+      "codec": "g711a",
+      "sample_rate": 8000,
+      "channels": 1,
+      "duration_ms": 500,
+      "expected": "raw pcm samples"
+    },
+    {
+      "id": "h264-33bit-wrap",
+      "description": "H.264 stream with PTS wrapping around 33-bit boundary.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "elementary",
+      "codec": "h264",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "duration_ms": 1000,
+      "anomaly": "33-bit timestamp wrap",
+      "expected": "parser handles wrap without overflow"
+    },
+    {
+      "id": "corrupt-flv",
+      "description": "FLV file with invalid tag type and truncated header.",
+      "source": {
+        "type": "synthetic",
+        "generator": "cheetah-media-testkit"
+      },
+      "license": "MIT-0",
+      "hash": "",
+      "protocol": "flv",
+      "codec": "h264",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "duration_ms": 0,
+      "anomaly": "corrupt header and truncated tag",
+      "expected": "parser returns MalformedHeader or EndOfStream"
+    },
+    {
+      "id": "h264-1280x720-30fps-fmp4",
+      "description": "H.264 + AAC fragmented MP4 1280x720 30fps 2s",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/h264-fmp4/clip.mp4"
+      },
+      "license": "MIT-0",
+      "hash": "f1edb8fff2c494618c0ca8ad750b193ed8a85755b22c5c04890a95b63833e160",
+      "protocol": "http-fmp4",
+      "codec": "h264",
+      "resolution": "1280x720",
+      "frame_rate": 30,
+      "sample_rate": 48000,
+      "channels": 1,
+      "duration_ms": 2021,
+      "expected": "real http-fmp4 h264 playback evidence"
+    },
+    {
+      "id": "h265-640x480-30fps-fmp4",
+      "description": "H.265 + AAC fragmented MP4 640x480 30fps 2s",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/h265-fmp4/clip.mp4"
+      },
+      "license": "MIT-0",
+      "hash": "97c0626d7a647212be0a9100d0c6af5555df22cc6c86648283e8b247c97ecb59",
+      "protocol": "http-fmp4",
+      "codec": "h265",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "sample_rate": 48000,
+      "channels": 1,
+      "duration_ms": 2067,
+      "expected": "real http-fmp4 h265 playback evidence"
+    },
+    {
+      "id": "h264-http-fmp4-640x480",
+      "description": "HTTP-fMP4 H.264/AAC 640x480 2s",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/h264-http-fmp4/clip.mp4"
+      },
+      "license": "MIT-0",
+      "hash": "068a2052f86321ad6b7a1817682d484c850ee7d27f8e4191b25fc3da64dd52e8",
+      "protocol": "http-fmp4",
+      "codec": "h264",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "sample_rate": 48000,
+      "channels": 1,
+      "duration_ms": 2021,
+      "expected": "real http-fmp4 h264 playback evidence"
+    },
+    {
+      "id": "h264-ws-fmp4-640x480",
+      "description": "WS-fMP4 H.264/AAC 640x480 2s",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/h264-ws-fmp4/clip.mp4"
+      },
+      "license": "MIT-0",
+      "hash": "068a2052f86321ad6b7a1817682d484c850ee7d27f8e4191b25fc3da64dd52e8",
+      "protocol": "ws-fmp4",
+      "codec": "h264",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "sample_rate": 48000,
+      "channels": 1,
+      "duration_ms": 2021,
+      "expected": "real ws-fmp4 h264 playback evidence"
+    },
+    {
+      "id": "mp3-44khz-fmp4",
+      "description": "MP3 audio in fMP4 container",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/mp3-fmp4/clip.mp4"
+      },
+      "license": "MIT-0",
+      "hash": "daceefd0c0f5495fee441cc9abe364c69c5d96f6e53e902b8eb456635627d73e",
+      "protocol": "http-fmp4",
+      "codec": "mp3",
+      "sample_rate": 44100,
+      "channels": 1,
+      "duration_ms": 2025,
+      "expected": "real http-fmp4 mp3 playback evidence"
+    },
+    {
+      "id": "aac-48khz-fmp4",
+      "description": "AAC audio-only fMP4",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/aac-fmp4/audio.mp4"
+      },
+      "license": "MIT-0",
+      "hash": "01599109a2b36419d56dc4e49d458c95d2d9c149e37aa6976cd67e5f8c20cf4d",
+      "protocol": "http-fmp4",
+      "codec": "aac",
+      "sample_rate": 48000,
+      "channels": 1,
+      "duration_ms": 2021,
+      "expected": "real http-fmp4 aac playback evidence"
+    },
+    {
+      "id": "hls-h264-fmp4-640x480",
+      "description": "HLS with H.264/AAC fMP4 segments 640x480",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/hls-h264-fmp4/master.m3u8"
+      },
+      "license": "MIT-0",
+      "hash": "d301f8e4c3d3a70b7443d0682f3e46bbfb688f757c072e29688688a70b567bd2",
+      "protocol": "hls",
+      "codec": "h264",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "sample_rate": 48000,
+      "channels": 1,
+      "duration_ms": 2000,
+      "expected": "real hls h264 playback evidence"
+    },
+    {
+      "id": "h264-flv-640x480",
+      "description": "HTTP-FLV H.264/AAC 640x480",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/h264-flv/clip.flv"
+      },
+      "license": "MIT-0",
+      "hash": "18f09891e79c4b46345a7d6076cccb0ff403a122a4fab8f81abb67e1bb3e661d",
+      "protocol": "http-flv",
+      "codec": "h264",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "sample_rate": 44100,
+      "channels": 1,
+      "duration_ms": 2023,
+      "expected": "real http-flv h264 playback evidence"
+    },
+    {
+      "id": "h264-ws-flv-640x480",
+      "description": "WS-FLV H.264/AAC 640x480",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/h264-flv/clip.flv"
+      },
+      "license": "MIT-0",
+      "hash": "18f09891e79c4b46345a7d6076cccb0ff403a122a4fab8f81abb67e1bb3e661d",
+      "protocol": "ws-flv",
+      "codec": "h264",
+      "resolution": "640x480",
+      "frame_rate": 30,
+      "sample_rate": 44100,
+      "channels": 1,
+      "duration_ms": 2023,
+      "expected": "real ws-flv h264 playback evidence"
+    },
+    {
+      "id": "g711a-8khz-fmp4",
+      "description": "G.711 A-law in fMP4 8kHz mono",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/g711a/clip.mp4"
+      },
+      "license": "MIT-0",
+      "hash": "a5ef8f853dd523db9e1c5b9d39d3a5e862d5b8aa60a6d9f6fcc8ff5bce76b93e",
+      "protocol": "http-fmp4",
+      "codec": "g711a",
+      "sample_rate": 8000,
+      "channels": 1,
+      "duration_ms": 1000,
+      "expected": "real http-fmp4 g711a playback evidence"
+    },
+    {
+      "id": "g711u-8khz-fmp4",
+      "description": "G.711 mu-law in fMP4 8kHz mono",
+      "source": {
+        "type": "download",
+        "generator": "ffmpeg 4.4.2-0ubuntu0.22.04.1",
+        "url": "media/g711u/clip.mp4"
+      },
+      "license": "MIT-0",
+      "hash": "91ddbc24bc6723ed876e5857458d8a0e4ebaa3004bea0e1f0cabb14966997d4d",
+      "protocol": "http-fmp4",
+      "codec": "g711u",
+      "sample_rate": 8000,
+      "channels": 1,
+      "duration_ms": 1000,
+      "expected": "real http-fmp4 g711u playback evidence"
+    }
+  ]
+}

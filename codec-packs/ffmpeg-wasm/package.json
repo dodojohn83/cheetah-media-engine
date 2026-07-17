@@ -1,0 +1,13 @@
+{
+  "name": "@cheetah-media/codec-pack-ffmpeg-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LGPL FFmpeg WASM codec pack for Cheetah Media Engine",
+  "license": "LGPL-2.1-or-later",
+  "scripts": {
+    "build": "bash scripts/build.sh --variant baseline",
+    "build:all": "bash scripts/build.sh --variant baseline && bash scripts/build.sh --variant simd && bash scripts/build.sh --variant threads-simd",
+    "build:mock": "bash scripts/build.sh --variant baseline --mock",
+    "clean": "rm -rf dist .cache"
+  }
+}
