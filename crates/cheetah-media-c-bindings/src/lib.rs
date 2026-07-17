@@ -478,15 +478,15 @@ fn build_event(ev: &EngineEvent) -> (CheetahEvent, Option<CString>, Option<CStri
             ..
         } => {
             let msg = CString::new(format!(
-                "{:?}:delay={}:left={}",
-                action, delay_ms, attempts_left
+                "{:?}:code={}:delay={}:left={}",
+                action, code, delay_ms, attempts_left
             ))
             .unwrap();
             let event = CheetahEvent {
                 event_type: c"recovery_scheduled".as_ptr(),
                 track_id: ptr::null(),
                 message: msg.as_ptr(),
-                error_code: *code,
+                error_code: 0,
             };
             (event, None, Some(msg))
         }
