@@ -102,8 +102,8 @@ pub unsafe extern "C" fn cheetah_player_destroy(player: *mut *mut CheetahPlayer)
     if player.is_null() {
         return CheetahResult::NullPtr.code();
     }
-    // SAFETY: `player` is non-null; atomically swap the stored pointer to NULL
-    // and read the previous value, then drop the handle.
+    // SAFETY: `player` is non-null; replace the stored pointer with NULL in a
+    // single operation, read the previous value, then drop the handle.
     let handle = unsafe { ptr::replace(player, ptr::null_mut::<CheetahPlayer>()) };
     if handle.is_null() {
         return CheetahResult::Ok.code();

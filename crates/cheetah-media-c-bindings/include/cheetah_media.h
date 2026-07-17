@@ -48,16 +48,6 @@ extern "C" {
 #endif // __cplusplus
 
 /**
- * Return the engine version as a null-terminated UTF-8 string.
- *
- * # Safety
- *
- * The returned pointer is valid for the lifetime of the loaded library and
- * must not be freed by the caller.
- */
-const char *cheetah_player_version(void);
-
-/**
  * Create a new player instance.
  *
  * # Safety
@@ -89,6 +79,16 @@ int cheetah_player_destroy(CheetahPlayer **player);
  * on the same handle that may mutate state and must not be freed.
  */
 const char *cheetah_player_state(const CheetahPlayer *player);
+
+/**
+ * Return the engine version as a null-terminated UTF-8 string.
+ *
+ * # Safety
+ *
+ * The returned pointer is valid for the lifetime of the loaded library and
+ * must not be freed by the caller.
+ */
+const char *cheetah_player_version(void);
 
 /**
  * Query the `NUL`-terminated length of `cheetah_player_version()` in bytes.
