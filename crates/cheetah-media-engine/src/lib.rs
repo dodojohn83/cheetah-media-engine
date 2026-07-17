@@ -24,7 +24,7 @@ pub use recovery::{
     ClassificationRule, RecoveryAction, RecoveryDecision, RecoveryPolicy, RecoveryTracker,
     RetryBudget,
 };
-pub use resource::{ResourceGuard, ResourceKind, ResourceLedger};
+pub use resource::{ResourceGuard, ResourceKind, ResourceLedger, ResourceLimits};
 pub use scheduler::{BoundedQueue, Priority, QueueConfig, QueueName, Scheduler, SchedulerEvent};
 pub use state::{
     BackendEvent, Engine, EngineCommand, EngineError, EngineEvent, EngineOutput, LoadRequest,

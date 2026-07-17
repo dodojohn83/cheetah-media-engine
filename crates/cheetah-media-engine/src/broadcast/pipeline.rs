@@ -152,11 +152,6 @@ impl BroadcastPipeline {
         };
 
         let is_audio = matches!(frame, MediaFrame::Audio(_));
-        let timestamp = if frame.timestamp().has_timestamp() {
-            Some(frame.timestamp())
-        } else {
-            None
-        };
 
         for processor in self.processors.iter_mut() {
             frame = processor.process(&frame)?;
@@ -170,6 +165,11 @@ impl BroadcastPipeline {
             sequence,
         )?;
         let payload_len = packet.payload.len() as u64;
+        let timestamp = if packet.time.has_timestamp() {
+            Some(packet.time)
+        } else {
+            None
+        };
         self.publisher.publish(&packet)?;
 
         let mut target_bitrate_bps = None;

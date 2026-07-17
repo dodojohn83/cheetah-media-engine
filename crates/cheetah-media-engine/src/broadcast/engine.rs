@@ -325,6 +325,8 @@ impl BroadcastEngine {
 
         match pipeline.start() {
             Ok(()) => {
+                // Reset the session-scoped media clock for fresh diagnostics.
+                self.clock = MediaClock::new(None, None);
                 events.extend(self.transition(BroadcastState::Starting));
                 events.extend(self.transition(BroadcastState::Broadcasting));
                 Ok(events)
