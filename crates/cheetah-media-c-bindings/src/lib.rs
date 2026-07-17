@@ -263,9 +263,9 @@ pub unsafe extern "C" fn cheetah_player_load(
     url: *const c_char,
     is_live: bool,
 ) -> c_int {
-    let Some(player) = (unsafe { player.as_mut() }) else {
+    if player.is_null() {
         return CheetahResult::NullPtr.code();
-    };
+    }
     if url.is_null() {
         return CheetahResult::NullPtr.code();
     }
@@ -281,11 +281,17 @@ pub unsafe extern "C" fn cheetah_player_load(
         is_live,
     };
 
-    // The `&mut player` borrow ends with this block so callbacks can re-enter.
+    // The exclusive borrow of *player ends when this block returns, so the
+    // host callback can re-enter other C ABI functions on the same raw handle.
     let (callback, userdata, events) = {
-        let callback = player.callback;
-        let userdata = player.userdata;
-        let output = match player.engine.apply(EngineCommand::Load(req)) {
+        // SAFETY: `player` is valid and not null; engine state is checked below.
+        let p = unsafe { &mut *player };
+        if p.engine.state() == PlayerState::Destroyed {
+            return CheetahResult::InvalidState.code();
+        }
+        let callback = p.callback;
+        let userdata = p.userdata;
+        let output = match p.engine.apply(EngineCommand::Load(req)) {
             Ok(out) => out,
             Err(_) => return CheetahResult::InvalidState.code(),
         };
@@ -293,6 +299,8 @@ pub unsafe extern "C" fn cheetah_player_load(
     };
 
     let result = summarize_events(&events);
+    // SAFETY: no mutable borrow of *player is live; only the raw pointer is passed
+    // to the callback so re-entrant calls cannot alias an exclusive reference.
     unsafe { dispatch_events(player, events, callback, userdata) };
     result.code()
 }
@@ -341,14 +349,19 @@ pub unsafe extern "C" fn cheetah_player_stop(player: *mut CheetahPlayer) -> c_in
 /// `player` must be a valid, non-null handle.
 #[allow(unsafe_code)]
 unsafe fn control_command(player: *mut CheetahPlayer, command: EngineCommand) -> c_int {
-    let Some(player) = (unsafe { player.as_mut() }) else {
+    if player.is_null() {
         return CheetahResult::NullPtr.code();
-    };
+    }
 
     let (callback, userdata, events) = {
-        let callback = player.callback;
-        let userdata = player.userdata;
-        let output = match player.engine.apply(command) {
+        // SAFETY: `player` is valid and not null; engine state is checked below.
+        let p = unsafe { &mut *player };
+        if p.engine.state() == PlayerState::Destroyed {
+            return CheetahResult::InvalidState.code();
+        }
+        let callback = p.callback;
+        let userdata = p.userdata;
+        let output = match p.engine.apply(command) {
             Ok(out) => out,
             Err(_) => return CheetahResult::InvalidState.code(),
         };
@@ -356,6 +369,8 @@ unsafe fn control_command(player: *mut CheetahPlayer, command: EngineCommand) ->
     };
 
     let result = summarize_events(&events);
+    // SAFETY: no mutable borrow of *player is live; only the raw pointer is passed
+    // to the callback so re-entrant calls cannot alias an exclusive reference.
     unsafe { dispatch_events(player, events, callback, userdata) };
     result.code()
 }
