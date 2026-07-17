@@ -1,0 +1,37 @@
+[package]
+name = "cheetah-media-native-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Native tokio-based HTTP/WS/TCP byte source adapters for the Cheetah media engine."
+
+[features]
+default = ["std", "http", "websocket"]
+std = ["cheetah-media-backend-api/std", "cheetah-media-types/std", "tokio/rt-multi-thread"]
+http = ["dep:reqwest"]
+websocket = ["dep:tokio-tungstenite"]
+
+[dependencies]
+cheetah-media-backend-api = { path = "../cheetah-media-backend-api", default-features = false, features = ["std"] }
+cheetah-media-types = { path = "../cheetah-media-types", default-features = false }
+
+# Core async runtime. We use a dedicated runtime per source so the engine stays
+# synchronous and platform-neutral.
+tokio = { version = "1.38", default-features = false, features = ["rt", "rt-multi-thread", "net", "io-util", "sync", "time", "macros"] }
+
+# HTTP/HTTPS streaming client. The "stream" feature gives Response::bytes_stream.
+reqwest = { version = "0.12", default-features = false, features = ["stream", "native-tls"], optional = true }
+
+# WebSocket client. native-tls uses the system cert store and avoids CDLA data crates.
+tokio-tungstenite = { version = "0.23", default-features = false, features = ["connect", "native-tls"], optional = true }
+
+# Stream utilities used by reqwest and tokio-tungstenite adapters.
+futures-util = { version = "0.3", default-features = false, features = ["std", "async-await", "sink"] }
+
+[dev-dependencies]
+tokio = { version = "1.38", features = ["full"] }
+
+[lints.rust]
+unsafe_code = "deny"
