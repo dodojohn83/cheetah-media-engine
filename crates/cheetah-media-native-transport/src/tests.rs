@@ -125,6 +125,43 @@ fn unsupported_scheme_rejected() {
 }
 
 #[test]
+fn empty_host_rejected() {
+    let mut src = NativeByteSource::new().unwrap();
+    let err = src.start("http://").unwrap_err();
+    assert!(matches!(err, ByteSourceError::Fatal { .. }));
+}
+
+#[test]
+fn tcp_without_port_rejected() {
+    let mut src = NativeByteSource::new().unwrap();
+    let err = src.start("tcp://127.0.0.1").unwrap_err();
+    assert!(matches!(err, ByteSourceError::Fatal { .. }));
+}
+
+#[test]
+#[cfg(feature = "http")]
+fn http_url_with_query_reaches_server() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let n = stream.read(&mut buf).unwrap();
+        let req = String::from_utf8_lossy(&buf[..n]);
+        assert!(req.starts_with("GET /?foo=bar HTTP/1."));
+        let header = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n";
+        stream.write_all(header.as_bytes()).unwrap();
+        stream.write_all(b"hello").unwrap();
+    });
+
+    let mut src = NativeByteSource::new().unwrap();
+    src.start(&format!("http://127.0.0.1:{}/?foo=bar", port))
+        .unwrap();
+    let data = read_all(&mut src, Duration::from_secs(5));
+    assert_eq!(data, b"hello");
+}
+
+#[test]
 fn cancel_resets_source() {
     let mut src = NativeByteSource::new().unwrap();
     let port = tcp_server(b"hello world".to_vec());

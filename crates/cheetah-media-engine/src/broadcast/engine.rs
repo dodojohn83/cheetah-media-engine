@@ -202,11 +202,12 @@ impl BroadcastEngine {
         if self.state != BroadcastState::Broadcasting {
             return Ok(Vec::new());
         }
-        let pipeline = self
+        let tick_result = self
             .pipeline
             .as_mut()
-            .ok_or(BroadcastError::PipelineNotSet)?;
-        match pipeline.tick() {
+            .ok_or(BroadcastError::PipelineNotSet)?
+            .tick();
+        match tick_result {
             Ok(None) => Ok(Vec::new()),
             Ok(Some(summary)) => {
                 if let Some(time) = summary.timestamp {
@@ -233,9 +234,10 @@ impl BroadcastEngine {
                 Ok(events)
             }
             Err(err) => {
-                self.state = BroadcastState::Failed;
-                let _ = pipeline.stop();
-                Ok(vec![BroadcastEvent::Error(err)])
+                let _ = self.pipeline.as_mut().map(|p| p.stop());
+                let mut events = self.transition(BroadcastState::Failed);
+                events.push(BroadcastEvent::Error(err));
+                Ok(events)
             }
         }
     }
@@ -271,19 +273,22 @@ impl BroadcastEngine {
                 command: "connect",
             });
         }
-        let pipeline = self
+        let connect_result = self
             .pipeline
             .as_mut()
-            .ok_or(BroadcastError::PipelineNotSet)?;
-        match pipeline.connect(url) {
+            .ok_or(BroadcastError::PipelineNotSet)?
+            .connect(url);
+        match connect_result {
             Ok(()) => {
                 let mut events = self.transition(BroadcastState::Connecting);
                 events.extend(self.transition(BroadcastState::Ready));
                 Ok(events)
             }
             Err(err) => {
-                self.state = BroadcastState::Failed;
-                Ok(vec![BroadcastEvent::Error(err)])
+                let _ = self.pipeline.as_mut().map(|p| p.stop());
+                let mut events = self.transition(BroadcastState::Failed);
+                events.push(BroadcastEvent::Error(err));
+                Ok(events)
             }
         }
     }
@@ -315,30 +320,40 @@ impl BroadcastEngine {
             }
         }
 
-        let pipeline = self
-            .pipeline
-            .as_mut()
-            .ok_or(BroadcastError::PipelineNotSet)?;
-
         // Validate media and resource limits before starting capture.
-        let config = *pipeline.config();
+        let config = *self
+            .pipeline
+            .as_ref()
+            .ok_or(BroadcastError::PipelineNotSet)?
+            .config();
         if let Err(err) = self
             .media_limits
             .check_resolution(config.width, config.height)
         {
-            self.state = BroadcastState::Failed;
-            let _ = pipeline.stop();
+            let _ = self.pipeline.as_mut().map(|p| p.stop());
+            events.extend(self.transition(BroadcastState::Failed));
             events.push(BroadcastEvent::Error(err));
             return Ok(events);
         }
-        if let Err(err) = self.resource_limits.check(pipeline.resources()) {
-            self.state = BroadcastState::Failed;
-            let _ = pipeline.stop();
+        let resources = self
+            .pipeline
+            .as_ref()
+            .ok_or(BroadcastError::PipelineNotSet)?
+            .resources()
+            .clone();
+        if let Err(err) = self.resource_limits.check(&resources) {
+            let _ = self.pipeline.as_mut().map(|p| p.stop());
+            events.extend(self.transition(BroadcastState::Failed));
             events.push(BroadcastEvent::Error(err));
             return Ok(events);
         }
 
-        match pipeline.start() {
+        let start_result = self
+            .pipeline
+            .as_mut()
+            .ok_or(BroadcastError::PipelineNotSet)?
+            .start();
+        match start_result {
             Ok(()) => {
                 // Reset the session-scoped media clock for fresh diagnostics.
                 self.clock = MediaClock::new(None, None);
@@ -348,8 +363,8 @@ impl BroadcastEngine {
                 Ok(events)
             }
             Err(err) => {
-                self.state = BroadcastState::Failed;
-                let _ = pipeline.stop();
+                let _ = self.pipeline.as_mut().map(|p| p.stop());
+                events.extend(self.transition(BroadcastState::Failed));
                 events.push(BroadcastEvent::Error(err));
                 Ok(events)
             }
@@ -481,7 +496,7 @@ mod tests {
         CameraCaptureSource, MockCaptureSource, VideoFrameInfo,
     };
     use crate::broadcast::encoder::UnsupportedEncoder;
-    use crate::broadcast::encoders::MockEncoder;
+    use crate::broadcast::encoders::{G711Encoder, MockEncoder};
     use crate::broadcast::permission::{
         AlwaysDenyPermissionModel, AlwaysGrantPermissionModel, CaptureSourceKind, PermissionState,
     };
@@ -491,6 +506,7 @@ mod tests {
     };
     use crate::broadcast::source::UnsupportedCaptureSource;
     use crate::resource::{ResourceKind, ResourceLimits};
+    use cheetah_media_bitstream::g711::G711Kind;
     use cheetah_media_types::{
         CodecId, ColorSpace, MediaLimits, PixelFormat, StreamEpoch, TrackId,
     };
@@ -525,6 +541,13 @@ mod tests {
             .unwrap();
         assert_eq!(engine.state(), BroadcastState::Failed);
         assert!(events.iter().any(|e| matches!(e, BroadcastEvent::Error(_))));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            BroadcastEvent::StateChanged {
+                to: BroadcastState::Failed,
+                ..
+            }
+        )));
 
         // Stop from Failed should move to Stopped.
         let events = engine.apply(BroadcastCommand::Stop).unwrap();
@@ -618,6 +641,13 @@ mod tests {
         let events = engine.apply(BroadcastCommand::Start).unwrap();
         assert_eq!(engine.state(), BroadcastState::Failed);
         assert!(events.iter().any(|e| matches!(e, BroadcastEvent::Error(_))));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            BroadcastEvent::StateChanged {
+                to: BroadcastState::Failed,
+                ..
+            }
+        )));
     }
 
     struct PromptThenDenyModel;
@@ -779,6 +809,50 @@ mod tests {
     }
 
     #[test]
+    fn tick_failure_emits_state_changed_to_failed() {
+        let config = PipelineConfig {
+            track_id: TrackId::new(1).unwrap(),
+            stream_epoch: StreamEpoch::new(0),
+            codec: CodecId::G711A,
+            width: 0,
+            height: 0,
+            fps: 0,
+        };
+        let info = VideoFrameInfo {
+            width: 2,
+            height: 2,
+            stride: 8,
+            pixel_format: PixelFormat::Rgba,
+            color_space: ColorSpace::Bt709,
+        };
+        let pipeline = BroadcastPipeline::new(
+            Box::new(MockCaptureSource::with_count(1, info)),
+            Vec::new(),
+            Box::new(G711Encoder::new(G711Kind::ALaw)),
+            Box::new(MockPublisher::new()),
+            config,
+        );
+        let mut engine = BroadcastEngine::with_pipeline(pipeline)
+            .with_permission_model(Box::new(AlwaysGrantPermissionModel));
+        engine
+            .apply(BroadcastCommand::Connect("mock://x".into()))
+            .unwrap();
+        engine.apply(BroadcastCommand::Start).unwrap();
+        assert_eq!(engine.state(), BroadcastState::Broadcasting);
+
+        let events = engine.tick().unwrap();
+        assert_eq!(engine.state(), BroadcastState::Failed);
+        assert!(events.iter().any(|e| matches!(e, BroadcastEvent::Error(_))));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            BroadcastEvent::StateChanged {
+                to: BroadcastState::Failed,
+                ..
+            }
+        )));
+    }
+
+    #[test]
     fn media_limits_reject_oversized_pipeline() {
         let limits = MediaLimits {
             max_resolution: (1, 1),
@@ -792,6 +866,13 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, BroadcastEvent::Error(MediaError::ResourceLimit { .. })))
         );
+        assert!(events.iter().any(|e| matches!(
+            e,
+            BroadcastEvent::StateChanged {
+                to: BroadcastState::Failed,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -807,6 +888,13 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, BroadcastEvent::Error(MediaError::ResourceLimit { .. })))
         );
+        assert!(events.iter().any(|e| matches!(
+            e,
+            BroadcastEvent::StateChanged {
+                to: BroadcastState::Failed,
+                ..
+            }
+        )));
 
         engine.apply(BroadcastCommand::Stop).unwrap();
         let diag = engine.diagnostics();

@@ -52,10 +52,10 @@ impl<C: BlockCipherDecrypt + BlockSizeUser + KeyInit> CbcTransform<C> {
         })
     }
 
-    fn process_block(&mut self, ct: &[u8]) {
+    fn process_block(&mut self, ct: &[u8]) -> Result<(), CryptoError> {
         let block_size = C::BlockSize::USIZE;
         let ct_block =
-            <Block<C>>::try_from(&ct[..block_size]).expect("caller guarantees a full block");
+            <Block<C>>::try_from(&ct[..block_size]).map_err(|_| CryptoError::InvalidInputLength)?;
         let prev_iv = core::mem::replace(&mut self.iv, ct_block.clone());
 
         let mut pt = ct_block;
@@ -64,6 +64,7 @@ impl<C: BlockCipherDecrypt + BlockSizeUser + KeyInit> CbcTransform<C> {
             *a ^= b;
         }
         self.out.extend_from_slice(pt.as_slice());
+        Ok(())
     }
 }
 
@@ -80,8 +81,8 @@ impl<C: BlockCipherDecrypt + BlockSizeUser + KeyInit> Transform for CbcTransform
         let mut consumed = 0;
         while self.buf.len() - consumed >= block_size * 2 {
             let ct = <Block<C>>::try_from(&self.buf[consumed..consumed + block_size])
-                .expect("internal buffer contains a full block");
-            self.process_block(ct.as_slice());
+                .map_err(|_| CryptoError::InvalidInputLength)?;
+            self.process_block(ct.as_slice())?;
             consumed += block_size;
         }
         if consumed > 0 {

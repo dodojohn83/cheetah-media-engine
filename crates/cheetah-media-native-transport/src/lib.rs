@@ -42,12 +42,6 @@ pub struct NativeByteSource {
     state: SourceState,
 }
 
-impl Default for NativeByteSource {
-    fn default() -> Self {
-        Self::new().expect("default NativeByteSource should build a tokio runtime")
-    }
-}
-
 impl NativeByteSource {
     /// Create a new source with its own tokio runtime.
     pub fn new() -> Result<Self, ByteSourceError> {
@@ -71,7 +65,8 @@ impl NativeByteSource {
     /// the full path/query string. Ports default based on the scheme.
     fn parse_url(url: &str) -> Option<(&'static str, String, Option<u16>, String)> {
         let (scheme, rest) = url.split_once("://")?;
-        let scheme = match scheme {
+        let scheme = scheme.to_ascii_lowercase();
+        let scheme = match scheme.as_str() {
             "tcp" => "tcp",
             "http" => "http",
             "https" => "https",
@@ -80,19 +75,53 @@ impl NativeByteSource {
             _ => return None,
         };
 
-        let (authority, path) = match rest.split_once('/') {
-            Some((auth, p)) => (auth, format!("/{}", p)),
-            None => (rest, "/".into()),
-        };
-
-        let (host, port) = if let Some((h, p)) = authority.rsplit_once(':') {
-            let port = p.parse::<u16>().ok()?;
-            (h.to_string(), Some(port))
-        } else {
-            (authority.to_string(), None)
-        };
+        let (authority, path) = Self::split_authority_and_path(rest);
+        let (host, port) = Self::parse_authority(authority)?;
 
         Some((scheme, host, port, path))
+    }
+
+    fn split_authority_and_path(rest: &str) -> (&str, String) {
+        if let Some(idx) = rest.find(&['/', '?', '#'][..]) {
+            let authority = &rest[..idx];
+            let path = if rest.as_bytes()[idx] == b'/' {
+                rest[idx..].to_string()
+            } else {
+                format!("/{}", &rest[idx..])
+            };
+            (authority, path)
+        } else {
+            (rest, "/".into())
+        }
+    }
+
+    fn parse_authority(authority: &str) -> Option<(String, Option<u16>)> {
+        if authority.is_empty() {
+            return None;
+        }
+
+        if let Some(end) = authority.find(']') {
+            if !authority.starts_with('[') {
+                return None;
+            }
+            let host = authority[..=end].to_string();
+            let rest = &authority[end + 1..];
+            if rest.is_empty() {
+                return Some((host, None));
+            }
+            let port = rest.strip_prefix(':')?.parse::<u16>().ok()?;
+            return Some((host, Some(port)));
+        }
+
+        if let Some((h, p)) = authority.rsplit_once(':') {
+            if h.is_empty() {
+                return None;
+            }
+            let port = p.parse::<u16>().ok()?;
+            return Some((h.to_string(), Some(port)));
+        }
+
+        Some((authority.to_string(), None))
     }
 
     fn reset(&mut self) {
@@ -216,7 +245,10 @@ impl ByteSource for NativeByteSource {
             Err(mpsc::error::TryRecvError::Disconnected) => {
                 self.rx = None;
                 self.state = SourceState::Finished;
-                ByteSourceEvent::Eof
+                ByteSourceEvent::Error(ByteSourceError::Fatal {
+                    code: 11,
+                    context: Some("transport_task_disconnected"),
+                })
             }
         }
     }

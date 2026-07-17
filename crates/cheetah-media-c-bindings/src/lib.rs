@@ -118,8 +118,9 @@ static VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
 ///
 /// # Safety
 ///
-/// `player` must be a valid, non-null pointer to a `*mut CheetahPlayer`. On
-/// success the handle is written to `*player`. On failure `*player` is set to
+/// `player` must be a valid, non-null pointer to a `*mut CheetahPlayer`.
+/// `*player` must be `NULL` or a live handle returned by this function; any
+/// previous handle is destroyed and replaced. On failure `*player` is set to
 /// `NULL` and a non-zero result is returned.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
@@ -128,9 +129,14 @@ pub unsafe extern "C" fn cheetah_player_create(player: *mut *mut CheetahPlayer) 
         return CheetahResult::NullPtr.code();
     }
     let handle = Box::into_raw(Box::new(CheetahPlayer::new()));
-    // SAFETY: `player` is non-null and points to writable memory.
-    unsafe {
-        *player = handle;
+    // SAFETY: `player` is non-null and points to writable memory. If `*player`
+    // holds a previous live handle, we drop it before overwriting.
+    let old = unsafe { ptr::replace(player, handle) };
+    if !old.is_null() {
+        // SAFETY: `old` is assumed to be a live handle per the safety contract.
+        unsafe {
+            drop(Box::from_raw(old));
+        }
     }
     CheetahResult::Ok.code()
 }
@@ -662,6 +668,27 @@ mod tests {
         let res = unsafe { cheetah_player_destroy(&mut player) };
         assert_eq!(res, CheetahResult::Ok.code());
         // SAFETY: `player` now holds a null handle; double destroy should be safe.
+        let res = unsafe { cheetah_player_destroy(&mut player) };
+        assert_eq!(res, CheetahResult::Ok.code());
+        assert!(player.is_null());
+    }
+
+    #[test]
+    fn create_replaces_existing_handle_without_leak() {
+        let mut player: *mut CheetahPlayer = ptr::null_mut();
+        // SAFETY: `player` is valid and initially null.
+        unsafe { cheetah_player_create(&mut player) };
+        assert!(!player.is_null());
+
+        // SAFETY: Create again on the same pointer must drop the old handle and
+        // replace it with a new, valid one (no double-free or leak).
+        unsafe { cheetah_player_create(&mut player) };
+        assert!(!player.is_null());
+        // SAFETY: `player` holds the new valid handle.
+        let state = unsafe { cheetah_player_state(player) };
+        assert!(!state.is_null());
+
+        // SAFETY: `player` is a valid pointer to a handle.
         let res = unsafe { cheetah_player_destroy(&mut player) };
         assert_eq!(res, CheetahResult::Ok.code());
         assert!(player.is_null());

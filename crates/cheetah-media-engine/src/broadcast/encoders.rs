@@ -8,7 +8,8 @@ use alloc::vec::Vec;
 
 use cheetah_media_bitstream::g711::{self, G711Kind};
 use cheetah_media_types::{
-    CodecId, MediaError, MediaPacket, MediaTime, SampleFormat, SequenceNumber, StreamEpoch, TrackId,
+    ChannelLayout, CodecId, MediaError, MediaPacket, MediaTime, SampleFormat, SequenceNumber,
+    StreamEpoch, TrackId,
 };
 
 use crate::broadcast::encoder::{Encoder, EncoderCapability};
@@ -314,9 +315,53 @@ impl Encoder for G711Encoder {
             }
         };
 
-        let payload = match audio.format.sample_format {
-            SampleFormat::S16 | SampleFormat::S16Planar => self.encode_s16(audio.payload.as_ref()),
-            SampleFormat::F32 | SampleFormat::F32Planar => self.encode_f32(audio.payload.as_ref()),
+        let format = audio.format;
+        if format.channel_layout != ChannelLayout::Mono {
+            return Err(MediaError::InvalidInput {
+                code: 7211,
+                context: Some("G711Encoder only supports mono audio"),
+            });
+        }
+
+        let bps = format.bytes_per_sample() as usize;
+        let sample_count = format.sample_count as usize;
+        let expected = sample_count
+            .checked_mul(bps)
+            .ok_or(MediaError::InvalidInput {
+                code: 7209,
+                context: Some("G711Encoder sample count overflow"),
+            })?;
+
+        let is_planar = matches!(
+            format.sample_format,
+            SampleFormat::S16Planar
+                | SampleFormat::S32Planar
+                | SampleFormat::F32Planar
+                | SampleFormat::F64Planar
+        );
+        let input = if is_planar {
+            if audio.planes.is_empty() {
+                return Err(MediaError::InvalidInput {
+                    code: 7208,
+                    context: Some("G711Encoder planar frame has no planes"),
+                });
+            }
+            audio.planes[0].as_ref()
+        } else {
+            audio.payload.as_ref()
+        };
+
+        if bps == 0 || input.len() < expected || input.len() % bps != 0 {
+            return Err(MediaError::InvalidInput {
+                code: 7209,
+                context: Some("G711Encoder input length is not sample-aligned"),
+            });
+        }
+        let input = &input[..expected];
+
+        let payload = match format.sample_format {
+            SampleFormat::S16 | SampleFormat::S16Planar => self.encode_s16(input),
+            SampleFormat::F32 | SampleFormat::F32Planar => self.encode_f32(input),
             _ => {
                 return Err(MediaError::InvalidInput {
                     code: 7207,
@@ -502,6 +547,97 @@ mod tests {
     }
 
     #[test]
+    fn g711_encoder_rejects_unaligned_and_short_input() {
+        let mut enc = G711Encoder::new(G711Kind::ALaw);
+        enc.configure(CodecId::G711A, 0, 0, 0).unwrap();
+
+        // One trailing byte makes the buffer non-sample-aligned.
+        let mut samples = alloc::vec![0i16, 100, -100]
+            .into_iter()
+            .flat_map(|s: i16| s.to_le_bytes())
+            .collect::<Vec<u8>>();
+        samples.push(0xab);
+        let frame = audio_frame(SampleFormat::S16, samples);
+        assert!(
+            enc.encode(
+                &frame,
+                TrackId::new(1).unwrap(),
+                StreamEpoch::new(0),
+                SequenceNumber::new(0),
+            )
+            .is_err()
+        );
+
+        // sample_count claims five S16 samples but only four bytes are supplied.
+        let samples = alloc::vec![0u8; 4];
+        let format = AudioFormat {
+            sample_format: SampleFormat::S16,
+            sample_rate: 8000,
+            channel_layout: ChannelLayout::Mono,
+            sample_count: 5,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let frame = MediaFrame::Audio(cheetah_media_types::AudioFrame::new(samples, format, ts));
+        assert!(
+            enc.encode(
+                &frame,
+                TrackId::new(1).unwrap(),
+                StreamEpoch::new(0),
+                SequenceNumber::new(0),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn g711_encoder_rejects_non_mono_and_encodes_planar_mono() {
+        let mut enc = G711Encoder::new(G711Kind::ALaw);
+        enc.configure(CodecId::G711A, 0, 0, 0).unwrap();
+
+        let samples = alloc::vec![0i16, 100, -100]
+            .into_iter()
+            .flat_map(|s: i16| s.to_le_bytes())
+            .collect::<Vec<u8>>();
+        let mut format = AudioFormat {
+            sample_format: SampleFormat::S16,
+            sample_rate: 8000,
+            channel_layout: ChannelLayout::Stereo,
+            sample_count: 3,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let frame = MediaFrame::Audio(cheetah_media_types::AudioFrame::new(
+            samples.clone(),
+            format,
+            ts,
+        ));
+        assert!(
+            enc.encode(
+                &frame,
+                TrackId::new(1).unwrap(),
+                StreamEpoch::new(0),
+                SequenceNumber::new(0),
+            )
+            .is_err()
+        );
+
+        // Planar mono: payload is empty, single plane carries the samples.
+        format.channel_layout = ChannelLayout::Mono;
+        format.sample_format = SampleFormat::S16Planar;
+        let frame = MediaFrame::Audio(
+            cheetah_media_types::AudioFrame::new(Vec::new(), format, ts).with_plane(samples),
+        );
+        let packet = enc
+            .encode(
+                &frame,
+                TrackId::new(1).unwrap(),
+                StreamEpoch::new(0),
+                SequenceNumber::new(0),
+            )
+            .unwrap();
+        assert_eq!(packet.payload.len(), 3);
+    }
+
+    #[test]
     fn g711_encoder_rejects_video_frame() {
         let mut enc = G711Encoder::new(G711Kind::ALaw);
         enc.configure(CodecId::G711A, 0, 0, 0).unwrap();
@@ -522,6 +658,30 @@ mod tests {
             ts,
         ));
 
+        assert!(
+            enc.encode(
+                &frame,
+                TrackId::new(1).unwrap(),
+                StreamEpoch::new(0),
+                SequenceNumber::new(0),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn g711_encoder_rejects_unknown_sample_format() {
+        let mut enc = G711Encoder::new(G711Kind::ALaw);
+        enc.configure(CodecId::G711A, 0, 0, 0).unwrap();
+
+        let format = AudioFormat {
+            sample_format: SampleFormat::Unknown(99),
+            sample_rate: 8000,
+            channel_layout: ChannelLayout::Mono,
+            sample_count: 1,
+        };
+        let ts = MediaTime::from_pts_dts(Timestamp::new(0), Timestamp::new(0), TimeBase::DEFAULT);
+        let frame = MediaFrame::Audio(cheetah_media_types::AudioFrame::new(Vec::new(), format, ts));
         assert!(
             enc.encode(
                 &frame,

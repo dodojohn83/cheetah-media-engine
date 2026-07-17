@@ -104,8 +104,9 @@ int cheetah_player_configure(CheetahPlayer *player, const char *config);
  *
  * # Safety
  *
- * `player` must be a valid, non-null pointer to a `*mut CheetahPlayer`. On
- * success the handle is written to `*player`. On failure `*player` is set to
+ * `player` must be a valid, non-null pointer to a `*mut CheetahPlayer`.
+ * `*player` must be `NULL` or a live handle returned by this function; any
+ * previous handle is destroyed and replaced. On failure `*player` is set to
  * `NULL` and a non-zero result is returned.
  */
 int cheetah_player_create(CheetahPlayer **player);
