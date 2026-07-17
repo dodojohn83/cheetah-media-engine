@@ -12,6 +12,7 @@ playwright-report/
 apps/web-demo/public/wasm/
 apps/web-demo/public/worker.js
 apps/web-demo/public/messages.js
+apps/qt-demo/build/
 # Lock files are committed per 002 plan
 # Cargo.lock
 # pnpm-lock.yaml
