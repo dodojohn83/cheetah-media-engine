@@ -57,8 +57,8 @@
 
 - [x] WP-53 `cheetah-media-c-bindings` crate 骨架（已合并到 `wp/16-engine-state-machine`）
 - [x] WP-54 C ABI 控制面：config、load、play、pause、stop、destroy、async 回调（PR #61）
-- [~] WP-55 Qt QWidget 接入与窗口生命周期
-- [ ] WP-56 Qt QML / Qt Quick surface 接入
+- [x] WP-55 Qt QWidget 接入与窗口生命周期（PR #62）
+- [~] WP-56 Qt QML / Qt Quick surface 接入
 - [ ] WP-57 原生 HTTP/WS/TCP transport adapter（tokio）
 - [ ] WP-58 平台硬解探测与回退
 - [ ] WP-59 原生 renderer 与零拷贝 surface
