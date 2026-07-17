@@ -90,7 +90,8 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo test --workspace --no-default-features
-cargo build --workspace --target wasm32-unknown-unknown --no-default-features
+cargo build -p cheetah-media-web-bindings --target wasm32-unknown-unknown --no-default-features
+cargo build -p cheetah-media-web-bindings --target wasm32-unknown-unknown --release
 cargo deny check
 
 # 移动端 cross-check（目标平台 SDK/NDK 可用时）
