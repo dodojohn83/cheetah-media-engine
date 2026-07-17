@@ -40,7 +40,6 @@ pub struct NativeByteSource {
     rx: Option<mpsc::Receiver<Chunk>>,
     stats: SourceStats,
     state: SourceState,
-    last_error: Option<ByteSourceError>,
 }
 
 impl Default for NativeByteSource {
@@ -63,7 +62,6 @@ impl NativeByteSource {
             rx: None,
             stats: SourceStats::default(),
             state: SourceState::Idle,
-            last_error: None,
         })
     }
 
@@ -104,7 +102,6 @@ impl NativeByteSource {
         self.rx = None;
         self.buffer.clear();
         self.state = SourceState::Idle;
-        self.last_error = None;
     }
 }
 
@@ -188,13 +185,7 @@ impl ByteSource for NativeByteSource {
         if self.rx.is_none() {
             return match self.state {
                 SourceState::Idle => ByteSourceEvent::Error(ByteSourceError::NotStarted),
-                SourceState::Finished => {
-                    if let Some(e) = self.last_error.take() {
-                        ByteSourceEvent::Error(e)
-                    } else {
-                        ByteSourceEvent::Eof
-                    }
-                }
+                SourceState::Finished => ByteSourceEvent::Eof,
                 SourceState::Running => {
                     // We are Running but the channel is gone; treat as terminal EOF.
                     self.state = SourceState::Finished;
@@ -218,7 +209,6 @@ impl ByteSource for NativeByteSource {
             }
             Ok(Chunk::Error(e)) => {
                 self.rx = None;
-                self.last_error = Some(e.clone());
                 self.state = SourceState::Finished;
                 ByteSourceEvent::Error(e)
             }
