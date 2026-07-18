@@ -233,13 +233,12 @@ pub fn audio_format_from_header(ah: &AudioTagHeader, payload: &[u8]) -> Option<A
     let channels = if ah.sound_type == 1 { 2 } else { 1 };
     match ah.sound_format.to_codec_id()? {
         CodecId::G711A | CodecId::G711U => {
+            // G.711 A-law/µ-law is always 8-bit companded, one byte per sample.
+            // The FLV SoundSize bit only applies to uncompressed formats; many
+            // encoders set it to 1 for compressed data, so it must be ignored.
             let sample_count = u32::try_from(payload.len() / channels as usize).ok()?;
             Some(AudioFormat {
-                sample_format: if ah.sound_size == 1 {
-                    SampleFormat::S16
-                } else {
-                    SampleFormat::U8
-                },
+                sample_format: SampleFormat::U8,
                 sample_rate: sound_rate_to_hz(ah.sound_rate, ah.sound_format),
                 channel_layout: ChannelLayout::from_channel_count(channels),
                 sample_count,
@@ -340,6 +339,17 @@ mod tests {
         assert_eq!(fmt.sample_format, SampleFormat::U8);
         assert_eq!(fmt.sample_rate, 8000);
         assert_eq!(fmt.channel_layout, ChannelLayout::Mono);
+        assert_eq!(fmt.sample_count, 160);
+    }
+
+    #[test]
+    fn g711_audio_format_ignores_sound_size_bit() {
+        // 0x72 -> G.711 A-law, sound rate 0, 16-bit flag set, mono.
+        // The SoundSize bit must be ignored for compressed codecs.
+        let header = AudioTagHeader::parse(&[0x72]).unwrap();
+        let payload = [0u8; 160];
+        let fmt = audio_format_from_header(&header, &payload).unwrap();
+        assert_eq!(fmt.sample_format, SampleFormat::U8);
         assert_eq!(fmt.sample_count, 160);
     }
 
