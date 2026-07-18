@@ -17,13 +17,16 @@ pub struct PcmFormat {
 }
 
 impl PcmFormat {
-    pub const fn new_u8(sample_rate: u32, channels: u8) -> Self {
-        Self {
+    pub const fn new_u8(sample_rate: u32, channels: u8) -> Option<Self> {
+        if sample_rate == 0 {
+            return None;
+        }
+        Some(Self {
             sample_rate,
             channel_count: channels,
             bits_per_sample: 16,
             duration_ms_per_sample: 1000.0 / sample_rate as f64,
-        }
+        })
     }
 }
 
@@ -294,5 +297,14 @@ mod tests {
             let a_error = (i32::from(a_back) - i32::from(s)).abs();
             assert!(a_error <= 256, "a-law round-trip failed for {s}: {a_back}");
         }
+    }
+
+    #[test]
+    fn pcm_format_rejects_zero_sample_rate() {
+        assert!(PcmFormat::new_u8(0, 1).is_none());
+        let f = PcmFormat::new_u8(8000, 2).unwrap();
+        assert_eq!(f.sample_rate, 8000);
+        assert_eq!(f.channel_count, 2);
+        assert!(f.duration_ms_per_sample.is_finite());
     }
 }

@@ -3,6 +3,7 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
+use std::time::Instant;
 
 use cheetah_media_abi::{AbiError, AudioSink, Decoder, Input, Output, Renderer};
 use cheetah_media_backend_api::{ByteSource, ByteSourceError, ByteSourceEvent};
@@ -94,6 +95,7 @@ pub struct NativePlayer {
     diagnostics: Diagnostics,
     lifecycle: LifecycleSoak,
     scratch: [u8; 8192],
+    start: Instant,
 }
 
 impl NativePlayer {
@@ -123,18 +125,20 @@ impl NativePlayer {
             diagnostics: Diagnostics::default(),
             lifecycle,
             scratch: [0u8; 8192],
+            start: Instant::now(),
         }
     }
 
     /// Load `url` and transition through `Loading` to `Preroll`.
     pub fn load(&mut self, url: &str) -> Result<Vec<EngineEvent>, NativePlayerError> {
         self.source.start(url)?;
+        let is_live = self.source.stats().is_live;
         let before = self.engine.state();
         let mut out = self
             .engine
             .apply(EngineCommand::Load(LoadRequest {
                 url: url.into(),
-                is_live: false,
+                is_live,
             }))?
             .events;
 
@@ -199,12 +203,16 @@ impl NativePlayer {
     /// Stop and release the current session.
     pub fn stop(&mut self) -> Result<Vec<EngineEvent>, NativePlayerError> {
         let before = self.engine.state();
-        let out = self.engine.apply(EngineCommand::Stop)?;
+        let mut out = self.engine.apply(EngineCommand::Stop)?;
         if self.engine.state() != before {
             self.lifecycle.record(LifecycleEvent::Stopped);
         }
         let _ = self.decoder.flush();
         self.source.cancel()?;
+        let stopped = self
+            .engine
+            .apply(EngineCommand::Backend(BackendEvent::Stopped))?;
+        out.events.extend(stopped.events);
         Ok(out.events)
     }
 
@@ -225,6 +233,7 @@ impl NativePlayer {
     /// Drive one decoding/rendering tick. Call from a loop while the player is
     /// `Playing`.
     pub fn tick(&mut self) -> Result<Vec<EngineEvent>, NativePlayerError> {
+        self.engine.tick(self.start.elapsed().as_millis() as u64);
         if self.engine.state() != PlayerState::Playing {
             return Ok(Vec::new());
         }
@@ -240,6 +249,12 @@ impl NativePlayer {
                             .apply(EngineCommand::Network(NetworkEvent::Eof))?
                             .events,
                     );
+                    let _ = self.decoder.flush();
+                    self.source.cancel()?;
+                    let stopped = self
+                        .engine
+                        .apply(EngineCommand::Backend(BackendEvent::Stopped))?;
+                    events.extend(stopped.events);
                     None
                 }
                 ByteSourceEvent::Error(e) => {
@@ -645,7 +660,19 @@ mod tests {
             Some(Box::new(audio_sink) as Box<dyn AudioSink + Send>),
         );
         player.load("memory://").unwrap();
-        player.stop().unwrap();
+        let stop_events = player.stop().unwrap();
+        assert!(
+            stop_events
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Stopped))
+        );
+        assert!(stop_events.iter().any(|e| matches!(
+            e,
+            EngineEvent::StateChanged {
+                to: PlayerState::Idle,
+                ..
+            }
+        )));
         player.destroy().unwrap();
     }
 
