@@ -2,27 +2,29 @@
 
 use alloc::collections::VecDeque;
 
-use cheetah_media_bitstream::aac::{AdtsHeader, AudioSpecificConfig};
+use cheetah_media_bitstream::aac::{AacError, AdtsHeader, AudioSpecificConfig};
 use cheetah_media_types::{
     AudioFormat, ChannelLayout, CodecConfig, CodecId, MediaPacket, MediaTime, PacketFlags,
     SampleFormat, SequenceNumber, StreamEpoch, TimeBase, Timestamp, TrackId, TrackInfo, TrackKind,
 };
 
 use crate::MpegPsError;
-use crate::types::{AUDIO_TRACK_ID, MpegPsEvent};
+use crate::types::{AUDIO_TRACK_ID, MpegPsConfig, MpegPsEvent};
 
 /// Assembler that extracts AAC ADTS frames from audio PES payloads and emits
 /// timestamped `MediaPacket`s.
 #[derive(Debug)]
 pub(crate) struct AudioAssembler {
+    config: MpegPsConfig,
     track: Option<TrackInfo>,
     sequence: u64,
     leftover: Vec<u8>,
 }
 
 impl AudioAssembler {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(config: MpegPsConfig) -> Self {
         Self {
+            config,
             track: None,
             sequence: 0,
             leftover: Vec::new(),
@@ -44,7 +46,8 @@ impl AudioAssembler {
         let track_id = TrackId::new(AUDIO_TRACK_ID).ok_or(MpegPsError::InvalidInput)?;
 
         // Audio PES payloads can be split across packet boundaries, so keep any
-        // trailing partial ADTS frame for the next payload.
+        // trailing partial ADTS frame for the next payload.  On non-AAC or
+        // corrupt audio streams we must not retain garbage indefinitely.
         let mut data = Vec::with_capacity(self.leftover.len() + payload.len());
         data.extend_from_slice(&self.leftover);
         data.extend_from_slice(payload);
@@ -53,13 +56,24 @@ impl AudioAssembler {
         let mut offset = 0;
         let mut pts = media_time.pts;
         let mut dts = media_time.dts;
+        let mut retain_remaining = false;
         while offset < data.len() {
             let header = match AdtsHeader::parse(&data[offset..]) {
                 Ok(h) => h,
-                Err(_) => break,
+                Err(AacError::TooShort) => {
+                    retain_remaining = true;
+                    break;
+                }
+                Err(_) => {
+                    // Non-ADTS audio or a corrupted syncword; drop the rest
+                    // of this payload and do not carry it forward.
+                    offset = data.len();
+                    break;
+                }
             };
             let frame_len = header.frame_length as usize;
             if frame_len == 0 || data.len() - offset < frame_len {
+                retain_remaining = true;
                 break;
             }
 
@@ -100,7 +114,14 @@ impl AudioAssembler {
             dts = dts.map(|d| Timestamp::new(d.ticks().saturating_add(duration_ticks)));
         }
 
-        if offset < data.len() {
+        if retain_remaining && offset < data.len() {
+            let remaining = data.len() - offset;
+            if remaining > self.config.max_buffer_bytes {
+                self.leftover.clear();
+                return Err(MpegPsError::BufferExceeded {
+                    max: self.config.max_buffer_bytes,
+                });
+            }
             self.leftover.extend_from_slice(&data[offset..]);
         }
         Ok(())
