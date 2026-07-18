@@ -38,7 +38,7 @@ impl AudioAssembler {
         media_time: MediaTime,
         events: &mut VecDeque<MpegPsEvent>,
     ) -> Result<(), MpegPsError> {
-        let track_id = TrackId::new(AUDIO_TRACK_ID).expect("audio track id 2 is valid");
+        let track_id = TrackId::new(AUDIO_TRACK_ID).ok_or(MpegPsError::InvalidInput)?;
 
         let mut offset = 0;
         let mut pts = media_time.pts;

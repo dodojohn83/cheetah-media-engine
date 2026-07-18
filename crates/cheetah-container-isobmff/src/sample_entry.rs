@@ -78,7 +78,10 @@ fn parse_visual_sample_entry(body: &[u8], codec: CodecId) -> Result<Option<Sampl
                     codec,
                     width: w,
                     height: h,
-                    codec_config: CodecConfig::AvcC(cfg.build()),
+                    codec_config: CodecConfig::AvcC(
+                        cfg.build()
+                            .map_err(|_| Mp4Error::invalid_input(3101, Some("invalid avcC")))?,
+                    ),
                     audio_format: None,
                 }));
             }
@@ -102,7 +105,10 @@ fn parse_visual_sample_entry(body: &[u8], codec: CodecId) -> Result<Option<Sampl
                     codec,
                     width: w,
                     height: h,
-                    codec_config: CodecConfig::HevcC(cfg.build()),
+                    codec_config: CodecConfig::HevcC(
+                        cfg.build()
+                            .map_err(|_| Mp4Error::invalid_input(3102, Some("invalid hvcC")))?,
+                    ),
                     audio_format: None,
                 }));
             }

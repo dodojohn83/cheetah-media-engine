@@ -58,7 +58,8 @@ impl<A: AudioSink, C: Clock, R: Renderer> AvSync<A, C, R> {
     /// Submit an audio frame to the sink and advance the master clock.
     pub fn submit_audio(&mut self, output: &Output) -> Result<SyncAction, AbiError> {
         self.audio.play(output)?;
-        self.audio_clock_ms += output.duration_ms as i64;
+        let duration = i64::try_from(output.duration_ms).unwrap_or(i64::MAX);
+        self.audio_clock_ms = self.audio_clock_ms.saturating_add(duration);
         Ok(SyncAction::Render)
     }
 
@@ -68,15 +69,15 @@ impl<A: AudioSink, C: Clock, R: Renderer> AvSync<A, C, R> {
         self.last_video_pts_ms = pts_ms;
 
         let now_ms = self.clock.now_ms();
-        let target_pts_ms = self.audio_clock_ms + self.audio_latency_ms;
-        let drift_ms = pts_ms - target_pts_ms;
+        let target_pts_ms = self.audio_clock_ms.saturating_add(self.audio_latency_ms);
+        let drift_ms = pts_ms.saturating_sub(target_pts_ms);
 
-        if drift_ms < -self.max_video_drift_ms {
+        if drift_ms < 0 && drift_ms.saturating_add(self.max_video_drift_ms) < 0 {
             return Ok(SyncAction::Drop);
         }
 
-        if drift_ms > self.max_video_drift_ms {
-            let hold_until = now_ms + drift_ms;
+        if drift_ms > 0 && drift_ms.saturating_sub(self.max_video_drift_ms) > 0 {
+            let hold_until = now_ms.saturating_add(drift_ms);
             return Ok(SyncAction::HoldUntil(hold_until));
         }
 

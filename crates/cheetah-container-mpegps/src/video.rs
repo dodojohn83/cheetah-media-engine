@@ -102,7 +102,7 @@ impl VideoEsAssembler {
             return Err(MpegPsError::UnsupportedVideoCodec);
         }
 
-        let track_id = TrackId::new(VIDEO_TRACK_ID).expect("video track id 1 is valid");
+        let track_id = TrackId::new(VIDEO_TRACK_ID).ok_or(MpegPsError::InvalidInput)?;
         let track = TrackInfo::new(
             track_id,
             TrackKind::Video,
@@ -227,10 +227,11 @@ impl VideoEsAssembler {
             is_corrupt: false,
             is_discontinuity: false,
         };
-        let track_id =
-            self.track.as_ref().map(|t| t.id).unwrap_or_else(|| {
-                TrackId::new(VIDEO_TRACK_ID).expect("video track id 1 is valid")
-            });
+        let track_id = self
+            .track
+            .as_ref()
+            .map(|t| t.id)
+            .unwrap_or(TrackId::new(VIDEO_TRACK_ID).ok_or(MpegPsError::InvalidInput)?);
 
         let mut packet = MediaPacket::new(
             nal,

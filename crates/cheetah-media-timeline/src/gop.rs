@@ -59,8 +59,8 @@ impl Gop {
                 self.duration_ms = self.duration_ms.max(dur);
             }
         }
-        self.bytes += packet.payload.len() as u64;
-        self.frames += 1;
+        self.bytes = self.bytes.saturating_add(packet.payload.len() as u64);
+        self.frames = self.frames.saturating_add(1);
         self.packets.push(packet);
     }
 }
@@ -200,26 +200,38 @@ impl GopCache {
     }
 
     fn total_bytes(&self) -> u64 {
-        self.gops.iter().map(|g| g.bytes).sum::<u64>()
-            + self.current.as_ref().map_or(0, |g| g.bytes)
+        self.gops
+            .iter()
+            .map(|g| g.bytes)
+            .fold(0u64, u64::saturating_add)
+            .saturating_add(self.current.as_ref().map_or(0, |g| g.bytes))
     }
 
     fn total_frames(&self) -> usize {
-        self.gops.iter().map(|g| g.frames).sum::<usize>()
-            + self.current.as_ref().map_or(0, |g| g.frames)
+        self.gops
+            .iter()
+            .map(|g| g.frames)
+            .fold(0usize, usize::saturating_add)
+            .saturating_add(self.current.as_ref().map_or(0, |g| g.frames))
     }
 
     fn total_duration_ms(&self) -> u64 {
-        self.gops.iter().map(|g| g.duration_ms).sum::<u64>()
-            + self.current.as_ref().map_or(0, |g| g.duration_ms)
+        self.gops
+            .iter()
+            .map(|g| g.duration_ms)
+            .fold(0u64, u64::saturating_add)
+            .saturating_add(self.current.as_ref().map_or(0, |g| g.duration_ms))
     }
 
     fn trim(&mut self) {
-        while !self.gops.is_empty()
-            && (self.total_bytes() > self.limits.max_bytes
-                || self.total_frames() > self.limits.max_frames
-                || self.total_duration_ms() > self.limits.max_duration_ms)
+        while self.total_bytes() > self.limits.max_bytes
+            || self.total_frames() > self.limits.max_frames
+            || self.total_duration_ms() > self.limits.max_duration_ms
         {
+            if self.gops.is_empty() {
+                self.current = None;
+                break;
+            }
             self.gops.pop_front();
         }
     }

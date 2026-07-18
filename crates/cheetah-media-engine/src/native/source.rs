@@ -51,7 +51,7 @@ impl ByteSource for MemoryByteSource {
         let end = self.position + self.chunk_size.min(self.remaining());
         let chunk = &self.data[self.position..end];
         self.position = end;
-        self.stats.bytes_received += chunk.len() as u64;
+        self.stats.bytes_received = self.stats.bytes_received.saturating_add(chunk.len() as u64);
         ByteSourceEvent::Data(chunk)
     }
 

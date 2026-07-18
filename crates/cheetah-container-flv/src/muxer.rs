@@ -295,7 +295,8 @@ impl FlvMuxer {
         pts_ms: i64,
     ) -> Result<(), FlvError> {
         let payload = packet.payload.as_ref();
-        let cts = i32::try_from(pts_ms - dts_ms).map_err(|_| FlvError::InvalidTimestamp)?;
+        let cts =
+            i32::try_from(pts_ms.saturating_sub(dts_ms)).map_err(|_| FlvError::InvalidTimestamp)?;
         let timestamp = dts_to_timestamp(dts_ms)?;
         let body = build_video_frame(track.codec, packet.flags.is_keyframe, 1, cts, payload)?;
         self.write_tag(TagType::Video, timestamp, &body)
@@ -308,6 +309,9 @@ impl FlvMuxer {
         data: &[u8],
     ) -> Result<(), FlvError> {
         let data_size = u32::try_from(data.len()).map_err(|_| FlvError::LimitExceeded)?;
+        if data_size > 0x00ff_ffff {
+            return Err(FlvError::LimitExceeded);
+        }
         let total = tag_total_size(data_size);
         self.write_tag_header(tag_type, data_size, timestamp);
         self.output.extend_from_slice(data);
@@ -365,7 +369,7 @@ mod tests {
             height: 240,
             codec_string: alloc::string::String::new(),
         };
-        let avcc = config.build();
+        let avcc = config.build().unwrap();
         let mut track = TrackInfo::new(
             TrackId::new(2).unwrap(),
             TrackKind::Video,

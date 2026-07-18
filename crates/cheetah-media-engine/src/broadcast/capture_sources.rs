@@ -141,7 +141,7 @@ impl MockCaptureSource {
     }
 
     /// Create a mock source that yields `count` identical RGBA frames.
-    pub fn with_count(count: usize, video_info: VideoFrameInfo) -> Self {
+    pub fn with_count(count: usize, video_info: VideoFrameInfo) -> Result<Self, MediaError> {
         use alloc::vec;
         // For identical frames order does not matter; for distinct frames `new`
         // preserves insertion order by consuming from the front of a VecDeque.
@@ -154,14 +154,26 @@ impl MockCaptureSource {
             stride: video_info.stride,
             color_space: video_info.color_space,
         };
-        let payload = vec![0u8; (video_info.stride * video_info.height) as usize];
+        let size = u64::from(video_info.stride)
+            .checked_mul(u64::from(video_info.height))
+            .ok_or(MediaError::ResourceLimit {
+                name: "mock_frame_size",
+                current: u64::MAX,
+                limit: u32::MAX as u64,
+            })?;
+        let payload_size = usize::try_from(size).map_err(|_| MediaError::ResourceLimit {
+            name: "mock_frame_size",
+            current: size,
+            limit: usize::MAX as u64,
+        })?;
+        let payload = vec![0u8; payload_size];
         let ts = Timestamp::new(0);
         let frame = MediaFrame::Video(cheetah_media_types::VideoFrame::new(
             payload,
             format,
             MediaTime::from_pts_dts(ts, ts, cheetah_media_types::TimeBase::DEFAULT),
         ));
-        Self::new(vec![frame; count], video_info)
+        Ok(Self::new(vec![frame; count], video_info))
     }
 }
 
@@ -242,7 +254,7 @@ mod tests {
 
     #[test]
     fn mock_source_yields_frames_after_start() {
-        let mut source = MockCaptureSource::with_count(3, info());
+        let mut source = MockCaptureSource::with_count(3, info()).unwrap();
         assert!(source.poll().unwrap().is_none());
         source.start().unwrap();
         assert!(source.poll().unwrap().is_some());

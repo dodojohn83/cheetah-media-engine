@@ -697,7 +697,7 @@ mod tests {
             color_space: ColorSpace::Bt709,
         };
         let pipeline = BroadcastPipeline::new(
-            Box::new(MockCaptureSource::with_count(1, info)),
+            Box::new(MockCaptureSource::with_count(1, info).unwrap()),
             Vec::new(),
             Box::new(MockEncoder::new()),
             Box::new(MockPublisher::new()),
@@ -782,7 +782,7 @@ mod tests {
             color_space: ColorSpace::Bt709,
         };
         let pipeline = BroadcastPipeline::new(
-            Box::new(MockCaptureSource::with_count(1, info)),
+            Box::new(MockCaptureSource::with_count(1, info).unwrap()),
             Vec::new(),
             Box::new(MockEncoder::new()),
             Box::new(publisher),
@@ -826,7 +826,7 @@ mod tests {
             color_space: ColorSpace::Bt709,
         };
         let pipeline = BroadcastPipeline::new(
-            Box::new(MockCaptureSource::with_count(1, info)),
+            Box::new(MockCaptureSource::with_count(1, info).unwrap()),
             Vec::new(),
             Box::new(G711Encoder::new(G711Kind::ALaw)),
             Box::new(MockPublisher::new()),
@@ -918,7 +918,7 @@ mod tests {
             color_space: ColorSpace::Bt709,
         };
         let pipeline = BroadcastPipeline::new(
-            Box::new(MockCaptureSource::with_count(frame_count, info)),
+            Box::new(MockCaptureSource::with_count(frame_count, info).unwrap()),
             Vec::new(),
             Box::new(MockEncoder::new()),
             Box::new(MockPublisher::new()),

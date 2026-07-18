@@ -162,7 +162,7 @@ mod tests {
             flags: 0,
         };
         assert!(desc.is_valid());
-        assert_eq!(desc.range(), 1024..1028);
+        assert_eq!(desc.range(), Some(1024..1028));
     }
 
     #[test]

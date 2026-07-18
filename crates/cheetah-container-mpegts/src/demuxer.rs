@@ -490,7 +490,10 @@ impl TsDemuxer {
         }
 
         let old = state.info.codec_config.clone();
-        let new_config = CodecConfig::AvcC(cfg.build());
+        let new_config = CodecConfig::AvcC(
+            cfg.build()
+                .map_err(|_| TsError::invalid_input(2205, Some("H.264 config build overflow")))?,
+        );
         if old != new_config {
             state.info.set_codec_config(new_config);
             let format = VideoFormat {
@@ -577,7 +580,10 @@ impl TsDemuxer {
         cfg.sps_list = state.h265_sps.clone();
         cfg.pps_list = state.h265_pps.clone();
 
-        let new_config = CodecConfig::HevcC(cfg.build());
+        let new_config = CodecConfig::HevcC(
+            cfg.build()
+                .map_err(|_| TsError::invalid_input(2207, Some("H.265 config build overflow")))?,
+        );
         if state.info.codec_config != new_config {
             state.info.set_codec_config(new_config);
             self.pending_events

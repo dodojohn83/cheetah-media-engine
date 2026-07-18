@@ -78,7 +78,7 @@ impl VideoTagHeader {
     /// Parse a video tag header from the start of `data`.
     pub fn parse(data: &[u8]) -> Result<Self, FlvError> {
         if data.is_empty() {
-            return Err(FlvError::NeedMoreData);
+            return Err(FlvError::MalformedTag);
         }
         let b0 = data[0];
         let frame_type = FrameType::from_u8(b0 >> 4);
@@ -87,7 +87,7 @@ impl VideoTagHeader {
         match codec_id {
             VideoCodecId::H264 | VideoCodecId::H265 => {
                 if data.len() < 5 {
-                    return Err(FlvError::NeedMoreData);
+                    return Err(FlvError::MalformedTag);
                 }
                 let packet_type = data[1];
                 let cts = i32::from_be_bytes([0, data[2], data[3], data[4]]);
@@ -116,12 +116,20 @@ impl VideoTagHeader {
     }
 
     /// Build a 5-byte AVC/HEVC video tag header.
+    ///
+    /// Returns `FlvError::InvalidTimestamp` if `cts_ms` is outside the signed
+    /// 24-bit range or if the header fields cannot be represented in FLV.
     pub fn build_avc_hevc(
         frame_type: FrameType,
         codec_id: VideoCodecId,
         packet_type: u8,
         cts_ms: i32,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, FlvError> {
+        const CTS_MIN: i32 = -0x80_0000;
+        const CTS_MAX: i32 = 0x7f_ffff;
+        if !(CTS_MIN..=CTS_MAX).contains(&cts_ms) {
+            return Err(FlvError::InvalidTimestamp);
+        }
         let mut out = Vec::with_capacity(5);
         let ft = match frame_type {
             FrameType::Keyframe => 1,
@@ -129,7 +137,7 @@ impl VideoTagHeader {
             FrameType::Disposable => 3,
             FrameType::Generated => 4,
             FrameType::Info => 5,
-            FrameType::Unknown(v) => v,
+            FrameType::Unknown(v) => v & 0x0f,
         };
         let cid = match codec_id {
             VideoCodecId::H264 => 7,
@@ -139,7 +147,7 @@ impl VideoTagHeader {
         out.push((ft << 4) | cid);
         out.push(packet_type);
         out.extend_from_slice(&[(cts_ms >> 16) as u8, (cts_ms >> 8) as u8, cts_ms as u8]);
-        out
+        Ok(out)
     }
 }
 
@@ -156,7 +164,9 @@ pub fn parse_video_config(
         VideoCodecId::H264 => {
             let config = H264CodecConfig::parse(data).map_err(|_| FlvError::MalformedTag)?;
             track.codec = CodecId::H264;
-            track.set_codec_config(CodecConfig::AvcC(config.build()));
+            track.set_codec_config(CodecConfig::AvcC(
+                config.build().map_err(|_| FlvError::MalformedTag)?,
+            ));
             if config.width != 0 && config.height != 0 {
                 let w = config.width;
                 let h = config.height;
@@ -176,7 +186,9 @@ pub fn parse_video_config(
         VideoCodecId::H265 => {
             let config = H265CodecConfig::parse(data).map_err(|_| FlvError::MalformedTag)?;
             track.codec = CodecId::H265;
-            track.set_codec_config(CodecConfig::HevcC(config.build()));
+            track.set_codec_config(CodecConfig::HevcC(
+                config.build().map_err(|_| FlvError::MalformedTag)?,
+            ));
             // H.265 config parsing does not currently expose visible dimensions;
             // they will be derived from the SPS in a later work package.
             Ok(())
@@ -252,7 +264,7 @@ pub fn build_video_frame(
     } else {
         FrameType::Interframe
     };
-    let mut out = VideoTagHeader::build_avc_hevc(frame_type, codec_id, packet_type, cts_ms);
+    let mut out = VideoTagHeader::build_avc_hevc(frame_type, codec_id, packet_type, cts_ms)?;
     out.extend_from_slice(payload);
     Ok(out)
 }
@@ -270,7 +282,7 @@ pub fn build_video_config(track: &TrackInfo) -> Result<Vec<u8>, FlvError> {
         }
         _ => return Err(FlvError::UnsupportedCodec),
     };
-    let mut out = VideoTagHeader::build_avc_hevc(FrameType::Keyframe, codec_id, 0, 0);
+    let mut out = VideoTagHeader::build_avc_hevc(FrameType::Keyframe, codec_id, 0, 0)?;
     out.extend_from_slice(&payload);
     Ok(out)
 }
