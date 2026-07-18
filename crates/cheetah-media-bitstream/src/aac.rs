@@ -215,14 +215,20 @@ impl AdtsHeader {
 pub fn split_adts(data: &[u8]) -> Result<Vec<&[u8]>, AacError> {
     let mut frames = Vec::new();
     let mut pos = 0usize;
-    while pos + 7 <= data.len() {
+    loop {
+        let header_end = pos.checked_add(7).ok_or(AacError::InvalidFrameLength)?;
+        if header_end > data.len() {
+            break;
+        }
         let header = AdtsHeader::parse(&data[pos..])?;
         let header_size = header.header_size();
         let frame_length = header.frame_length as usize;
         if frame_length < header_size {
             return Err(AacError::InvalidFrameLength);
         }
-        let end = pos + frame_length;
+        let end = pos
+            .checked_add(frame_length)
+            .ok_or(AacError::InvalidFrameLength)?;
         if end > data.len() {
             return Err(AacError::TooShort);
         }

@@ -54,7 +54,7 @@ pub fn codec_name(codec_index: u8) -> String {
 pub struct MemoryDescriptor {
     slot: u32,
     generation: u64,
-    offset: u32,
+    offset: u64,
     length: u32,
     capacity: u32,
     flags: u32,
@@ -73,7 +73,7 @@ impl MemoryDescriptor {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn offset(&self) -> u32 {
+    pub fn offset(&self) -> u64 {
         self.offset
     }
 
@@ -98,7 +98,7 @@ impl MemoryDescriptor {
         Self {
             slot: handle.slot,
             generation: handle.generation,
-            offset: desc.offset as u32,
+            offset: desc.offset,
             length: desc.length,
             capacity: desc.capacity,
             flags: desc.flags,
