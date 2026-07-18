@@ -9,6 +9,9 @@ use crate::boxes::{BoxHeader, types};
 use crate::fragment::{TrackFragment, emit_packets, parse_moof};
 use crate::moov::{TrackData, parse_moov};
 
+/// Maximum buffered bytes before the ISOBMFF demuxer rejects further input.
+const MAX_BUFFER: usize = 64 * 1024 * 1024;
+
 /// Events emitted by the demuxer.
 #[derive(Debug, Clone)]
 pub enum Mp4Event {
@@ -32,6 +35,7 @@ pub struct IsobmffDemuxer {
     sequence: u64,
     moov_seen: bool,
     last_dts: BTreeMap<u32, u64>,
+    error: Option<Mp4Error>,
 }
 
 impl IsobmffDemuxer {
@@ -46,11 +50,21 @@ impl IsobmffDemuxer {
             sequence: 0,
             moov_seen: false,
             last_dts: BTreeMap::new(),
+            error: None,
         }
     }
 
     /// Feed more bytes into the demuxer.
     pub fn push(&mut self, data: &[u8]) {
+        if data.is_empty() || self.error.is_some() {
+            return;
+        }
+        if self.buffer.len().saturating_add(data.len()) > MAX_BUFFER {
+            self.error = Some(Mp4Error::LimitExceeded {
+                limit: "demuxer buffer",
+            });
+            return;
+        }
         self.buffer.extend_from_slice(data);
     }
 
@@ -60,7 +74,9 @@ impl IsobmffDemuxer {
             return Ok(Some(event));
         }
 
-        const MAX_BUFFER: usize = 64 * 1024 * 1024;
+        if let Some(ref err) = self.error {
+            return Err(err.clone());
+        }
 
         loop {
             if self.buffer.len() > MAX_BUFFER {

@@ -55,6 +55,9 @@ impl TrackState {
     }
 }
 
+/// Maximum buffered bytes before the FLV demuxer rejects further input.
+const MAX_BUFFER: usize = 64 * 1024 * 1024;
+
 /// Incremental FLV demuxer.
 #[derive(Debug)]
 pub struct FlvDemuxer {
@@ -74,6 +77,7 @@ pub struct FlvDemuxer {
     next_video_id: u32,
     amf_limits: AmfLimits,
     epoch_jumps: u64,
+    error: Option<FlvError>,
 }
 
 impl Default for FlvDemuxer {
@@ -102,11 +106,19 @@ impl FlvDemuxer {
             next_video_id: 2,
             amf_limits: AmfLimits::default(),
             epoch_jumps: 0,
+            error: None,
         }
     }
 
     /// Push additional bytes into the demuxer buffer.
     pub fn push(&mut self, data: &[u8]) {
+        if data.is_empty() || self.error.is_some() {
+            return;
+        }
+        if self.buffer.len().saturating_add(data.len()) > MAX_BUFFER {
+            self.error = Some(FlvError::LimitExceeded);
+            return;
+        }
         self.buffer.extend_from_slice(data);
     }
 
@@ -120,7 +132,9 @@ impl FlvDemuxer {
     /// `NeedMoreData` is returned when a primitive cannot be completed. It is
     /// not fatal; call `push` with more bytes and retry.
     pub fn next_event(&mut self) -> Result<Option<FlvEvent>, FlvError> {
-        const MAX_BUFFER: usize = 64 * 1024 * 1024;
+        if let Some(err) = self.error {
+            return Err(err);
+        }
         if self.buffer.len() > MAX_BUFFER {
             return Err(FlvError::LimitExceeded);
         }
