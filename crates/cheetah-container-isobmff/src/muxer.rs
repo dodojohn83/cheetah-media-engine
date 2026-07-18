@@ -563,9 +563,19 @@ fn write_moof(
     }
 
     // Patch data_offset values: offset from start of moof to first sample in mdat.
+    // The mdat box header is 8 bytes for 32-bit sizes and 16 bytes when the
+    // payload exceeds u32::MAX - 8 (extended-size form).
     let moof_size = 8 + moof_body.len() as u64;
+    let total_payload = track_sizes
+        .iter()
+        .fold(0u64, |acc, &s| acc.saturating_add(s));
+    let mdat_header_size: u64 = if total_payload.saturating_add(8) > u32::MAX as u64 {
+        16
+    } else {
+        8
+    };
     let mdat_payload_offset = moof_size
-        .checked_add(8)
+        .checked_add(mdat_header_size)
         .ok_or_else(|| Mp4Error::limit_exceeded("moof/mdat payload offset overflow"))?;
     let mut cumulative = 0u64;
     for (patch_pos, total_size) in patches.iter().zip(track_sizes.iter()) {
