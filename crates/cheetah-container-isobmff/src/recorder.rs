@@ -86,10 +86,10 @@ impl Mp4Muxer {
 
     /// Finalize the recording and return a complete MP4 file.
     ///
-    /// The output is `ftyp` + `moov` + `mdat`. The `stco` chunk offset is
-    /// patched after the `moov` size is known. If the total payload length
-    /// exceeds `u32::MAX`, the size is written using the 64-bit extended-size
-    /// form.
+    /// The output is `ftyp` + `moov` + `mdat`. The chunk offset is patched
+    /// after the `moov` size is known, using `co64` when the file offset does
+    /// not fit in 32 bits. If the total payload length exceeds `u32::MAX`, the
+    /// mdat size is written using the 64-bit extended-size form.
     pub fn finish(&self) -> Result<Vec<u8>, Mp4Error> {
         let cfg = self
             .config
@@ -103,7 +103,6 @@ impl Mp4Muxer {
         }
 
         let ftyp = write_ftyp();
-        let (moov_body, stco_patch_position) = self.write_moov_body(cfg)?;
 
         let total_payload: u64 = self
             .samples
@@ -116,20 +115,40 @@ impl Mp4Muxer {
             .checked_add(mdat_header_size)
             .ok_or_else(|| Mp4Error::limit_exceeded("mdat size overflow"))?;
 
-        let moov_len = moov_body
-            .len()
-            .checked_add(8)
-            .ok_or_else(|| Mp4Error::limit_exceeded("moov box size overflow"))?;
-        let chunk_offset = ftyp
-            .len()
-            .checked_add(moov_len)
-            .and_then(|n| n.checked_add(mdat_header_size as usize))
-            .ok_or_else(|| Mp4Error::limit_exceeded("chunk offset overflow"))?;
-        let mut moov_body = moov_body;
-        if let Some(pos) = stco_patch_position {
-            let offset = u32::try_from(chunk_offset)
-                .map_err(|_| Mp4Error::limit_exceeded("chunk offset exceeds u32"))?;
-            moov_body[pos..pos + 4].copy_from_slice(&offset.to_be_bytes());
+        // Start with a 32-bit `stco` box. If the computed chunk offset exceeds
+        // `u32::MAX` we rebuild with `co64`.
+        let (mut moov_body, mut chunk_offset, mut chunk_offset_patch) =
+            self.build_moov_and_patch(cfg, mdat_header_size, false, &ftyp)?;
+
+        let co64 = u32::try_from(chunk_offset).is_err();
+        if co64 {
+            let (moov_body_co64, chunk_offset_co64, patch) =
+                self.build_moov_and_patch(cfg, mdat_header_size, true, &ftyp)?;
+            moov_body = moov_body_co64;
+            chunk_offset = chunk_offset_co64;
+            chunk_offset_patch = patch;
+        }
+
+        if let Some(pos) = chunk_offset_patch {
+            let patch_len = if co64 { 8 } else { 4 };
+            let end = pos
+                .checked_add(patch_len)
+                .ok_or_else(|| Mp4Error::limit_exceeded("chunk offset patch end overflow"))?;
+            if end > moov_body.len() {
+                return Err(Mp4Error::invalid_input(
+                    3606,
+                    Some("chunk offset patch out of bounds"),
+                ));
+            }
+            if co64 {
+                let offset = u64::try_from(chunk_offset)
+                    .map_err(|_| Mp4Error::limit_exceeded("chunk offset exceeds u64"))?;
+                moov_body[pos..end].copy_from_slice(&offset.to_be_bytes());
+            } else {
+                let offset = u32::try_from(chunk_offset)
+                    .map_err(|_| Mp4Error::limit_exceeded("chunk offset exceeds u32"))?;
+                moov_body[pos..end].copy_from_slice(&offset.to_be_bytes());
+            }
         }
         let moov = write_box(types::MOOV, &moov_body);
 
@@ -160,24 +179,53 @@ impl Mp4Muxer {
         Ok(out)
     }
 
-    fn write_moov_body(&self, cfg: &TrackConfig) -> Result<(Vec<u8>, Option<usize>), Mp4Error> {
+    fn build_moov_and_patch(
+        &self,
+        cfg: &TrackConfig,
+        mdat_header_size: u64,
+        co64: bool,
+        ftyp: &[u8],
+    ) -> Result<(Vec<u8>, usize, Option<usize>), Mp4Error> {
+        let (moov_body, patch) = self.write_moov_body(cfg, co64)?;
+        let moov_len = moov_body
+            .len()
+            .checked_add(8)
+            .ok_or_else(|| Mp4Error::limit_exceeded("moov box size overflow"))?;
+        let chunk_offset = ftyp
+            .len()
+            .checked_add(moov_len)
+            .and_then(|n| n.checked_add(mdat_header_size as usize))
+            .ok_or_else(|| Mp4Error::limit_exceeded("chunk offset overflow"))?;
+        Ok((moov_body, chunk_offset, patch))
+    }
+
+    fn write_moov_body(
+        &self,
+        cfg: &TrackConfig,
+        co64: bool,
+    ) -> Result<(Vec<u8>, Option<usize>), Mp4Error> {
         let mut moov_body = Vec::new();
         moov_body.extend(write_mvhd_single(cfg)?);
 
-        let trak = self.write_trak(cfg)?;
+        let trak = self.write_trak(cfg, co64)?;
         moov_body.extend_from_slice(&trak);
 
         // Patch position is relative to the start of `moov_body`.
         // It will be set later when building the stbl.
-        let stco_patch_position = self.find_stco_offset_position(&moov_body)?;
+        let chunk_offset_patch_position = self.find_chunk_offset_position(&moov_body, co64)?;
 
-        Ok((moov_body, stco_patch_position))
+        Ok((moov_body, chunk_offset_patch_position))
     }
 
-    fn find_stco_offset_position(&self, moov_body: &[u8]) -> Result<Option<usize>, Mp4Error> {
-        // Navigate moov -> trak -> mdia -> minf -> stbl -> stco and locate
-        // the 4-byte chunk offset entry inside the stco box body.
-        let stco_body_offset = find_nested_box_offset(
+    fn find_chunk_offset_position(
+        &self,
+        moov_body: &[u8],
+        co64: bool,
+    ) -> Result<Option<usize>, Mp4Error> {
+        // Navigate moov -> trak -> mdia -> minf -> stbl -> stco/co64 and locate
+        // the offset entry inside the chunk offset box body.
+        let chunk_box_type = if co64 { types::CO64 } else { types::STCO };
+        let chunk_body_offset = find_nested_box_offset(
             moov_body,
             0,
             &[
@@ -185,41 +233,44 @@ impl Mp4Muxer {
                 types::MDIA,
                 types::MINF,
                 types::STBL,
-                types::STCO,
+                chunk_box_type,
             ],
         )
-        .ok_or(Mp4Error::invalid_input(3604, Some("stco box not found")))?;
-        // stco body: version/flags (4) + entry_count (4) + offset entries.
-        let pos = usize::try_from(stco_body_offset)
-            .map_err(|_| Mp4Error::limit_exceeded("stco patch offset exceeds usize"))?;
+        .ok_or(Mp4Error::invalid_input(
+            3604,
+            Some("chunk offset box not found"),
+        ))?;
+        // stco/co64 body: version/flags (4) + entry_count (4) + offset entries.
+        let pos = usize::try_from(chunk_body_offset)
+            .map_err(|_| Mp4Error::limit_exceeded("chunk offset patch offset exceeds usize"))?;
         let end = pos
             .checked_add(8)
-            .ok_or_else(|| Mp4Error::limit_exceeded("stco patch position overflow"))?;
+            .ok_or_else(|| Mp4Error::limit_exceeded("chunk offset patch position overflow"))?;
         if end > moov_body.len() {
             return Err(Mp4Error::invalid_input(
                 3605,
-                Some("stco patch out of bounds"),
+                Some("chunk offset patch out of bounds"),
             ));
         }
         Ok(Some(end))
     }
 
-    fn write_trak(&self, cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+    fn write_trak(&self, cfg: &TrackConfig, co64: bool) -> Result<Vec<u8>, Mp4Error> {
         let mut body = Vec::new();
         body.extend(write_tkhd(cfg));
-        body.extend(self.write_mdia(cfg)?);
+        body.extend(self.write_mdia(cfg, co64)?);
         Ok(write_box(types::TRAK, &body))
     }
 
-    fn write_mdia(&self, cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+    fn write_mdia(&self, cfg: &TrackConfig, co64: bool) -> Result<Vec<u8>, Mp4Error> {
         let mut body = Vec::new();
         body.extend(write_mdhd(cfg));
         body.extend(write_hdlr(cfg));
-        body.extend(self.write_minf(cfg)?);
+        body.extend(self.write_minf(cfg, co64)?);
         Ok(write_box(types::MDIA, &body))
     }
 
-    fn write_minf(&self, cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+    fn write_minf(&self, cfg: &TrackConfig, co64: bool) -> Result<Vec<u8>, Mp4Error> {
         let mut body = Vec::new();
         if cfg.kind == TrackKind::Video {
             body.extend(write_vmhd());
@@ -227,11 +278,11 @@ impl Mp4Muxer {
             body.extend(write_smhd());
         }
         body.extend(write_dinf());
-        body.extend(self.write_stbl(cfg)?);
+        body.extend(self.write_stbl(cfg, co64)?);
         Ok(write_box(types::MINF, &body))
     }
 
-    fn write_stbl(&self, cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
+    fn write_stbl(&self, cfg: &TrackConfig, co64: bool) -> Result<Vec<u8>, Mp4Error> {
         let mut body = Vec::new();
         body.extend(write_stsd(cfg)?);
 
@@ -261,8 +312,8 @@ impl Mp4Muxer {
             .collect::<Result<_, _>>()?;
         body.extend(write_stsz(&sizes)?);
 
-        // stco with a placeholder offset.
-        body.extend(write_stco_placeholder());
+        // stco/co64 with a placeholder offset.
+        body.extend(write_chunk_offset_placeholder(co64));
 
         let all_key = self.samples.iter().all(|s| s.keyframe);
         if !all_key {
@@ -355,12 +406,20 @@ fn write_stsz(sizes: &[u32]) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(types::STSZ, &body))
 }
 
-fn write_stco_placeholder() -> Vec<u8> {
-    let mut body = Vec::with_capacity(12);
-    body.extend_from_slice(&write_fullbox(0, 0));
-    write_u32(&mut body, 1); // entry_count
-    write_u32(&mut body, 0); // placeholder offset
-    write_box(types::STCO, &body)
+fn write_chunk_offset_placeholder(co64: bool) -> Vec<u8> {
+    if co64 {
+        let mut body = Vec::with_capacity(16);
+        body.extend_from_slice(&write_fullbox(0, 0));
+        write_u32(&mut body, 1); // entry_count
+        body.extend_from_slice(&[0u8; 8]); // placeholder offset
+        write_box(types::CO64, &body)
+    } else {
+        let mut body = Vec::with_capacity(12);
+        body.extend_from_slice(&write_fullbox(0, 0));
+        write_u32(&mut body, 1); // entry_count
+        write_u32(&mut body, 0); // placeholder offset
+        write_box(types::STCO, &body)
+    }
 }
 
 fn write_stss(syncs: &[u32]) -> Result<Vec<u8>, Mp4Error> {
