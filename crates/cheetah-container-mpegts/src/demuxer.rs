@@ -774,8 +774,9 @@ impl TsDemuxer {
         for frame in frames {
             if let Ok(header) = cheetah_media_bitstream::mp3::Mp3Header::parse(frame) {
                 self.emit_packet(track_id, frame, t, false);
-                let duration_ticks = i64::from(header.duration_ms)
-                    .checked_mul(90)
+                let duration_ticks = i64::from(header.samples_per_frame)
+                    .checked_mul(90_000)
+                    .and_then(|v| v.checked_div(i64::from(header.sample_rate)))
                     .unwrap_or(i64::MAX);
                 t = t
                     .checked_add(MediaDuration::new(duration_ticks))
