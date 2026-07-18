@@ -557,7 +557,8 @@ fn write_moof(
     let mdat_payload_offset = moof_size + 8;
     let mut cumulative = 0u64;
     for (patch_pos, total_size) in patches.iter().zip(track_sizes.iter()) {
-        let data_offset = (mdat_payload_offset + cumulative) as i32;
+        let data_offset = i32::try_from(mdat_payload_offset + cumulative)
+            .map_err(|_| Mp4Error::limit_exceeded("trun data offset exceeds i32"))?;
         let pos = *patch_pos;
         moof_body[pos..pos + 4].copy_from_slice(&data_offset.to_be_bytes());
         cumulative += total_size;
@@ -600,10 +601,12 @@ fn write_tfhd(track_id: u32) -> Vec<u8> {
 }
 
 fn write_tfdt(packets: &[MediaPacket<'static>]) -> Result<Vec<u8>, Mp4Error> {
-    let base = packets
-        .first()
-        .and_then(|p| p.time.dts.map(|t| t.ticks() as u64))
-        .unwrap_or(0);
+    let base = match packets.first().and_then(|p| p.time.dts) {
+        Some(ts) => u64::try_from(ts.ticks()).map_err(|_| {
+            Mp4Error::invalid_input(3508, Some("negative decode timestamp in fMP4"))
+        })?,
+        None => 0,
+    };
     let mut body = Vec::with_capacity(12);
     body.extend_from_slice(&write_fullbox(1, 0));
     write_u64(&mut body, base);
@@ -614,7 +617,10 @@ fn write_trun(packets: &[MediaPacket<'static>]) -> Result<(Vec<u8>, usize), Mp4E
     let mut body = Vec::new();
     let flags = 0x0000_0f01u32; // data_offset, duration, size, flags, composition offset
     body.extend_from_slice(&write_fullbox(1, flags));
-    write_u32(&mut body, packets.len() as u32); // sample_count
+    write_u32(
+        &mut body,
+        u32::try_from(packets.len()).map_err(|_| Mp4Error::limit_exceeded("trun sample count"))?,
+    ); // sample_count
 
     // Data offset placeholder; record its position relative to the start of the trun box.
     let data_offset_pos = body.len();
