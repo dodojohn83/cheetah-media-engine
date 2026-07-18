@@ -147,7 +147,7 @@ pub fn parse_master(input: &str, base_uri: &str) -> Result<MasterPlaylist, HlsEr
         if let Some(tag) = line.strip_prefix("#EXT-X-START:") {
             let attrs = parse_attributes(tag)?;
             pl.start = Some(StartPoint {
-                time_offset: parse_f64_attr(&attrs, "TIME-OFFSET")?,
+                time_offset: parse_signed_f64_attr(&attrs, "TIME-OFFSET")?,
                 precise: attrs
                     .get("PRECISE")
                     .map(|s| s.eq_ignore_ascii_case("YES"))
@@ -416,7 +416,16 @@ pub fn parse_media(input: &str, base_uri: &str) -> Result<MediaPlaylist, HlsErro
         });
     }
 
-    pl.duration = pl.segments.iter().map(|s| s.duration).sum();
+    pl.duration = pl
+        .segments
+        .iter()
+        .try_fold(0.0, |acc, s| {
+            let sum = acc + s.duration;
+            if sum.is_finite() { Some(sum) } else { None }
+        })
+        .ok_or(HlsError::LimitExceeded {
+            limit: "playlist duration",
+        })?;
 
     Ok(pl)
 }
@@ -610,6 +619,11 @@ fn parse_optional_u64(attrs: &AttrMap, key: &str) -> Result<Option<u64>, HlsErro
     }
 }
 
+fn parse_signed_f64_attr(attrs: &AttrMap, key: &str) -> Result<f64, HlsError> {
+    let v = clone_attr(attrs, key)?;
+    parse_signed_f64_raw(&v)
+}
+
 fn parse_f64_attr(attrs: &AttrMap, key: &str) -> Result<f64, HlsError> {
     let v = clone_attr(attrs, key)?;
     parse_f64_raw(&v)
@@ -623,7 +637,21 @@ fn parse_optional_f64(attrs: &AttrMap, key: &str) -> Result<Option<f64>, HlsErro
 }
 
 fn parse_f64_raw(s: &str) -> Result<f64, HlsError> {
-    f64::from_str(s).map_err(|_| HlsError::invalid_attr("", "", s.to_string()))
+    let v = f64::from_str(s).map_err(|_| HlsError::invalid_attr("", "", s.to_string()))?;
+    if v.is_finite() && v >= 0.0 {
+        Ok(v)
+    } else {
+        Err(HlsError::invalid_attr("", "", s.to_string()))
+    }
+}
+
+fn parse_signed_f64_raw(s: &str) -> Result<f64, HlsError> {
+    let v = f64::from_str(s).map_err(|_| HlsError::invalid_attr("", "", s.to_string()))?;
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(HlsError::invalid_attr("", "", s.to_string()))
+    }
 }
 
 fn parse_u64_raw(s: &str) -> Result<u64, HlsError> {

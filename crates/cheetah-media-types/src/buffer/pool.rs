@@ -165,8 +165,9 @@ impl BufferPool for SimpleBufferPool {
 
         // Reserve the slot atomically to avoid TOCTOU races under concurrent
         // acquire calls.
-        let new_count = self.inner.in_use_count.fetch_add(1, Ordering::Relaxed) + 1;
-        if new_count > cfg.max_count {
+        let prev_count = self.inner.in_use_count.fetch_add(1, Ordering::Relaxed);
+        let new_count = prev_count.saturating_add(1);
+        if prev_count >= cfg.max_count {
             self.inner.in_use_count.fetch_sub(1, Ordering::Relaxed);
             return Err(MediaError::ResourceLimit {
                 name: "buffer_pool_count",

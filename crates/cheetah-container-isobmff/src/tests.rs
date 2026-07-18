@@ -2,12 +2,15 @@
 
 use alloc::vec::Vec;
 use cheetah_media_types::{
-    CodecConfig, CodecId, MediaPacket, MediaTime, SequenceNumber, StreamEpoch, TrackId, TrackKind,
+    CodecConfig, CodecId, MediaPacket, MediaTime, SequenceNumber, StreamEpoch, TimeBase, TrackId,
+    TrackInfo, TrackKind,
 };
 
 use crate::{
     FragmentedMp4Muxer, IsobmffDemuxer, Mp4Event, ProgressiveMp4Muxer, SegmentOutput, TrackConfig,
     boxes::{BoxHeader, iter_boxes, read_fullbox_header, types},
+    fragment::{FragmentSample, TrackFragment, emit_packets},
+    moov::{TrackData, TrexDefaults},
 };
 
 fn make_audio_config() -> TrackConfig {
@@ -616,4 +619,70 @@ proptest! {
         }
         let _ = demuxer.next_event();
     }
+}
+
+fn make_video_track_data() -> TrackData {
+    TrackData {
+        track: TrackInfo::new(
+            TrackId::new(1).unwrap(),
+            TrackKind::Video,
+            CodecId::H264,
+            TimeBase::new(1, 30_000).unwrap(),
+        ),
+        timescale: 30_000,
+        track_type: types::AVC1,
+        trex: TrexDefaults::default(),
+    }
+}
+
+#[test]
+fn emit_packets_rejects_sample_offset_before_mdat() {
+    let track = make_video_track_data();
+    let tf = TrackFragment {
+        track_id: 1,
+        base_decode_time: 0,
+        default_sample_duration: 3000,
+        default_sample_size: 0,
+        default_sample_flags: 0,
+        first_sample_flags: None,
+        samples: vec![FragmentSample {
+            duration: 3000,
+            size: 2,
+            flags: 0,
+            composition_offset: 0,
+            data_offset: 5,
+        }],
+        data_offset_base: 0,
+        moof_offset: 0,
+    };
+    let mdat = cheetah_media_types::BufferRef::from_owned(vec![0xab, 0xcd]);
+    let mut seq = 0;
+    let res = emit_packets(&tf, &mdat, 10, &track, &mut seq, StreamEpoch::new(0));
+    assert!(res.is_err());
+}
+
+#[test]
+fn emit_packets_rejects_sample_size_overflow() {
+    let track = make_video_track_data();
+    let tf = TrackFragment {
+        track_id: 1,
+        base_decode_time: 0,
+        default_sample_duration: 3000,
+        default_sample_size: 0,
+        default_sample_flags: 0,
+        first_sample_flags: None,
+        samples: vec![FragmentSample {
+            duration: 3000,
+            size: u64::MAX,
+            flags: 0,
+            composition_offset: 0,
+            data_offset: 10,
+        }],
+        data_offset_base: 0,
+        moof_offset: 0,
+    };
+    let mdat = cheetah_media_types::BufferRef::from_owned(vec![0xab, 0xcd]);
+    let mut seq = 0;
+    let res = emit_packets(&tf, &mdat, 10, &track, &mut seq, StreamEpoch::new(0));
+    assert!(res.is_err());
 }

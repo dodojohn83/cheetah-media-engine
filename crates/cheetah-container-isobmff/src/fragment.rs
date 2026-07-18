@@ -322,8 +322,20 @@ pub fn emit_packets(
     let timebase = track.track.timebase;
     let mdat_len = mdat_buf.len();
     for s in &tf.samples {
-        let start = s.data_offset.saturating_sub(mdat_data_offset) as usize;
-        let end = start.saturating_add(s.size as usize);
+        let data_offset =
+            s.data_offset
+                .checked_sub(mdat_data_offset)
+                .ok_or(Mp4Error::invalid_input(
+                    3302,
+                    Some("sample offset before mdat"),
+                ))?;
+        let start = usize::try_from(data_offset)
+            .map_err(|_| Mp4Error::invalid_input(3302, Some("sample offset too large")))?;
+        let size = usize::try_from(s.size)
+            .map_err(|_| Mp4Error::invalid_input(3302, Some("sample size too large")))?;
+        let end = start
+            .checked_add(size)
+            .ok_or(Mp4Error::invalid_input(3302, Some("sample size overflow")))?;
         if end > mdat_len {
             return Err(Mp4Error::invalid_input(
                 3301,
@@ -334,9 +346,18 @@ pub fn emit_packets(
         let pts = dts.saturating_add_signed(s.composition_offset);
         let is_key = !is_non_sync_sample(s.flags);
         let time = MediaTime::from_ticks(
-            Some(pts as i64),
-            Some(dts as i64),
-            Some(s.duration as i64),
+            Some(
+                i64::try_from(pts)
+                    .map_err(|_| Mp4Error::invalid_input(3303, Some("pts overflow")))?,
+            ),
+            Some(
+                i64::try_from(dts)
+                    .map_err(|_| Mp4Error::invalid_input(3303, Some("dts overflow")))?,
+            ),
+            Some(
+                i64::try_from(s.duration)
+                    .map_err(|_| Mp4Error::invalid_input(3303, Some("duration overflow")))?,
+            ),
             timebase,
         );
         let seq = SequenceNumber::new(*sequence);
