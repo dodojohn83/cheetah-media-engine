@@ -533,7 +533,7 @@ impl Engine {
         match ev {
             BackendEvent::Track { info, .. } => {
                 self.has_track = true;
-                self.track_count += 1;
+                self.track_count = self.track_count.saturating_add(1);
                 out.push(EngineEvent::TrackAdded(info.clone()));
                 self.maybe_enter_preroll(out);
             }

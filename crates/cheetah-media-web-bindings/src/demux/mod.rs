@@ -5,12 +5,13 @@
 //! emitted payload and configuration bytes can be read directly from WASM
 //! linear memory by the JavaScript runtime.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use cheetah_container_annexb::{AnnexBConfig, AnnexBDemuxer as InnerAnnexBDemuxer, AnnexbEvent};
 use cheetah_container_mpegps::{MpegPsConfig, MpegPsDemuxer as InnerMpegPsDemuxer, MpegPsEvent};
 use cheetah_media_abi::{Handle, MemoryArena};
-use cheetah_media_types::{CodecId, TimeBase};
+use cheetah_media_types::{CodecId, TimeBase, TrackInfo};
 use wasm_bindgen::prelude::*;
 
 mod demux_arena;
@@ -62,6 +63,7 @@ pub struct AnnexBDemuxer {
     last_data: Option<Handle>,
     last_metadata: Option<Handle>,
     last_config: Option<Handle>,
+    tracks: BTreeMap<u32, TrackInfo>,
     errored: bool,
 }
 
@@ -89,6 +91,7 @@ impl AnnexBDemuxer {
             last_data: None,
             last_metadata: None,
             last_config: None,
+            tracks: BTreeMap::new(),
             errored: false,
         })
     }
@@ -115,6 +118,7 @@ impl AnnexBDemuxer {
         self.last_data = None;
         self.last_metadata = None;
         self.last_config = None;
+        self.tracks.clear();
         self.errored = false;
     }
 
@@ -126,7 +130,12 @@ impl AnnexBDemuxer {
 
         match self.inner.next_event() {
             Ok(Some(AnnexbEvent::Track(track))) => {
-                match track_event(&mut self.arena, track, &mut self.last_config) {
+                match track_event(
+                    &mut self.arena,
+                    track,
+                    &mut self.last_config,
+                    &mut self.tracks,
+                ) {
                     Ok(event) => Some(event),
                     Err(e) => {
                         self.errored = true;
@@ -135,7 +144,7 @@ impl AnnexBDemuxer {
                 }
             }
             Ok(Some(AnnexbEvent::Packet(packet))) => {
-                match packet_event(&mut self.arena, packet, &mut self.last_data) {
+                match packet_event(&mut self.arena, packet, &mut self.last_data, &self.tracks) {
                     Ok(event) => Some(event),
                     Err(e) => {
                         self.errored = true;
@@ -171,6 +180,7 @@ pub struct MpegPsDemuxer {
     last_data: Option<Handle>,
     last_metadata: Option<Handle>,
     last_config: Option<Handle>,
+    tracks: BTreeMap<u32, TrackInfo>,
     errored: bool,
 }
 
@@ -199,6 +209,7 @@ impl MpegPsDemuxer {
             last_data: None,
             last_metadata: None,
             last_config: None,
+            tracks: BTreeMap::new(),
             errored: false,
         })
     }
@@ -225,6 +236,7 @@ impl MpegPsDemuxer {
         self.last_data = None;
         self.last_metadata = None;
         self.last_config = None;
+        self.tracks.clear();
         self.errored = false;
     }
 
@@ -236,7 +248,12 @@ impl MpegPsDemuxer {
 
         match self.inner.next_event() {
             Ok(Some(MpegPsEvent::Track(track))) => {
-                match track_event(&mut self.arena, track, &mut self.last_config) {
+                match track_event(
+                    &mut self.arena,
+                    track,
+                    &mut self.last_config,
+                    &mut self.tracks,
+                ) {
                     Ok(event) => Some(event),
                     Err(e) => {
                         self.errored = true;
@@ -245,7 +262,7 @@ impl MpegPsDemuxer {
                 }
             }
             Ok(Some(MpegPsEvent::Packet(packet))) => {
-                match packet_event(&mut self.arena, packet, &mut self.last_data) {
+                match packet_event(&mut self.arena, packet, &mut self.last_data, &self.tracks) {
                     Ok(event) => Some(event),
                     Err(e) => {
                         self.errored = true;

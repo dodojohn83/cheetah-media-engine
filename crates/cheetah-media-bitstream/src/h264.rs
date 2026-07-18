@@ -192,7 +192,7 @@ pub fn split_avcc<'a>(data: &'a [u8], length_size: u8) -> Result<Vec<NalUnit<'a>
             4 => cursor.read_u32_be()? as usize,
             _ => unreachable!(),
         };
-        if len > cursor.remaining() {
+        if len == 0 || len > cursor.remaining() {
             return Err(H264Error::InvalidNalLength);
         }
         let bytes = cursor.read_bytes(len)?;

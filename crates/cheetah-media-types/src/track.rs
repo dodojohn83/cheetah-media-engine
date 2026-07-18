@@ -31,7 +31,7 @@ impl StreamEpoch {
     }
 
     pub const fn next(self) -> Self {
-        Self(self.0 + 1)
+        Self(self.0.saturating_add(1))
     }
 }
 
@@ -49,7 +49,7 @@ impl SequenceNumber {
     }
 
     pub const fn next(self) -> Self {
-        Self(self.0 + 1)
+        Self(self.0.saturating_add(1))
     }
 }
 
