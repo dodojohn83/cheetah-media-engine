@@ -193,14 +193,15 @@ impl HlsClient {
         let base = &url;
         match parse(text, base) {
             Ok(Playlist::Master(master)) => {
-                self.master = Some(master);
-                let selected_uri = match self.config.selector.select(
-                    &self.master.as_ref().unwrap().variants,
-                    &self.config.capabilities,
-                ) {
+                let selected_uri = match self
+                    .config
+                    .selector
+                    .select(&master.variants, &self.config.capabilities)
+                {
                     Ok(v) => v.uri.clone(),
                     Err(e) => return self.stop_with_error(e),
                 };
+                self.master = Some(master);
                 self.selected_variant = Some(selected_uri.clone());
                 let mut actions = self.bump_epoch();
                 actions.extend(self.request_epoch(ActionKind::LoadPlaylist {
@@ -306,64 +307,64 @@ impl HlsClient {
 
     fn on_tick(&mut self, now_ms: u64) -> Vec<HlsAction> {
         let mut actions = Vec::new();
-        if self.media.is_some() && !self.media.as_ref().unwrap().is_vod() {
-            // Do not pile up multiple playlist reloads.
-            if !self.inflight.values().any(|k| {
-                matches!(
-                    k,
-                    ActionKind::LoadPlaylist {
-                        is_master: false,
-                        ..
-                    }
-                )
-            }) {
-                let interval = if let Some(part_target) = self
-                    .media
-                    .as_ref()
-                    .unwrap()
-                    .part_inf
-                    .as_ref()
-                    .map(|p| p.part_target)
-                {
-                    // LL-HLS: poll at part-target cadence. Reject non-finite
-                    // or unrepresentable values to avoid u64::MAX / overflow.
-                    let part_target_ms = part_target * 1000.0;
-                    if part_target_ms.is_finite()
-                        && part_target_ms >= 1.0
-                        && part_target_ms <= u64::MAX as f64
-                    {
-                        part_target_ms as u64
-                    } else {
-                        self.config.reload_interval_ms
-                    }
-                } else {
-                    self.config.reload_interval_ms
-                };
-                if self
-                    .last_reload_ms
-                    .map(|t| now_ms >= t.saturating_add(interval))
-                    .unwrap_or(true)
-                {
-                    self.last_reload_ms = Some(now_ms);
-                    if let Some(url) = self.media_url.clone() {
-                        let blocking = self.config.block_reload
-                            && self
-                                .media
-                                .as_ref()
-                                .unwrap()
-                                .server_control
-                                .as_ref()
-                                .map(|s| s.can_block_reload)
-                                .unwrap_or(false);
-                        actions.extend(self.request_epoch(ActionKind::LoadPlaylist {
-                            url,
-                            is_master: false,
-                            blocking,
-                        }));
-                    }
-                }
-            }
+        if self.stopped {
+            return actions;
         }
+        let Some(media) = self.media.as_ref() else {
+            return actions;
+        };
+        if media.is_vod() {
+            return actions;
+        }
+        // Do not pile up multiple playlist reloads.
+        if self.inflight.values().any(|k| {
+            matches!(
+                k,
+                ActionKind::LoadPlaylist {
+                    is_master: false,
+                    ..
+                }
+            )
+        }) {
+            return actions;
+        }
+        let interval = if let Some(part_target) = media.part_inf.as_ref().map(|p| p.part_target) {
+            // LL-HLS: poll at part-target cadence. Reject non-finite
+            // or unrepresentable values to avoid u64::MAX / overflow.
+            let part_target_ms = part_target * 1000.0;
+            if part_target_ms.is_finite()
+                && part_target_ms >= 1.0
+                && part_target_ms <= u64::MAX as f64
+            {
+                part_target_ms as u64
+            } else {
+                self.config.reload_interval_ms
+            }
+        } else {
+            self.config.reload_interval_ms
+        };
+        if !self
+            .last_reload_ms
+            .map(|t| now_ms >= t.saturating_add(interval))
+            .unwrap_or(true)
+        {
+            return actions;
+        }
+        let Some(url) = self.media_url.clone() else {
+            return actions;
+        };
+        let blocking = self.config.block_reload
+            && media
+                .server_control
+                .as_ref()
+                .map(|s| s.can_block_reload)
+                .unwrap_or(false);
+        self.last_reload_ms = Some(now_ms);
+        actions.extend(self.request_epoch(ActionKind::LoadPlaylist {
+            url,
+            is_master: false,
+            blocking,
+        }));
         actions
     }
 
