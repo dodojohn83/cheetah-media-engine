@@ -346,7 +346,7 @@ impl Engine {
             return Err(EngineError::Destroyed);
         }
 
-        self.sequence += 1;
+        self.sequence = self.sequence.wrapping_add(1);
         let mut out = EngineOutput::new();
 
         match command {

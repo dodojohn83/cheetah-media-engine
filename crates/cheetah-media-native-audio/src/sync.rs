@@ -136,7 +136,7 @@ impl ManualClock {
 
     /// Advance the clock by `delta_ms`.
     pub fn advance(&mut self, delta_ms: i64) {
-        self.now_ms += delta_ms;
+        self.now_ms = self.now_ms.saturating_add(delta_ms);
     }
 }
 

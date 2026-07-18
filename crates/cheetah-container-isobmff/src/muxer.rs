@@ -121,7 +121,7 @@ impl FragmentedMp4Muxer {
 
         let media_segment = self.write_media_segment(&track_packets)?;
         let sequence = self.sequence;
-        self.sequence += 1;
+        self.sequence = self.sequence.wrapping_add(1);
 
         Ok(Some(SegmentOutput {
             init_segment,
@@ -557,7 +557,7 @@ fn write_moof(
             packets
                 .iter()
                 .map(|p| p.payload.as_ref().len() as u64)
-                .sum(),
+                .fold(0u64, u64::saturating_add),
         );
         moof_body.extend(traf_box);
     }

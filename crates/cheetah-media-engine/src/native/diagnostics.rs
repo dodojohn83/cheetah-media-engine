@@ -58,11 +58,21 @@ impl Diagnostics {
     /// Record a diagnostic event and update counters.
     pub fn record(&mut self, event: DiagnosticEvent) {
         match &event {
-            DiagnosticEvent::FrameDecoded { .. } => self.counters.decoded += 1,
-            DiagnosticEvent::FrameRendered { .. } => self.counters.rendered += 1,
-            DiagnosticEvent::AudioPlayed { samples, .. } => self.counters.audio_samples += *samples,
-            DiagnosticEvent::Dropped { count, .. } => self.counters.dropped += *count,
-            DiagnosticEvent::Error { .. } => self.counters.errors += 1,
+            DiagnosticEvent::FrameDecoded { .. } => {
+                self.counters.decoded = self.counters.decoded.saturating_add(1)
+            }
+            DiagnosticEvent::FrameRendered { .. } => {
+                self.counters.rendered = self.counters.rendered.saturating_add(1)
+            }
+            DiagnosticEvent::AudioPlayed { samples, .. } => {
+                self.counters.audio_samples = self.counters.audio_samples.saturating_add(*samples)
+            }
+            DiagnosticEvent::Dropped { count, .. } => {
+                self.counters.dropped = self.counters.dropped.saturating_add(*count)
+            }
+            DiagnosticEvent::Error { .. } => {
+                self.counters.errors = self.counters.errors.saturating_add(1)
+            }
             _ => {}
         }
         if self.max_events == 0 {

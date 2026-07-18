@@ -63,7 +63,9 @@ impl AudioSink for NullAudioSink {
             return Err(AbiError::InvalidData);
         }
         self.last_duration_ms = output.duration_ms;
-        self.submitted_samples += self.frame_count(output.data.len());
+        self.submitted_samples = self
+            .submitted_samples
+            .saturating_add(self.frame_count(output.data.len()));
         Ok(())
     }
 

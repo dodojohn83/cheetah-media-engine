@@ -159,7 +159,7 @@ impl TsDemuxer {
 
     fn parse_packet(&mut self) -> Result<Option<(TsPacket, Vec<u8>)>, TsError> {
         loop {
-            if self.read_pos + 188 > self.buffer.len() {
+            if self.read_pos.saturating_add(188) > self.buffer.len() {
                 return Ok(None);
             }
 
@@ -169,7 +169,8 @@ impl TsDemuxer {
                     let packet_end = start + 188;
                     let payload = pkt.payload(&self.buffer[start..packet_end]).to_vec();
                     self.read_pos = packet_end;
-                    self.diagnostics.packets_processed += 1;
+                    self.diagnostics.packets_processed =
+                        self.diagnostics.packets_processed.saturating_add(1);
                     self.shrink();
                     return Ok(Some((pkt, payload)));
                 }
@@ -184,8 +185,11 @@ impl TsDemuxer {
     }
 
     fn resync(&mut self) -> Result<bool, TsError> {
-        let scan_end = (self.read_pos + MAX_SYNC_SCAN).min(self.buffer.len());
-        if scan_end < self.read_pos + 188 {
+        let scan_end = self
+            .read_pos
+            .saturating_add(MAX_SYNC_SCAN)
+            .min(self.buffer.len());
+        if scan_end.saturating_sub(self.read_pos) < 188 {
             return Ok(false);
         }
 
@@ -193,7 +197,7 @@ impl TsDemuxer {
             if self.buffer[i] == 0x47
                 && (i + 188 >= self.buffer.len() || self.buffer[i + 188] == 0x47)
             {
-                self.diagnostics.sync_losses += 1;
+                self.diagnostics.sync_losses = self.diagnostics.sync_losses.saturating_add(1);
                 self.read_pos = i;
                 return Ok(true);
             }
@@ -286,7 +290,10 @@ impl TsDemuxer {
         }
 
         let (kind, codec) = stream_type_to_codec(stream_type)?;
-        self.track_id_counter += 1;
+        self.track_id_counter = self
+            .track_id_counter
+            .checked_add(1)
+            .ok_or_else(|| TsError::invalid_input(2201, Some("track id overflow")))?;
         let track_id = TrackId::new(self.track_id_counter)
             .ok_or_else(|| TsError::invalid_input(2201, Some("track id overflow")))?;
         let mut info = TrackInfo::new(track_id, kind, codec, TimeBase::TS_90K);
@@ -309,7 +316,7 @@ impl TsDemuxer {
 
         // Transport error, discontinuity indicator, or continuity loss all reset the assembler.
         if packet.transport_error || packet.discontinuity {
-            self.diagnostics.discontinuities += 1;
+            self.diagnostics.discontinuities = self.diagnostics.discontinuities.saturating_add(1);
             state.pes = PesAssembler::new();
             state.last_time = MediaTime::new(None, None, None, TimeBase::TS_90K);
             state.seen_pus = false;
@@ -325,7 +332,8 @@ impl TsDemuxer {
             }
             let expected = (last + 1) & 0x0F;
             if packet.continuity_counter != expected {
-                self.diagnostics.discontinuities += 1;
+                self.diagnostics.discontinuities =
+                    self.diagnostics.discontinuities.saturating_add(1);
                 state.pes = PesAssembler::new();
                 state.last_time = MediaTime::new(None, None, None, TimeBase::TS_90K);
                 state.seen_pus = false;
@@ -759,7 +767,7 @@ impl TsDemuxer {
 
     fn emit_packet(&mut self, track_id: TrackId, data: &[u8], time: MediaTime, is_key: bool) {
         let seq = SequenceNumber::new(self.sequence);
-        self.sequence += 1;
+        self.sequence = self.sequence.wrapping_add(1);
         let mut packet = MediaPacket::new(
             BufferRef::from_owned(data.to_owned()),
             track_id,

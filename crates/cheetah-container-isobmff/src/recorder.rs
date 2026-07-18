@@ -105,7 +105,11 @@ impl Mp4Muxer {
         let ftyp = write_ftyp();
         let (moov_body, stco_patch_position) = self.write_moov_body(cfg)?;
 
-        let total_payload: u64 = self.samples.iter().map(|s| s.payload.len() as u64).sum();
+        let total_payload: u64 = self
+            .samples
+            .iter()
+            .map(|s| s.payload.len() as u64)
+            .fold(0u64, u64::saturating_add);
         let needs_extended = total_payload.saturating_add(8) > u32::MAX as u64;
         let mdat_header_size: u64 = if needs_extended { 16 } else { 8 };
         let mdat_total_size = total_payload

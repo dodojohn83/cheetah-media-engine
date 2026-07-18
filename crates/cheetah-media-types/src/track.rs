@@ -126,7 +126,7 @@ impl TrackInfo {
     /// Update the codec configuration and increment `generation` if it changed.
     pub fn set_codec_config(&mut self, config: CodecConfig) {
         if self.codec_config != config {
-            self.generation += 1;
+            self.generation = self.generation.saturating_add(1);
         }
         self.codec_config = config;
     }
@@ -140,7 +140,7 @@ impl TrackInfo {
             });
         }
         if self.video_format.as_ref() != Some(&format) {
-            self.generation += 1;
+            self.generation = self.generation.saturating_add(1);
         }
         self.video_format = Some(format);
         Ok(())
@@ -155,7 +155,7 @@ impl TrackInfo {
             });
         }
         if self.audio_format.as_ref() != Some(&format) {
-            self.generation += 1;
+            self.generation = self.generation.saturating_add(1);
         }
         self.audio_format = Some(format);
         Ok(())
