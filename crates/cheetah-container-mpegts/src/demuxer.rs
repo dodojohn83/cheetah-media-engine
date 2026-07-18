@@ -726,8 +726,36 @@ impl TsDemuxer {
 
     fn emit_mp3(&mut self, pid: u16, es: &[u8], time: MediaTime) -> Result<(), TsError> {
         let track_id = self.track_id_for(pid)?;
+
+        // A single MPEG-TS audio PES may contain multiple MP3 frames. Emit each
+        // frame as its own access unit with a monotonically increasing timestamp
+        // so the decoder/renderer receives correct per-frame timing.
+        let frames = cheetah_media_bitstream::mp3::split_mp3(es).unwrap_or_default();
+        if frames.is_empty() {
+            // `split_mp3` could not locate a complete frame (e.g. truncated PES).
+            // Fall back to emitting the raw PES payload once and let downstream
+            // deal with it rather than dropping audio silently.
+            if let Some(state) = self.tracks.get_mut(&pid)
+                && let Ok(header) = cheetah_media_bitstream::mp3::Mp3Header::parse(es)
+            {
+                let fmt = cheetah_media_types::AudioFormat {
+                    sample_format: SampleFormat::S16,
+                    sample_rate: header.sample_rate,
+                    channel_layout: if header.channel_count == 1 {
+                        ChannelLayout::Mono
+                    } else {
+                        ChannelLayout::Stereo
+                    },
+                    sample_count: header.samples_per_frame as u32,
+                };
+                state.info.set_audio_format(fmt).ok();
+            }
+            self.emit_packet(track_id, es, time, false);
+            return Ok(());
+        }
+
         if let Some(state) = self.tracks.get_mut(&pid)
-            && let Ok(header) = cheetah_media_bitstream::mp3::Mp3Header::parse(es)
+            && let Ok(header) = cheetah_media_bitstream::mp3::Mp3Header::parse(frames[0])
         {
             let fmt = cheetah_media_types::AudioFormat {
                 sample_format: SampleFormat::S16,
@@ -741,7 +769,23 @@ impl TsDemuxer {
             };
             state.info.set_audio_format(fmt).ok();
         }
-        self.emit_packet(track_id, es, time, false);
+
+        let mut t = time;
+        for frame in frames {
+            if let Ok(header) = cheetah_media_bitstream::mp3::Mp3Header::parse(frame) {
+                self.emit_packet(track_id, frame, t, false);
+                let duration_ticks = i64::from(header.duration_ms)
+                    .checked_mul(90)
+                    .unwrap_or(i64::MAX);
+                t = t
+                    .checked_add(MediaDuration::new(duration_ticks))
+                    .unwrap_or(t);
+            }
+        }
+
+        if let Some(state) = self.tracks.get_mut(&pid) {
+            state.last_time = t;
+        }
         Ok(())
     }
 
