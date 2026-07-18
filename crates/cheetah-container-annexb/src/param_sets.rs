@@ -144,8 +144,15 @@ impl H264ParameterSetCache {
         }
         let sps_rbsp = h264_unescape(&sps_nal[1..]);
         let parsed = H264Sps::parse(&sps_rbsp).ok()?;
+        let pixel_format = match parsed.chroma_format_idc {
+            0 => PixelFormat::Unknown(0),
+            1 => PixelFormat::Yuv420P,
+            2 => PixelFormat::Yuv422P,
+            3 => PixelFormat::Yuv444P,
+            n => PixelFormat::Unknown(n as u32),
+        };
         Some(VideoFormat {
-            pixel_format: PixelFormat::Yuv420P,
+            pixel_format,
             coded_width: parsed.width,
             coded_height: parsed.height,
             visible_width: parsed.width,

@@ -325,14 +325,23 @@ impl HlsClient {
                     .as_ref()
                     .map(|p| p.part_target)
                 {
-                    // LL-HLS: poll at part-target cadence.
-                    (part_target * 1000.0).max(1.0) as u64
+                    // LL-HLS: poll at part-target cadence. Reject non-finite
+                    // or unrepresentable values to avoid u64::MAX / overflow.
+                    let part_target_ms = part_target * 1000.0;
+                    if part_target_ms.is_finite()
+                        && part_target_ms >= 1.0
+                        && part_target_ms <= u64::MAX as f64
+                    {
+                        part_target_ms as u64
+                    } else {
+                        self.config.reload_interval_ms
+                    }
                 } else {
                     self.config.reload_interval_ms
                 };
                 if self
                     .last_reload_ms
-                    .map(|t| now_ms >= t + interval)
+                    .map(|t| now_ms >= t.saturating_add(interval))
                     .unwrap_or(true)
                 {
                     self.last_reload_ms = Some(now_ms);

@@ -73,7 +73,7 @@ impl PesAssembler {
             return Ok(outputs);
         }
 
-        if self.raw.len() + payload.len() > MAX_PES_SIZE {
+        if self.raw.len().saturating_add(payload.len()) > MAX_PES_SIZE {
             self.reset();
             return Err(TsError::LimitExceeded {
                 limit: "pes buffer",

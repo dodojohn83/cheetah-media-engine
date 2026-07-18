@@ -44,8 +44,11 @@ impl From<crate::ReadError> for H265Error {
 }
 
 impl From<crate::bit::BitError> for H265Error {
-    fn from(_: crate::bit::BitError) -> Self {
-        Self::TooShort
+    fn from(e: crate::bit::BitError) -> Self {
+        match e {
+            crate::bit::BitError::EndOfStream => Self::TooShort,
+            _ => Self::InvalidConfig,
+        }
     }
 }
 
