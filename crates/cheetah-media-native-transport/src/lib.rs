@@ -297,32 +297,35 @@ impl ByteSource for NativeByteSource {
 mod tests;
 
 mod tcp {
+    use std::time::Duration;
+
     use super::Chunk;
     use cheetah_media_backend_api::ByteSourceError;
     use tokio::io::AsyncReadExt;
     use tokio::net::TcpStream;
     use tokio::sync::mpsc;
+    use tokio::time::timeout;
 
     pub(crate) async fn run(host: String, port: u16, tx: mpsc::Sender<Chunk>) {
         let host = host
             .strip_prefix('[')
             .and_then(|h| h.strip_suffix(']'))
             .unwrap_or(&host);
-        match TcpStream::connect((host, port)).await {
-            Ok(mut stream) => {
+        match timeout(Duration::from_secs(30), TcpStream::connect((host, port))).await {
+            Ok(Ok(mut stream)) => {
                 let mut buf = vec![0u8; 8192];
                 loop {
-                    match stream.read(&mut buf).await {
-                        Ok(0) => {
+                    match timeout(Duration::from_secs(60), stream.read(&mut buf)).await {
+                        Ok(Ok(0)) => {
                             let _ = tx.send(Chunk::Eof).await;
                             break;
                         }
-                        Ok(n) => {
+                        Ok(Ok(n)) => {
                             if tx.send(Chunk::Data(buf[..n].to_vec())).await.is_err() {
                                 break;
                             }
                         }
-                        Err(_) => {
+                        Ok(Err(_)) => {
                             let _ = tx
                                 .send(Chunk::Error(ByteSourceError::Fatal {
                                     code: 20,
@@ -331,13 +334,30 @@ mod tcp {
                                 .await;
                             break;
                         }
+                        Err(_) => {
+                            let _ = tx
+                                .send(Chunk::Error(ByteSourceError::Retryable {
+                                    reason: "tcp_read_timeout",
+                                    backoff_ms: 1000,
+                                }))
+                                .await;
+                            break;
+                        }
                     }
                 }
+            }
+            Ok(Err(_)) => {
+                let _ = tx
+                    .send(Chunk::Error(ByteSourceError::Retryable {
+                        reason: "tcp_connect_failed",
+                        backoff_ms: 1000,
+                    }))
+                    .await;
             }
             Err(_) => {
                 let _ = tx
                     .send(Chunk::Error(ByteSourceError::Retryable {
-                        reason: "tcp_connect_failed",
+                        reason: "tcp_connect_timeout",
                         backoff_ms: 1000,
                     }))
                     .await;
