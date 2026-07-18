@@ -149,7 +149,7 @@ mod tests {
             CodecId::H264,
             TimeBase::DEFAULT,
         );
-        track.set_codec_config(CodecConfig::AvcC(config.build()));
+        track.set_codec_config(CodecConfig::AvcC(config.build().unwrap()));
         track
             .set_video_format(VideoFormat {
                 pixel_format: PixelFormat::Yuv420P,

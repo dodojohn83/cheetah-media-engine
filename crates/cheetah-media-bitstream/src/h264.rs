@@ -19,6 +19,8 @@ pub enum H264Error {
     InvalidSps,
     InvalidDimensions,
     UnsupportedProfile,
+    /// Too many parameter sets or array count to fit the AVCC layout.
+    ParameterSetOverflow,
 }
 
 impl core::fmt::Display for H264Error {
@@ -30,6 +32,7 @@ impl core::fmt::Display for H264Error {
             Self::InvalidSps => write!(f, "H.264 invalid SPS"),
             Self::InvalidDimensions => write!(f, "H.264 invalid SPS dimensions"),
             Self::UnsupportedProfile => write!(f, "H.264 unsupported profile for SPS parsing"),
+            Self::ParameterSetOverflow => write!(f, "H.264 parameter set count overflow"),
         }
     }
 }
@@ -513,7 +516,13 @@ impl H264CodecConfig {
     }
 
     /// Build an AVCDecoderConfigurationRecord from SPS/PPS.
-    pub fn build(&self) -> Vec<u8> {
+    pub fn build(&self) -> Result<Vec<u8>, H264Error> {
+        if self.sps_list.len() > 0x1f {
+            return Err(H264Error::ParameterSetOverflow);
+        }
+        if self.pps_list.len() > 0xff {
+            return Err(H264Error::ParameterSetOverflow);
+        }
         let mut out = vec![
             self.configuration_version,
             self.avc_profile_indication,
@@ -523,15 +532,17 @@ impl H264CodecConfig {
             0xe0 | (self.sps_list.len() as u8),
         ];
         for sps in &self.sps_list {
-            out.extend_from_slice(&(sps.len() as u16).to_be_bytes());
+            let len = u16::try_from(sps.len()).map_err(|_| H264Error::InvalidNalLength)?;
+            out.extend_from_slice(&len.to_be_bytes());
             out.extend_from_slice(sps);
         }
         out.push(self.pps_list.len() as u8);
         for pps in &self.pps_list {
-            out.extend_from_slice(&(pps.len() as u16).to_be_bytes());
+            let len = u16::try_from(pps.len()).map_err(|_| H264Error::InvalidNalLength)?;
+            out.extend_from_slice(&len.to_be_bytes());
             out.extend_from_slice(pps);
         }
-        out
+        Ok(out)
     }
 }
 
@@ -616,7 +627,7 @@ mod tests {
         assert!(config.sps_list[0].starts_with(&[0x67, 0x42, 0x00, 0x1e]));
 
         // Parse/build round-trip preserves SPS/PPS boundaries.
-        let rebuilt = H264CodecConfig::parse(&config.build()).unwrap();
+        let rebuilt = H264CodecConfig::parse(&config.build().unwrap()).unwrap();
         assert_eq!(rebuilt.sps_list, config.sps_list);
         assert_eq!(rebuilt.pps_list, config.pps_list);
     }

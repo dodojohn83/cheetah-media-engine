@@ -77,7 +77,7 @@ impl AudioTagHeader {
     /// Parse an audio tag header from the start of `data`.
     pub fn parse(data: &[u8]) -> Result<Self, FlvError> {
         if data.is_empty() {
-            return Err(FlvError::NeedMoreData);
+            return Err(FlvError::MalformedTag);
         }
         let b0 = data[0];
         let sound_format = SoundFormat::from_u8((b0 >> 4) & 0x0f);
@@ -87,7 +87,7 @@ impl AudioTagHeader {
 
         if matches!(sound_format, SoundFormat::Aac) {
             if data.len() < 2 {
-                return Err(FlvError::NeedMoreData);
+                return Err(FlvError::MalformedTag);
             }
             Ok(Self {
                 sound_format,

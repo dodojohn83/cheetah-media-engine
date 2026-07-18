@@ -133,7 +133,7 @@ impl H264ParameterSetCache {
             codec_string: parsed.codec_string(),
         };
 
-        Some(CodecConfig::AvcC(cfg.build()))
+        Some(CodecConfig::AvcC(cfg.build().ok()?))
     }
 
     /// Build a `VideoFormat` from the cached SPS, if available and valid.
@@ -289,7 +289,7 @@ impl H265ParameterSetCache {
             ),
         };
 
-        Some(CodecConfig::HevcC(cfg.build()))
+        Some(CodecConfig::HevcC(cfg.build().ok()?))
     }
 
     /// Build a `VideoFormat` from the cached SPS, if available and valid.

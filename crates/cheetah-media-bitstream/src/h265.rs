@@ -20,6 +20,8 @@ pub enum H265Error {
     InvalidStartCode,
     InvalidConfig,
     UnsupportedConfig,
+    /// Too many parameter sets or array/nal count to fit the HEVCDecoderConfigurationRecord layout.
+    ParameterSetOverflow,
 }
 
 impl core::fmt::Display for H265Error {
@@ -30,6 +32,7 @@ impl core::fmt::Display for H265Error {
             Self::InvalidStartCode => write!(f, "H.265 invalid Annex-B start code"),
             Self::InvalidConfig => write!(f, "H.265 invalid decoder configuration"),
             Self::UnsupportedConfig => write!(f, "H.265 unsupported decoder configuration"),
+            Self::ParameterSetOverflow => write!(f, "H.265 parameter set count overflow"),
         }
     }
 }
@@ -483,7 +486,7 @@ impl H265CodecConfig {
     }
 
     /// Build a minimal HEVCDecoderConfigurationRecord containing VPS/SPS/PPS arrays.
-    pub fn build(&self) -> Vec<u8> {
+    pub fn build(&self) -> Result<Vec<u8>, H265Error> {
         let mut out = Vec::new();
         out.push(self.configuration_version);
         let b = ((self.general_profile_space & 0x03) << 6)
@@ -520,17 +523,20 @@ impl H265CodecConfig {
             nal_arrays.push((34u8, &self.pps_list));
         }
 
-        out.push(nal_arrays.len() as u8);
+        out.push(u8::try_from(nal_arrays.len()).map_err(|_| H265Error::ParameterSetOverflow)?);
         for (nal_type, nals) in nal_arrays {
             out.push(nal_type & 0x3f);
-            out.extend_from_slice(&(nals.len() as u16).to_be_bytes());
+            let num_nalus =
+                u16::try_from(nals.len()).map_err(|_| H265Error::ParameterSetOverflow)?;
+            out.extend_from_slice(&num_nalus.to_be_bytes());
             for nal in nals {
-                out.extend_from_slice(&(nal.len() as u16).to_be_bytes());
+                let len = u16::try_from(nal.len()).map_err(|_| H265Error::InvalidNalLength)?;
+                out.extend_from_slice(&len.to_be_bytes());
                 out.extend_from_slice(nal);
             }
         }
 
-        out
+        Ok(out)
     }
 }
 
@@ -596,7 +602,7 @@ mod tests {
             pps_list: vec![pps.to_vec()],
             codec_string: String::new(),
         };
-        let bytes = cfg.build();
+        let bytes = cfg.build().unwrap();
         let parsed = H265CodecConfig::parse(&bytes).unwrap();
         assert_eq!(parsed.vps_list, vec![vps.to_vec()]);
         assert_eq!(parsed.sps_list, vec![sps.to_vec()]);
@@ -606,7 +612,7 @@ mod tests {
         assert_eq!(parsed.codec_string, "hev1.1.6.L93");
 
         // Parse/build round-trip preserves VPS/SPS/PPS boundaries.
-        let rebuilt = H265CodecConfig::parse(&parsed.build()).unwrap();
+        let rebuilt = H265CodecConfig::parse(&parsed.build().unwrap()).unwrap();
         assert_eq!(rebuilt.vps_list, parsed.vps_list);
         assert_eq!(rebuilt.sps_list, parsed.sps_list);
         assert_eq!(rebuilt.pps_list, parsed.pps_list);

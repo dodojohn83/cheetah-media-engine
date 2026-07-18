@@ -48,9 +48,13 @@ impl MemoryDescriptor {
         self.length == 0
     }
 
-    /// Byte range described by this descriptor.
-    pub const fn range(self) -> core::ops::Range<usize> {
-        self.offset as usize..(self.offset as usize + self.length as usize)
+    /// Byte range described by this descriptor, if it fits the native address
+    /// size and does not overflow.
+    pub fn range(self) -> Option<core::ops::Range<usize>> {
+        let start = usize::try_from(self.offset).ok()?;
+        let len = usize::try_from(self.length).ok()?;
+        let end = start.checked_add(len)?;
+        Some(start..end)
     }
 }
 

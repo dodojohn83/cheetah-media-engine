@@ -95,8 +95,9 @@ impl AvSync {
 
         let audio_ms = self.last_audio_ms.unwrap_or(video_ms);
         let drift_ms = video_ms.saturating_sub(audio_ms);
-        if drift_ms.abs() > self.max_observed_drift_ms {
-            self.max_observed_drift_ms = drift_ms.abs();
+        let drift_abs = drift_ms.saturating_abs();
+        if drift_abs > self.max_observed_drift_ms {
+            self.max_observed_drift_ms = drift_abs;
         }
 
         // Large forward jump: drop non-reference frames and hold keyframes until
@@ -124,7 +125,7 @@ impl AvSync {
                 });
             }
             self.clock
-                .add_dropped((-drift_ms).min(self.late_threshold_ms));
+                .add_dropped(drift_abs.min(self.late_threshold_ms));
             return Ok(SyncDecision::Drop {
                 reason: "video late, dropping non-reference frame",
             });

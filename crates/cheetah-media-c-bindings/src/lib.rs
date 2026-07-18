@@ -305,7 +305,7 @@ pub unsafe extern "C" fn cheetah_player_load(
         let userdata = p.userdata;
         let output = match p.engine.apply(EngineCommand::Load(req)) {
             Ok(out) => out,
-            Err(_) => return CheetahResult::InvalidState.code(),
+            Err(e) => return engine_error_result(&e).code(),
         };
         (callback, userdata, output.events)
     };
@@ -375,7 +375,7 @@ unsafe fn control_command(player: *mut CheetahPlayer, command: EngineCommand) ->
         let userdata = p.userdata;
         let output = match p.engine.apply(command) {
             Ok(out) => out,
-            Err(_) => return CheetahResult::InvalidState.code(),
+            Err(e) => return engine_error_result(&e).code(),
         };
         (callback, userdata, output.events)
     };
@@ -390,14 +390,23 @@ unsafe fn control_command(player: *mut CheetahPlayer, command: EngineCommand) ->
 /// Translate a sequence of engine events to a single C result code.
 fn summarize_events(events: &[EngineEvent]) -> CheetahResult {
     for ev in events {
-        if let EngineEvent::Error(
-            EngineError::InvalidState { .. } | EngineError::InvalidCommand { .. },
-        ) = ev
-        {
-            return CheetahResult::InvalidState;
+        if let EngineEvent::Error(e) = ev {
+            return engine_error_result(e);
         }
     }
     CheetahResult::Ok
+}
+
+/// Map an engine error to a stable C result code.
+const fn engine_error_result(err: &EngineError) -> CheetahResult {
+    match err {
+        EngineError::InvalidState { .. }
+        | EngineError::InvalidCommand { .. }
+        | EngineError::Destroyed => CheetahResult::InvalidState,
+        EngineError::Backend { .. } | EngineError::ResourceLimit { .. } => {
+            CheetahResult::InternalError
+        }
+    }
 }
 
 /// Dispatch engine events through a C callback.

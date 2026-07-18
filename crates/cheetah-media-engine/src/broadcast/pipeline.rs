@@ -326,7 +326,7 @@ mod tests {
             pixel_format: PixelFormat::Rgba,
             color_space: ColorSpace::Bt709,
         };
-        let source = MockCaptureSource::with_count(1, info);
+        let source = MockCaptureSource::with_count(1, info).unwrap();
         let mut pipe = BroadcastPipeline::new(
             Box::new(source),
             Vec::new(),

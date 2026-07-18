@@ -158,7 +158,8 @@ fn parse_mdia(data: &[u8], mdia_offset: u64) -> Result<(TrackInfo, u32, u32), Mp
     };
 
     // Assign a dummy track id; it is filled from tkhd later.
-    let dummy_id = TrackId::new(1).unwrap();
+    let dummy_id =
+        TrackId::new(1).ok_or(Mp4Error::invalid_input(3201, Some("invalid track id")))?;
     let codec = sample_entry
         .as_ref()
         .map(|s| s.codec)

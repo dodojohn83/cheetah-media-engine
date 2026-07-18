@@ -74,8 +74,11 @@ impl Decoder for NativeDecoder {
             }
             match backend.decode(input) {
                 Ok(output) => return Ok(output),
-                Err(AbiError::NotSupported) | Err(AbiError::WouldBlock) => {
-                    last_error = AbiError::NotSupported;
+                Err(AbiError::NotSupported) => continue,
+                Err(AbiError::WouldBlock) => {
+                    if matches!(last_error, AbiError::NotSupported) {
+                        last_error = AbiError::WouldBlock;
+                    }
                     continue;
                 }
                 Err(e) => {
