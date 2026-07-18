@@ -196,6 +196,38 @@ describe('FetchTransport', () => {
 
     expect(err.code).toBe(TransportErrorCode.Canceled);
   });
+
+  it('resets the idle timeout on each chunk for long-running streams', async () => {
+    const slowStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        setTimeout(() => controller.enqueue(new Uint8Array([0x01])), 20);
+        setTimeout(() => {
+          controller.enqueue(new Uint8Array([0x02]));
+          controller.close();
+        }, 40);
+      },
+    });
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: slowStream,
+    } as unknown as Response);
+
+    const chunks: Uint8Array[] = [];
+    const transport = new FetchTransport({ url: 'https://example.com/stream', timeoutMs: 50 });
+    await new Promise<void>((resolve, reject) => {
+      transport.start(
+        (chunk) => chunks.push(chunk.bytes),
+        (err) => reject(new Error(err.message)),
+        () => resolve(),
+      );
+    });
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toEqual(new Uint8Array([0x01]));
+    expect(chunks[1]).toEqual(new Uint8Array([0x02]));
+  });
 });
 
 describe('WebSocketTransport', () => {
