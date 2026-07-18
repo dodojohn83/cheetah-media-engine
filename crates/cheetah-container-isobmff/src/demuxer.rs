@@ -75,7 +75,8 @@ impl IsobmffDemuxer {
                 Err(e) => return Err(e),
             };
 
-            let box_end = header.size as usize;
+            let box_end = usize::try_from(header.size)
+                .map_err(|_| Mp4Error::LimitExceeded { limit: "box size" })?;
             if self.buffer.len() < box_end {
                 return Ok(None);
             }

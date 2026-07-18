@@ -128,10 +128,11 @@ impl<'a> BitCursor<'a> {
     pub fn read_se(&mut self) -> Result<i64, BitError> {
         let code = self.read_ue()?;
         let signed = code.div_ceil(2);
+        let signed_i64 = i64::try_from(signed).map_err(|_| BitError::Overflow)?;
         if code % 2 == 0 {
-            Ok(-(signed as i64))
+            Ok(-signed_i64)
         } else {
-            Ok(signed as i64)
+            Ok(signed_i64)
         }
     }
 

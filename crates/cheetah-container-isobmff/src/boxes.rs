@@ -306,12 +306,20 @@ pub fn iter_boxes<'a>(
             Ok(h) => h,
             Err(e) => return Some(Err(e)),
         };
-        let body_len = header.body_len() as usize;
-        if offset + header.header_size as usize + body_len > parent_data.len() {
-            return Some(Err(Mp4Error::NeedMoreData));
-        }
-        let box_start = offset + header.header_size as usize;
-        let box_end = box_start + body_len;
+        let body_len = match usize::try_from(header.body_len()) {
+            Ok(v) => v,
+            Err(_) => return Some(Err(Mp4Error::LimitExceeded { limit: "box body" })),
+        };
+        let header_size = usize::from(header.header_size);
+        let box_end = match offset
+            .checked_add(header_size)
+            .and_then(|o| o.checked_add(body_len))
+        {
+            Some(end) if end <= parent_data.len() => end,
+            Some(_) => return Some(Err(Mp4Error::NeedMoreData)),
+            None => return Some(Err(Mp4Error::LimitExceeded { limit: "box body" })),
+        };
+        let box_start = offset + header_size;
         let slice = &parent_data[box_start..box_end];
         offset = box_end;
         current_offset += header.size;

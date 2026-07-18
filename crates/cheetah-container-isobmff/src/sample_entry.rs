@@ -217,14 +217,20 @@ fn read_descriptor_tag_length(data: &[u8]) -> Result<(u8, &[u8], &[u8]), Mp4Erro
     while i < data.len() {
         let b = data[i];
         i += 1;
-        len = len.checked_shl(7).ok_or(Mp4Error::LimitExceeded {
-            limit: "descriptor length",
-        })? | ((b & 0x7f) as usize);
+        len = len
+            .checked_mul(128)
+            .and_then(|v| v.checked_add((b & 0x7f) as usize))
+            .ok_or(Mp4Error::LimitExceeded {
+                limit: "descriptor length",
+            })?;
         if b & 0x80 == 0 {
             break;
         }
     }
-    if i + len > data.len() {
+    if i == 1 || (i >= data.len() && data[i - 1] & 0x80 != 0) {
+        return Err(Mp4Error::NeedMoreData);
+    }
+    if i.checked_add(len).is_none_or(|sum| sum > data.len()) {
         return Err(Mp4Error::NeedMoreData);
     }
     Ok((tag, &data[i..i + len], &data[i + len..]))

@@ -248,10 +248,13 @@ fn parse_stsd(data: &[u8]) -> Result<Option<SampleEntry>, Mp4Error> {
     let mut cursor = Mp4Cursor::new(&data[8..]);
     for _ in 0..entry_count {
         let header = BoxHeader::parse(cursor.rest(), 0)?;
-        if header.size as usize > cursor.remaining() {
+        let size = usize::try_from(header.size).map_err(|_| Mp4Error::LimitExceeded {
+            limit: "sample entry box size",
+        })?;
+        if size > cursor.remaining() {
             return Err(Mp4Error::NeedMoreData);
         }
-        let body = cursor.read_bytes(header.size as usize)?;
+        let body = cursor.read_bytes(size)?;
         // The first 8 bytes of `body` are the box header we just parsed; skip them.
         let inner = &body[header.header_size as usize..];
         if let Some(entry) = parse_sample_entry(header.box_type, inner)? {
