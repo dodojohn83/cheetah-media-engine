@@ -113,7 +113,7 @@ impl AudioAssembler {
             n => ChannelLayout::Unknown(u64::from(n)),
         };
         let audio_format = AudioFormat {
-            sample_format: SampleFormat::Unknown(0),
+            sample_format: SampleFormat::S16,
             sample_rate: header.sampling_frequency,
             channel_layout,
             sample_count: u32::from(header.samples_per_frame),
