@@ -66,10 +66,12 @@ fn parse_visual_sample_entry(body: &[u8], codec: CodecId) -> Result<Option<Sampl
             types::AVCC => {
                 let cfg = cheetah_media_bitstream::H264CodecConfig::parse(inner)
                     .map_err(|_| Mp4Error::invalid_input(3101, Some("invalid avcC")))?;
-                let (w, h) = if cfg.width > 0 && cfg.height > 0 {
-                    (cfg.width as u16, cfg.height as u16)
-                } else {
-                    (width, height)
+                let (w, h) = match (
+                    u16::try_from(cfg.width).ok(),
+                    u16::try_from(cfg.height).ok(),
+                ) {
+                    (Some(w), Some(h)) if w > 0 && h > 0 => (w, h),
+                    _ => (width, height),
                 };
                 return Ok(Some(SampleEntry {
                     kind: TrackKind::Video,

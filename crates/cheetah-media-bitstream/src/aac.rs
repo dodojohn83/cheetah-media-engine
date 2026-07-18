@@ -142,6 +142,12 @@ impl AdtsHeader {
             return Err(AacError::InvalidChannelConfig);
         }
         let channel_count = CHANNEL_COUNTS[channel_configuration as usize];
+
+        let header_size = if protection_absent { 7 } else { 9 };
+        if frame_length < header_size {
+            return Err(AacError::InvalidFrameLength);
+        }
+
         let samples_per_frame = 1024u16 * (1 + u16::from(number_of_raw_data_blocks_in_frame));
         let duration_ms = (samples_per_frame as u64 * 1000 / sampling_frequency as u64) as u32;
 

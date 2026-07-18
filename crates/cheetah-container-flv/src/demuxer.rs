@@ -374,7 +374,7 @@ impl FlvDemuxer {
                 }
                 let key = is_keyframe(payload, &vh);
                 let dts_ms = self.unwrapped_timestamp_ms(header.timestamp_ms);
-                let pts_ms = dts_ms + i64::from(vh.cts_ms);
+                let pts_ms = dts_ms.saturating_add(i64::from(vh.cts_ms));
                 let time =
                     MediaTime::from_ticks(Some(pts_ms), Some(dts_ms), None, TimeBase::DEFAULT);
                 let packet = self.new_packet(track_id, payload, time, key);

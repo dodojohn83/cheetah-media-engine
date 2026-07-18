@@ -222,7 +222,7 @@ impl H265ParameterSetCache {
 
     fn pixel_format(chroma_format_idc: u8, separate_colour_plane_flag: bool) -> PixelFormat {
         if chroma_format_idc == 3 && separate_colour_plane_flag {
-            return PixelFormat::I420;
+            return PixelFormat::Yuv444P;
         }
         match chroma_format_idc {
             0 => PixelFormat::Unknown(0),

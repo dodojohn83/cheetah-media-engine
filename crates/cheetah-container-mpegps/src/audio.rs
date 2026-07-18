@@ -65,8 +65,9 @@ impl AudioAssembler {
                 is_corrupt: false,
                 is_discontinuity: false,
             };
-            let duration_ticks = (u64::from(header.samples_per_frame) * 90_000
-                / u64::from(header.sampling_frequency)) as i64;
+            let duration_ticks =
+                u64::from(header.samples_per_frame) * 90_000 / u64::from(header.sampling_frequency);
+            let duration_ticks = i64::try_from(duration_ticks).unwrap_or(i64::MAX);
             let packet_time = MediaTime::new(
                 pts,
                 dts,
@@ -85,8 +86,8 @@ impl AudioAssembler {
             events.push_back(MpegPsEvent::Packet(packet));
 
             offset += frame_len;
-            pts = pts.map(|p| Timestamp::new(p.ticks() + duration_ticks));
-            dts = dts.map(|d| Timestamp::new(d.ticks() + duration_ticks));
+            pts = pts.map(|p| Timestamp::new(p.ticks().saturating_add(duration_ticks)));
+            dts = dts.map(|d| Timestamp::new(d.ticks().saturating_add(duration_ticks)));
         }
         Ok(())
     }
