@@ -127,6 +127,11 @@ function redactConfig(config: unknown): unknown {
       lower.includes('auth')
     ) {
       result[key] = '<redacted>';
+    } else if (typeof value === 'string' && (lower.endsWith('url') || lower.endsWith('uri'))) {
+      // Always run explicit URL/URI fields through sanitizeUrl, even if the
+      // scheme is not http(s). This prevents data:, blob:, file: and other
+      // scheme payloads from leaking in diagnostic bundles.
+      result[key] = sanitizeUrl(value);
     } else if (typeof value === 'string' && looksLikeUrl(value)) {
       result[key] = sanitizeUrl(value);
     } else if (typeof value === 'object' && value !== null) {

@@ -18,6 +18,20 @@ describe('diagnostics', () => {
     );
   });
 
+  it('redacts URL/URI config fields regardless of scheme', () => {
+    const bundle = buildDiagnostics(
+      'p',
+      'idle',
+      0,
+      { sourceUrl: 'data:text/plain;base64,secret', endpointUri: 'blob:https://x.com/uuid' },
+      {},
+    );
+    expect(bundle.config).toEqual({
+      sourceUrl: '<redacted>',
+      endpointUri: '<redacted>',
+    });
+  });
+
   it('redacts sensitive headers and preserves non-sensitive ones', () => {
     expect(
       redactHeaders({
