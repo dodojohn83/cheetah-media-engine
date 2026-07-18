@@ -120,8 +120,10 @@ impl AudioAssembler {
         };
 
         let mut track = TrackInfo::new(track_id, TrackKind::Audio, CodecId::Aac, TimeBase::TS_90K);
-        track.codec_config = CodecConfig::AacAudioSpecificConfig(config_bytes);
-        track.audio_format = Some(audio_format);
+        track.set_codec_config(CodecConfig::AacAudioSpecificConfig(config_bytes));
+        track
+            .set_audio_format(audio_format)
+            .map_err(|_| MpegPsError::InvalidInput)?;
         Ok(track)
     }
 }

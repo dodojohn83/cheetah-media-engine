@@ -51,6 +51,9 @@ impl From<ReadError> for H264Error {
     }
 }
 
+/// Maximum H.264 `num_ref_frames_in_pic_order_cnt_cycle` to prevent DoS.
+const MAX_NUM_REF_FRAMES_IN_CYCLE: u64 = 256;
+
 /// A single H.264 NAL unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NalUnit<'a> {
@@ -272,11 +275,20 @@ impl Sps {
         let high_profiles = [100u8, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139];
         if high_profiles.contains(&sps.profile_idc) {
             sps.chroma_format_idc = cursor.read_ue()?;
+            if sps.chroma_format_idc > 3 {
+                return Err(H264Error::InvalidSps);
+            }
             if sps.chroma_format_idc == 3 {
                 sps.separate_colour_plane_flag = cursor.read_bool()?;
             }
             sps.bit_depth_luma_minus8 = cursor.read_ue()?;
+            if sps.bit_depth_luma_minus8 > 6 {
+                return Err(H264Error::InvalidSps);
+            }
             sps.bit_depth_chroma_minus8 = cursor.read_ue()?;
+            if sps.bit_depth_chroma_minus8 > 6 {
+                return Err(H264Error::InvalidSps);
+            }
             let _qpprime_y_zero_transform_bypass_flag = cursor.read_bool()?;
             let seq_scaling_matrix_present_flag = cursor.read_bool()?;
             if seq_scaling_matrix_present_flag {
@@ -319,6 +331,9 @@ impl Sps {
             let _offset_non_ref = cursor.read_se()?;
             let _offset_top_bottom = cursor.read_se()?;
             let num_ref_frames = cursor.read_ue()?;
+            if num_ref_frames > MAX_NUM_REF_FRAMES_IN_CYCLE {
+                return Err(H264Error::InvalidSps);
+            }
             for _ in 0..num_ref_frames {
                 let _ = cursor.read_se()?;
             }

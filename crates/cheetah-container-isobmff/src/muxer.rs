@@ -198,7 +198,7 @@ fn write_ftyp() -> Vec<u8> {
 
 pub(crate) fn write_moov(configs: &BTreeMap<u32, TrackConfig>) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::new();
-    body.extend(write_mvhd(configs));
+    body.extend(write_mvhd(configs)?);
     for cfg in configs.values() {
         body.extend(write_trak(cfg)?);
     }
@@ -206,7 +206,7 @@ pub(crate) fn write_moov(configs: &BTreeMap<u32, TrackConfig>) -> Result<Vec<u8>
     Ok(write_box(types::MOOV, &body))
 }
 
-pub(crate) fn write_mvhd(configs: &BTreeMap<u32, TrackConfig>) -> Vec<u8> {
+pub(crate) fn write_mvhd(configs: &BTreeMap<u32, TrackConfig>) -> Result<Vec<u8>, Mp4Error> {
     let mut body = Vec::with_capacity(100);
     body.extend_from_slice(&write_fullbox(0, 0)); // version/flags
     write_u32(&mut body, 0); // creation_time
@@ -219,9 +219,15 @@ pub(crate) fn write_mvhd(configs: &BTreeMap<u32, TrackConfig>) -> Vec<u8> {
     body.extend_from_slice(&[0u8; 10]); // reserved
     body.extend_from_slice(&identity_matrix()); // matrix
     body.extend_from_slice(&[0u8; 24]); // pre_defined
-    let next_track_id = configs.keys().next_back().copied().unwrap_or(0) + 1;
+    let next_track_id = configs
+        .keys()
+        .next_back()
+        .copied()
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| Mp4Error::limit_exceeded("mvhd next_track_id overflow"))?;
     write_u32(&mut body, next_track_id);
-    write_box(types::MVHD, &body)
+    Ok(write_box(types::MVHD, &body))
 }
 
 pub(crate) fn write_trak(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
@@ -542,7 +548,11 @@ fn write_moof(
 
     for (track_id, packets) in track_packets {
         let (traf_box, patch_pos) = write_traf(*track_id, packets)?;
-        patches.push(moof_body.len() + patch_pos);
+        let pos = moof_body
+            .len()
+            .checked_add(patch_pos)
+            .ok_or_else(|| Mp4Error::limit_exceeded("moof patch position overflow"))?;
+        patches.push(pos);
         track_sizes.push(
             packets
                 .iter()
@@ -554,14 +564,24 @@ fn write_moof(
 
     // Patch data_offset values: offset from start of moof to first sample in mdat.
     let moof_size = 8 + moof_body.len() as u64;
-    let mdat_payload_offset = moof_size + 8;
+    let mdat_payload_offset = moof_size
+        .checked_add(8)
+        .ok_or_else(|| Mp4Error::limit_exceeded("moof/mdat payload offset overflow"))?;
     let mut cumulative = 0u64;
     for (patch_pos, total_size) in patches.iter().zip(track_sizes.iter()) {
-        let data_offset = i32::try_from(mdat_payload_offset + cumulative)
+        let offset = mdat_payload_offset
+            .checked_add(cumulative)
+            .ok_or_else(|| Mp4Error::limit_exceeded("trun data offset overflow"))?;
+        let data_offset = i32::try_from(offset)
             .map_err(|_| Mp4Error::limit_exceeded("trun data offset exceeds i32"))?;
         let pos = *patch_pos;
-        moof_body[pos..pos + 4].copy_from_slice(&data_offset.to_be_bytes());
-        cumulative += total_size;
+        let end = pos
+            .checked_add(4)
+            .ok_or_else(|| Mp4Error::limit_exceeded("trun patch end overflow"))?;
+        moof_body[pos..end].copy_from_slice(&data_offset.to_be_bytes());
+        cumulative = cumulative
+            .checked_add(*total_size)
+            .ok_or_else(|| Mp4Error::limit_exceeded("trun cumulative size overflow"))?;
     }
 
     Ok(write_box(types::MOOF, &moof_body))

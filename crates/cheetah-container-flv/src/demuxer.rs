@@ -120,6 +120,10 @@ impl FlvDemuxer {
     /// `NeedMoreData` is returned when a primitive cannot be completed. It is
     /// not fatal; call `push` with more bytes and retry.
     pub fn next_event(&mut self) -> Result<Option<FlvEvent>, FlvError> {
+        const MAX_BUFFER: usize = 64 * 1024 * 1024;
+        if self.buffer.len() > MAX_BUFFER {
+            return Err(FlvError::LimitExceeded);
+        }
         loop {
             if self.header.is_none() {
                 return self.parse_header();
@@ -266,6 +270,10 @@ impl FlvDemuxer {
     }
 
     fn process_tag(&mut self, header: FlvTagHeader) -> Result<Option<FlvEvent>, FlvError> {
+        // FLV reserves the stream id field and it must be zero.
+        if header.stream_id != 0 {
+            return Err(FlvError::MalformedTag);
+        }
         let data_size = header.data_size as usize;
         let total_size = data_size.checked_add(11).ok_or(FlvError::MalformedTag)?;
         if self.available() < total_size {
@@ -303,7 +311,10 @@ impl FlvDemuxer {
             id
         } else {
             let id = TrackId::new(self.next_audio_id).ok_or(FlvError::LimitExceeded)?;
-            self.next_audio_id += 2; // keep audio/video ids distinct
+            self.next_audio_id = self
+                .next_audio_id
+                .checked_add(2)
+                .ok_or(FlvError::LimitExceeded)?;
             let info = TrackInfo::new(id, TrackKind::Audio, CodecId::Aac, TimeBase::DEFAULT);
             self.audio.info = Some(info);
             id
@@ -350,7 +361,10 @@ impl FlvDemuxer {
             id
         } else {
             let id = TrackId::new(self.next_video_id).ok_or(FlvError::LimitExceeded)?;
-            self.next_video_id += 2;
+            self.next_video_id = self
+                .next_video_id
+                .checked_add(2)
+                .ok_or(FlvError::LimitExceeded)?;
             let info = TrackInfo::new(id, TrackKind::Video, CodecId::H264, TimeBase::DEFAULT);
             self.video.info = Some(info);
             id
@@ -366,6 +380,10 @@ impl FlvDemuxer {
                 }
                 if vh.packet_type == 2 {
                     // End of sequence; no media packet.
+                    return Ok(None);
+                }
+                if vh.packet_type != 1 {
+                    // Unknown/invalid AVC/HEVC packet type; do not emit garbage.
                     return Ok(None);
                 }
                 let payload = &data[vh.header_size..];
@@ -404,7 +422,7 @@ impl FlvDemuxer {
 
         // Detect a non-wrap backward jump (reset/discontinuity).
         const RESET_THRESHOLD: i64 = 10_000; // 10 seconds
-        if unwrapped_ms < self.last_unwrapped_ms - RESET_THRESHOLD {
+        if unwrapped_ms < self.last_unwrapped_ms.saturating_sub(RESET_THRESHOLD) {
             self.epoch_jumps += 1;
             self.stream_epoch = StreamEpoch::new(self.epoch_jumps);
             unwrapped_ms = raw;
