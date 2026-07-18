@@ -446,7 +446,9 @@ pub(crate) fn write_esds(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
 
     // ESDescriptor (tag 0x03)
     let mut es_body = Vec::with_capacity(3 + dcd.len() + slc.len());
-    write_u16(&mut es_body, cfg.track_id as u16); // ES_ID
+    let es_id = u16::try_from(cfg.track_id)
+        .map_err(|_| Mp4Error::limit_exceeded("track_id exceeds u16 for esds"))?;
+    write_u16(&mut es_body, es_id); // ES_ID
     es_body.push(0x00); // flags
     es_body.extend(dcd);
     es_body.extend(slc);
@@ -625,7 +627,7 @@ fn write_trun(packets: &[MediaPacket<'static>]) -> Result<(Vec<u8>, usize), Mp4E
             .time
             .pts
             .zip(pkt.time.dts)
-            .map(|(p, d)| p.ticks() - d.ticks())
+            .map(|(p, d)| p.ticks().saturating_sub(d.ticks()))
             .unwrap_or(0);
         let flags = if pkt.flags.is_keyframe {
             0x02000000
