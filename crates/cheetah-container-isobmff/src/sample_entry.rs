@@ -148,11 +148,7 @@ fn parse_audio_sample_entry(body: &[u8]) -> Result<Option<SampleEntry>, Mp4Error
             let fmt = AudioFormat {
                 sample_format: SampleFormat::S16,
                 sample_rate: asc.sampling_frequency,
-                channel_layout: if asc.channel_count == 1 {
-                    ChannelLayout::Mono
-                } else {
-                    ChannelLayout::Stereo
-                },
+                channel_layout: ChannelLayout::from_channel_count(u32::from(asc.channel_count)),
                 sample_count: 1024,
             };
             return Ok(Some(SampleEntry {
@@ -170,11 +166,7 @@ fn parse_audio_sample_entry(body: &[u8]) -> Result<Option<SampleEntry>, Mp4Error
     let fmt = AudioFormat {
         sample_format: SampleFormat::S16,
         sample_rate,
-        channel_layout: if channel_count == 1 {
-            ChannelLayout::Mono
-        } else {
-            ChannelLayout::Stereo
-        },
+        channel_layout: ChannelLayout::from_channel_count(u32::from(channel_count)),
         sample_count: 1024,
     };
 

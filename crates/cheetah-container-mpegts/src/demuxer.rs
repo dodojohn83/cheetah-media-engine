@@ -715,11 +715,9 @@ impl TsDemuxer {
                     let new_fmt = cheetah_media_types::AudioFormat {
                         sample_format: SampleFormat::S16,
                         sample_rate: header.sampling_frequency,
-                        channel_layout: if header.channel_count == 1 {
-                            ChannelLayout::Mono
-                        } else {
-                            ChannelLayout::Stereo
-                        },
+                        channel_layout: ChannelLayout::from_channel_count(u32::from(
+                            header.channel_count,
+                        )),
                         sample_count: header.samples_per_frame as u32,
                     };
                     let aot = header.profile + 1;
@@ -778,11 +776,9 @@ impl TsDemuxer {
                 let fmt = cheetah_media_types::AudioFormat {
                     sample_format: SampleFormat::S16,
                     sample_rate: header.sample_rate,
-                    channel_layout: if header.channel_count == 1 {
-                        ChannelLayout::Mono
-                    } else {
-                        ChannelLayout::Stereo
-                    },
+                    channel_layout: ChannelLayout::from_channel_count(u32::from(
+                        header.channel_count,
+                    )),
                     sample_count: header.samples_per_frame as u32,
                 };
                 state.info.set_audio_format(fmt).ok();
@@ -797,11 +793,7 @@ impl TsDemuxer {
             let fmt = cheetah_media_types::AudioFormat {
                 sample_format: SampleFormat::S16,
                 sample_rate: header.sample_rate,
-                channel_layout: if header.channel_count == 1 {
-                    ChannelLayout::Mono
-                } else {
-                    ChannelLayout::Stereo
-                },
+                channel_layout: ChannelLayout::from_channel_count(u32::from(header.channel_count)),
                 sample_count: header.samples_per_frame as u32,
             };
             state.info.set_audio_format(fmt).ok();

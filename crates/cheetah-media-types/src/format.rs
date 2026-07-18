@@ -76,6 +76,21 @@ impl ChannelLayout {
             Self::Unknown(mask) => mask.count_ones(),
         }
     }
+
+    /// Build a `ChannelLayout` from a raw channel count.
+    ///
+    /// Counts that do not match a named layout are stored as an `Unknown`
+    /// bitmask with `count` low bits set so `ChannelLayout::channels()` still
+    /// returns the original count.
+    pub fn from_channel_count(count: u32) -> Self {
+        match count {
+            1 => Self::Mono,
+            2 => Self::Stereo,
+            0 => Self::Unknown(0),
+            n if n >= 64 => Self::Unknown(u64::MAX),
+            n => Self::Unknown((1u64 << n) - 1),
+        }
+    }
 }
 
 /// Video format descriptor.
