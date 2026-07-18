@@ -32,7 +32,7 @@ impl MpegPsDemuxer {
             buffer: Vec::new(),
             pending_events: VecDeque::new(),
             video: crate::video::VideoEsAssembler::new(config),
-            audio: crate::audio::AudioAssembler::new(),
+            audio: crate::audio::AudioAssembler::new(config),
             ended: false,
             eof_emitted: false,
             error: None,
