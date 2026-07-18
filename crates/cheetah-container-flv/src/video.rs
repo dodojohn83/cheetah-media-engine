@@ -6,7 +6,9 @@ use cheetah_media_bitstream::{
     h264::{self, H264CodecConfig},
     h265::{self, H265CodecConfig, NalUnitType as H265NalUnitType},
 };
-use cheetah_media_types::{CodecConfig, CodecId, MediaError, TrackInfo, TrackKind};
+use cheetah_media_types::{
+    CodecConfig, CodecId, ColorSpace, MediaError, PixelFormat, TrackInfo, TrackKind, VideoFormat,
+};
 
 use crate::FlvError;
 
@@ -170,14 +172,14 @@ pub fn parse_video_config(
             if config.width != 0 && config.height != 0 {
                 let w = config.width;
                 let h = config.height;
-                let format = cheetah_media_types::VideoFormat {
-                    pixel_format: cheetah_media_types::PixelFormat::Yuv420P,
+                let format = VideoFormat {
+                    pixel_format: config.pixel_format(),
                     coded_width: w,
                     coded_height: h,
                     visible_width: w,
                     visible_height: h,
                     stride: w,
-                    color_space: cheetah_media_types::ColorSpace::Unspecified,
+                    color_space: ColorSpace::Unspecified,
                 };
                 track.set_video_format(format).ok();
             }
@@ -189,8 +191,30 @@ pub fn parse_video_config(
             track.set_codec_config(CodecConfig::HevcC(
                 config.build().map_err(|_| FlvError::MalformedTag)?,
             ));
-            // H.265 config parsing does not currently expose visible dimensions;
-            // they will be derived from the SPS in a later work package.
+            // Derive dimensions and pixel format from the first SPS, if available.
+            if let Some(sps) = config.sps_list.first()
+                && let Ok(parsed) = h265::H265Sps::parse(sps)
+            {
+                let w = parsed.width();
+                let h = parsed.height();
+                let pixel_format = match parsed.chroma_format_idc {
+                    0 => PixelFormat::Unknown(0),
+                    1 => PixelFormat::Yuv420P,
+                    2 => PixelFormat::Yuv422P,
+                    3 => PixelFormat::Yuv444P,
+                    n => PixelFormat::Unknown(n as u32),
+                };
+                let format = VideoFormat {
+                    pixel_format,
+                    coded_width: w,
+                    coded_height: h,
+                    visible_width: w,
+                    visible_height: h,
+                    stride: w,
+                    color_space: ColorSpace::Unspecified,
+                };
+                track.set_video_format(format).ok();
+            }
             Ok(())
         }
         _ => Err(FlvError::UnsupportedCodec),

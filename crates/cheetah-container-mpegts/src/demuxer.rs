@@ -496,8 +496,15 @@ impl TsDemuxer {
         );
         if old != new_config {
             state.info.set_codec_config(new_config);
+            let pixel_format = match sps.chroma_format_idc {
+                0 => PixelFormat::Unknown(0),
+                1 => PixelFormat::Yuv420P,
+                2 => PixelFormat::Yuv422P,
+                3 => PixelFormat::Yuv444P,
+                n => PixelFormat::Unknown(n as u32),
+            };
             let format = VideoFormat {
-                pixel_format: PixelFormat::Yuv420P,
+                pixel_format,
                 coded_width: sps.width,
                 coded_height: sps.height,
                 visible_width: sps.width,
@@ -571,14 +578,66 @@ impl TsDemuxer {
         if state.h265_sps.is_empty() {
             return Ok(());
         }
+
+        // Parse VPS/SPS to populate the HEVCDecoderConfigurationRecord fields
+        // and derive the video format. Missing values fall back to defaults.
+        let vps = state
+            .h265_vps
+            .first()
+            .and_then(|nal| h265::H265Vps::parse(nal).ok());
+        let sps = state
+            .h265_sps
+            .first()
+            .and_then(|nal| h265::H265Sps::parse(nal).ok());
+        let ptl = vps
+            .as_ref()
+            .map(|v| &v.profile_tier_level)
+            .or_else(|| sps.as_ref().map(|s| &s.profile_tier_level));
+
+        let (width, height, pixel_format) = sps
+            .map(|s| {
+                let pf = match s.chroma_format_idc {
+                    0 => PixelFormat::Unknown(0),
+                    1 => PixelFormat::Yuv420P,
+                    2 => PixelFormat::Yuv422P,
+                    3 => PixelFormat::Yuv444P,
+                    n => PixelFormat::Unknown(n as u32),
+                };
+                (s.width(), s.height(), pf)
+            })
+            .unwrap_or((0, 0, PixelFormat::Yuv420P));
+
         let mut cfg = cheetah_media_bitstream::H265CodecConfig {
             configuration_version: 1,
             length_size_minus_one: 3,
             ..Default::default()
         };
+        if let Some(ptl) = ptl {
+            cfg.general_profile_space = ptl.general_profile_space;
+            cfg.general_tier_flag = ptl.general_tier_flag;
+            cfg.general_profile_idc = ptl.general_profile_idc;
+            cfg.general_profile_compatibility_flags = ptl.general_profile_compatibility_flags;
+            cfg.general_constraint_indicator_flags = ptl.general_constraint_indicator_flags;
+            cfg.general_level_idc = ptl.general_level_idc;
+        }
+        if let Some(s) = sps.as_ref() {
+            cfg.chroma_format = s.chroma_format_idc;
+            cfg.bit_depth_luma_minus8 = s.bit_depth_luma_minus8;
+            cfg.bit_depth_chroma_minus8 = s.bit_depth_chroma_minus8;
+            cfg.num_temporal_layers = s.max_sub_layers_minus1.saturating_add(1);
+            cfg.temporal_id_nested = s.temporal_id_nesting_flag;
+        }
         cfg.vps_list = state.h265_vps.clone();
         cfg.sps_list = state.h265_sps.clone();
         cfg.pps_list = state.h265_pps.clone();
+        cfg.codec_string = cheetah_media_bitstream::H265CodecConfig::build_codec_string(
+            cfg.general_profile_space,
+            cfg.general_tier_flag,
+            cfg.general_profile_idc,
+            cfg.general_profile_compatibility_flags,
+            cfg.general_constraint_indicator_flags,
+            cfg.general_level_idc,
+        );
 
         let new_config = CodecConfig::HevcC(
             cfg.build()
@@ -586,6 +645,18 @@ impl TsDemuxer {
         );
         if state.info.codec_config != new_config {
             state.info.set_codec_config(new_config);
+            if width > 0 && height > 0 {
+                let format = VideoFormat {
+                    pixel_format,
+                    coded_width: width,
+                    coded_height: height,
+                    visible_width: width,
+                    visible_height: height,
+                    stride: width,
+                    color_space: ColorSpace::Unspecified,
+                };
+                state.info.set_video_format(format).ok();
+            }
             self.pending_events
                 .push_back(TsEvent::Track(state.info.clone()));
         }
