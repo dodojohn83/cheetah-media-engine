@@ -63,11 +63,18 @@ impl FragmentedMp4Muxer {
     }
 
     /// Push a packet into the muxer.
-    pub fn push_packet(&mut self, packet: MediaPacket<'static>) {
-        self.buffers
-            .entry(packet.track_id.get())
-            .or_default()
-            .push(packet);
+    ///
+    /// Returns an error if the packet's track id has not been configured.
+    pub fn push_packet(&mut self, packet: MediaPacket<'static>) -> Result<(), Mp4Error> {
+        let track_id = packet.track_id.get();
+        if !self.configs.contains_key(&track_id) {
+            return Err(Mp4Error::invalid_input(
+                3505,
+                Some("packet track id not configured"),
+            ));
+        }
+        self.buffers.entry(track_id).or_default().push(packet);
+        Ok(())
     }
 
     /// Flush a media segment. Returns `None` if there is nothing to flush.

@@ -272,7 +272,9 @@ fn audio_mux_demux_roundtrip() {
 
     let payloads: Vec<_> = (0..3).map(|i| vec![i as u8; 16]).collect();
     for (i, payload) in payloads.iter().cloned().enumerate() {
-        muxer.push_packet(make_audio_packet(1, i as u64, i as i64 * 1024, payload));
+        muxer
+            .push_packet(make_audio_packet(1, i as u64, i as i64 * 1024, payload))
+            .unwrap();
     }
 
     let out = collect_packets_from_muxer_and_demux(&mut muxer);
@@ -289,23 +291,29 @@ fn video_mux_demux_roundtrip_preserves_payloads_and_timestamps() {
     muxer.configure(make_video_config());
 
     let payloads = [vec![1u8; 10], vec![2u8; 10], vec![3u8; 10]];
-    muxer.push_packet(make_video_packet(1, 0, 0, 0, true, payloads[0].clone()));
-    muxer.push_packet(make_video_packet(
-        1,
-        1,
-        3000,
-        3000,
-        false,
-        payloads[1].clone(),
-    ));
-    muxer.push_packet(make_video_packet(
-        1,
-        2,
-        6000,
-        6000,
-        true,
-        payloads[2].clone(),
-    ));
+    muxer
+        .push_packet(make_video_packet(1, 0, 0, 0, true, payloads[0].clone()))
+        .unwrap();
+    muxer
+        .push_packet(make_video_packet(
+            1,
+            1,
+            3000,
+            3000,
+            false,
+            payloads[1].clone(),
+        ))
+        .unwrap();
+    muxer
+        .push_packet(make_video_packet(
+            1,
+            2,
+            6000,
+            6000,
+            true,
+            payloads[2].clone(),
+        ))
+        .unwrap();
 
     let out = collect_packets_from_muxer_and_demux(&mut muxer);
     assert_eq!(out.len(), 3);
@@ -333,16 +341,16 @@ fn negative_composition_offset_roundtrip() {
     // pts = dts - 1000 ticks (B-frame-like negative CTS).
     let mut pkt = make_video_packet(1, 0, 0, 0, true, vec![1u8; 10]);
     pkt.flags.is_keyframe = true;
-    muxer.push_packet(pkt);
+    muxer.push_packet(pkt).unwrap();
 
     let mut pkt2 = make_video_packet(1, 1, 3000, 2000, false, vec![2u8; 10]);
     pkt2.flags.is_keyframe = false;
-    muxer.push_packet(pkt2);
+    muxer.push_packet(pkt2).unwrap();
 
     // Need a closing keyframe so the segment is flushed.
     let mut pkt3 = make_video_packet(1, 2, 6000, 6000, true, vec![3u8; 10]);
     pkt3.flags.is_keyframe = true;
-    muxer.push_packet(pkt3);
+    muxer.push_packet(pkt3).unwrap();
 
     let out = collect_packets_from_muxer_and_demux(&mut muxer);
     assert_eq!(out.len(), 3);
@@ -370,7 +378,7 @@ fn multi_track_av_sync_roundtrip() {
 
     for (i, payload) in audio_payloads.iter().cloned().enumerate() {
         let a = make_audio_packet(1, i as u64, i as i64 * 1024, payload);
-        muxer.push_packet(a);
+        muxer.push_packet(a).unwrap();
     }
     for (i, payload) in video_payloads.iter().cloned().enumerate() {
         let v = make_video_packet(
@@ -381,7 +389,7 @@ fn multi_track_av_sync_roundtrip() {
             true,
             payload,
         );
-        muxer.push_packet(v);
+        muxer.push_packet(v).unwrap();
     }
 
     let out = collect_packets_from_muxer_and_demux(&mut muxer);
@@ -402,13 +410,17 @@ fn multi_track_av_sync_roundtrip() {
 fn config_change_emits_new_init_segment() {
     let mut muxer = FragmentedMp4Muxer::new();
     muxer.configure(make_audio_config());
-    muxer.push_packet(make_audio_packet(1, 0, 0, vec![0u8; 16]));
+    muxer
+        .push_packet(make_audio_packet(1, 0, 0, vec![0u8; 16]))
+        .unwrap();
 
     let first = muxer.flush_segment().unwrap().unwrap();
     assert!(first.init_segment.is_some());
 
     // Same config: no new init segment.
-    muxer.push_packet(make_audio_packet(1, 1, 1024, vec![1u8; 16]));
+    muxer
+        .push_packet(make_audio_packet(1, 1, 1024, vec![1u8; 16]))
+        .unwrap();
     let second = muxer.flush_segment().unwrap().unwrap();
     assert!(second.init_segment.is_none());
 
@@ -416,7 +428,9 @@ fn config_change_emits_new_init_segment() {
     let mut new_cfg = make_audio_config();
     new_cfg.timescale = 48000;
     muxer.configure(new_cfg);
-    muxer.push_packet(make_audio_packet(1, 2, 1024, vec![2u8; 16]));
+    muxer
+        .push_packet(make_audio_packet(1, 2, 1024, vec![2u8; 16]))
+        .unwrap();
     let third = muxer.flush_segment().unwrap().unwrap();
     assert!(third.init_segment.is_some());
 }
@@ -528,23 +542,29 @@ fn progressive_mp4_video_roundtrip_with_b_frames() {
     muxer.configure(make_video_config());
 
     let payloads = [vec![1u8; 10], vec![2u8; 10], vec![3u8; 10]];
-    let _ = muxer.push_packet(make_video_packet(1, 0, 0, 0, true, payloads[0].clone()));
-    let _ = muxer.push_packet(make_video_packet(
-        1,
-        1,
-        3000,
-        2000,
-        false,
-        payloads[1].clone(),
-    ));
-    let _ = muxer.push_packet(make_video_packet(
-        1,
-        2,
-        6000,
-        6000,
-        true,
-        payloads[2].clone(),
-    ));
+    muxer
+        .push_packet(make_video_packet(1, 0, 0, 0, true, payloads[0].clone()))
+        .unwrap();
+    muxer
+        .push_packet(make_video_packet(
+            1,
+            1,
+            3000,
+            2000,
+            false,
+            payloads[1].clone(),
+        ))
+        .unwrap();
+    muxer
+        .push_packet(make_video_packet(
+            1,
+            2,
+            6000,
+            6000,
+            true,
+            payloads[2].clone(),
+        ))
+        .unwrap();
 
     let mp4 = muxer.finish().unwrap();
 
