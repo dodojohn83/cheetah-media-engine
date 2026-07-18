@@ -19,6 +19,8 @@ pub(crate) struct AudioAssembler {
     track: Option<TrackInfo>,
     sequence: u64,
     leftover: Vec<u8>,
+    /// Timestamp for the first access unit that begins in `leftover`.
+    leftover_time: Option<MediaTime>,
 }
 
 impl AudioAssembler {
@@ -28,6 +30,7 @@ impl AudioAssembler {
             track: None,
             sequence: 0,
             leftover: Vec::new(),
+            leftover_time: None,
         }
     }
 
@@ -35,6 +38,7 @@ impl AudioAssembler {
         self.track = None;
         self.sequence = 0;
         self.leftover.clear();
+        self.leftover_time = None;
     }
 
     pub(crate) fn process_payload(
@@ -48,16 +52,25 @@ impl AudioAssembler {
         // Audio PES payloads can be split across packet boundaries, so keep any
         // trailing partial ADTS frame for the next payload.  On non-AAC or
         // corrupt audio streams we must not retain garbage indefinitely.
-        let mut data = Vec::with_capacity(self.leftover.len() + payload.len());
+        let leftover_len = self.leftover.len();
+        let leftover_time = self.leftover_time;
+        let mut data = Vec::with_capacity(leftover_len + payload.len());
         data.extend_from_slice(&self.leftover);
         data.extend_from_slice(payload);
         self.leftover.clear();
+        self.leftover_time = None;
 
         let mut offset = 0;
-        let mut pts = media_time.pts;
-        let mut dts = media_time.dts;
+        let mut pts = leftover_time.map_or(media_time.pts, |t| t.pts);
+        let mut dts = leftover_time.map_or(media_time.dts, |t| t.dts);
+        let mut switched_to_media_time = leftover_time.is_none();
         let mut retain_remaining = false;
         while offset < data.len() {
+            if !switched_to_media_time && offset >= leftover_len {
+                pts = media_time.pts;
+                dts = media_time.dts;
+                switched_to_media_time = true;
+            }
             let header = match AdtsHeader::parse(&data[offset..]) {
                 Ok(h) => h,
                 Err(AacError::TooShort) => {
@@ -118,11 +131,13 @@ impl AudioAssembler {
             let remaining = data.len() - offset;
             if remaining > self.config.max_buffer_bytes {
                 self.leftover.clear();
+                self.leftover_time = None;
                 return Err(MpegPsError::BufferExceeded {
                     max: self.config.max_buffer_bytes,
                 });
             }
             self.leftover.extend_from_slice(&data[offset..]);
+            self.leftover_time = Some(MediaTime::new(pts, dts, None, media_time.timebase));
         }
         Ok(())
     }
