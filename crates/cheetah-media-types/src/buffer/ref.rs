@@ -78,10 +78,12 @@ impl<'a> BufferRef<'a> {
 
     /// Slice the buffer without copying.
     ///
-    /// Panics if `range` is out of bounds.
+    /// Returns `Self::Empty` for invalid or empty ranges instead of panicking.
     pub fn slice(&self, range: Range<usize>) -> Self {
         let data = self.as_ref();
-        assert!(range.end <= data.len(), "BufferRef slice out of bounds");
+        if range.start > range.end || range.end > data.len() {
+            return Self::Empty;
+        }
         if range.is_empty() {
             return Self::Empty;
         }

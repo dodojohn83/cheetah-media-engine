@@ -11,7 +11,7 @@ use crate::{
     FlvError,
     amf::{AmfLimits, FlvScriptData, parse_script_data},
     audio::{AudioTagHeader, parse_aac_config},
-    header::{FlvHeader, FlvTagHeader, parse_file_header, parse_tag_header, tag_total_size},
+    header::{FlvHeader, FlvTagHeader, parse_file_header, parse_tag_header},
     video::{VideoCodecId, VideoTagHeader, is_keyframe, parse_video_config},
 };
 
@@ -266,17 +266,23 @@ impl FlvDemuxer {
     }
 
     fn process_tag(&mut self, header: FlvTagHeader) -> Result<Option<FlvEvent>, FlvError> {
-        let total_size = tag_total_size(header.data_size);
-        if self.available() < total_size as usize {
+        let data_size = header.data_size as usize;
+        let total_size = data_size.checked_add(11).ok_or(FlvError::MalformedTag)?;
+        if self.available() < total_size {
             return Ok(None);
         }
 
         let start = self.read_pos;
-        let data_start = start + 11;
-        let data_end = data_start + header.data_size as usize;
+        let data_start = start.checked_add(11).ok_or(FlvError::MalformedTag)?;
+        let data_end = data_start
+            .checked_add(data_size)
+            .ok_or(FlvError::MalformedTag)?;
+        if data_end > self.buffer.len() {
+            return Ok(None);
+        }
         let data = self.buffer[data_start..data_end].to_vec();
         self.read_pos = data_end;
-        self.previous_tag_total_size = total_size;
+        self.previous_tag_total_size = total_size as u32;
         self.shrink();
 
         match header.tag_type {

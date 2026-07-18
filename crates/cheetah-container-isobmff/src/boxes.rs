@@ -364,13 +364,21 @@ pub fn write_u16(v: &mut Vec<u8>, value: u16) {
 }
 
 /// Build an ISOBMFF box from `box_type` and body bytes, prepending size/type.
+/// Falls back to a 64-bit sized box if the body is too large for a 32-bit size.
 pub fn write_box(box_type: u32, body: &[u8]) -> Vec<u8> {
-    let size = (8usize + body.len()) as u32;
-    let mut out = Vec::with_capacity(size as usize);
-    write_u32(&mut out, size);
-    write_u32(&mut out, box_type);
-    out.extend_from_slice(body);
-    out
+    if let Some(size) = body
+        .len()
+        .checked_add(8)
+        .and_then(|s| u32::try_from(s).ok())
+    {
+        let mut out = Vec::with_capacity(size as usize);
+        write_u32(&mut out, size);
+        write_u32(&mut out, box_type);
+        out.extend_from_slice(body);
+        out
+    } else {
+        write_box64(box_type, body)
+    }
 }
 
 /// Build an ISOBMFF box with 64-bit size.

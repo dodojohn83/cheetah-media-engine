@@ -95,32 +95,19 @@ impl Metrics {
         }
     }
 
-    /// Record total dropped milliseconds from the latency controller.
+    /// Record additional dropped milliseconds from a latency correction.
     pub fn record_dropped_ms(&mut self, ms: i64) {
-        self.total_dropped_ms = ms;
+        self.total_dropped_ms = self.total_dropped_ms.saturating_add(ms);
     }
 
     /// Take an immutable snapshot.
     pub fn snapshot(&self) -> MetricsSnapshot {
-        let mut copy = BTreeMap::new();
-        for reason in [
-            CopyReason::NetworkToWasm,
-            CopyReason::ParserReassembly,
-            CopyReason::DemuxToDecoder,
-            CopyReason::DemuxToMse,
-            CopyReason::DecoderToRenderer,
-        ] {
-            let bytes = self.copy_budget.get(reason);
-            let count = self.copy_budget.get_count(reason);
-            if bytes > 0 || count > 0 {
-                copy.insert(reason.as_str().to_string(), CopyMetric { bytes, count });
-            }
-        }
+        let mut copy: BTreeMap<String, CopyMetric> = BTreeMap::new();
         for (reason, counter) in self.copy_budget.counters().iter() {
             let key = reason.as_str().to_string();
             let entry = copy.entry(key).or_default();
-            entry.bytes = counter.bytes;
-            entry.count = counter.count;
+            entry.bytes = entry.bytes.saturating_add(counter.bytes);
+            entry.count = entry.count.saturating_add(counter.count);
         }
 
         MetricsSnapshot {

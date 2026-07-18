@@ -183,8 +183,8 @@ impl StageBudget {
     }
 
     /// Determine whether a newly arriving item should be admitted under the
-    /// configured policy. Video is droppable in live mode when it is not a
-    /// keyframe; audio and decoder references are never dropped.
+    /// configured policy. Non-key video is droppable in live mode; audio and
+    /// keyframes are never dropped.
     pub fn should_admit(
         &self,
         current: usize,
@@ -192,7 +192,6 @@ impl StageBudget {
         is_video: bool,
         is_keyframe: bool,
     ) -> bool {
-        let _ = is_live;
         if current < self.max_in_flight {
             return true;
         }
@@ -202,8 +201,8 @@ impl StageBudget {
             // in-flight item to make room.
             DropPolicy::DropOldest => current <= self.max_in_flight,
             DropPolicy::DropNonKeyframe => {
-                if is_video && !is_keyframe {
-                    // Drop the stale non-key video frame itself.
+                if is_live && is_video && !is_keyframe {
+                    // Drop the stale non-key video frame itself in live mode.
                     false
                 } else {
                     // Audio and keyframes are never dropped; admit one over the
@@ -279,9 +278,10 @@ mod tests {
         // Audio and keyframes are not dropped.
         assert!(budget.should_admit(16, true, false, false));
         assert!(budget.should_admit(16, true, true, true));
-        // Non-live always admits until the hard limit.
+        // Non-live video is not dropped; it is admitted up to the hard limit.
         assert!(budget.should_admit(15, false, true, false));
-        assert!(!budget.should_admit(16, false, true, false));
+        assert!(budget.should_admit(16, false, true, false));
+        assert!(!budget.should_admit(17, false, true, false));
 
         // DropOldest admits at the limit so the caller can evict the oldest item.
         let oldest = StageBudget::new(16, 12, 8, DropPolicy::DropOldest);
@@ -302,9 +302,9 @@ mod tests {
         assert!(budget.should_admit(16, false, true, true));
         assert!(budget.should_admit(16, true, false, false));
         assert!(budget.should_admit(16, true, true, true));
-        // Non-key video is dropped regardless of live/non-live.
+        // Non-key video is dropped only in live mode.
         assert!(!budget.should_admit(16, true, true, false));
-        assert!(!budget.should_admit(16, false, true, false));
+        assert!(budget.should_admit(16, false, true, false));
     }
 
     #[test]

@@ -124,7 +124,9 @@ impl Timestamp {
     /// This gives a deterministic interpretation of timestamp wrap without floating
     /// point arithmetic.
     pub fn unwrapped_around(self, previous: Self, wrap_bits: u8) -> Self {
-        assert!((1..=62).contains(&wrap_bits), "wrap_bits must be in 1..=62");
+        if !(1..=62).contains(&wrap_bits) {
+            return self;
+        }
         let value = i128::from(self.0);
         let prev = i128::from(previous.0);
         let mask = (1i128 << wrap_bits) - 1;

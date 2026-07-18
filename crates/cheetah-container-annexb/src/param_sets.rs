@@ -283,6 +283,7 @@ impl H265ParameterSetCache {
                 ptl.general_profile_space,
                 ptl.general_tier_flag,
                 ptl.general_profile_idc,
+                ptl.general_profile_compatibility_flags,
                 ptl.general_constraint_indicator_flags,
                 ptl.general_level_idc,
             ),

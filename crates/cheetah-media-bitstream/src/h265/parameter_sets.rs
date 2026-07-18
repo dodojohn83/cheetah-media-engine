@@ -151,7 +151,10 @@ impl Sps {
     pub fn width(self) -> u32 {
         let (sub_width, _) =
             Self::chroma_subsampling(self.chroma_format_idc, self.separate_colour_plane_flag);
-        let crop_width = (self.conf_win_left_offset + self.conf_win_right_offset) * sub_width;
+        let crop_width = self
+            .conf_win_left_offset
+            .saturating_add(self.conf_win_right_offset)
+            .saturating_mul(sub_width);
         self.pic_width_in_luma_samples
             .saturating_sub(crop_width)
             .max(1)
@@ -161,7 +164,10 @@ impl Sps {
     pub fn height(self) -> u32 {
         let (_, sub_height) =
             Self::chroma_subsampling(self.chroma_format_idc, self.separate_colour_plane_flag);
-        let crop_height = (self.conf_win_top_offset + self.conf_win_bottom_offset) * sub_height;
+        let crop_height = self
+            .conf_win_top_offset
+            .saturating_add(self.conf_win_bottom_offset)
+            .saturating_mul(sub_height);
         self.pic_height_in_luma_samples
             .saturating_sub(crop_height)
             .max(1)
@@ -199,15 +205,21 @@ impl Sps {
 
         // sps_seq_parameter_set_id: ue(v)
         cursor.read_ue()?;
-        let chroma_format_idc = cursor.read_ue()? as u8;
+        let chroma_format_idc =
+            u8::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
+        if chroma_format_idc > 3 {
+            return Err(H265Error::InvalidConfig);
+        }
         let separate_colour_plane_flag = if chroma_format_idc == 3 {
             cursor.read_bool()?
         } else {
             false
         };
 
-        let pic_width_in_luma_samples = cursor.read_ue()? as u32;
-        let pic_height_in_luma_samples = cursor.read_ue()? as u32;
+        let pic_width_in_luma_samples =
+            u32::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
+        let pic_height_in_luma_samples =
+            u32::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
 
         let conformance_window_flag = cursor.read_bool()?;
         let mut conf_win_left_offset = 0u32;
@@ -215,14 +227,20 @@ impl Sps {
         let mut conf_win_top_offset = 0u32;
         let mut conf_win_bottom_offset = 0u32;
         if conformance_window_flag {
-            conf_win_left_offset = cursor.read_ue()? as u32;
-            conf_win_right_offset = cursor.read_ue()? as u32;
-            conf_win_top_offset = cursor.read_ue()? as u32;
-            conf_win_bottom_offset = cursor.read_ue()? as u32;
+            conf_win_left_offset =
+                u32::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
+            conf_win_right_offset =
+                u32::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
+            conf_win_top_offset =
+                u32::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
+            conf_win_bottom_offset =
+                u32::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
         }
 
-        let bit_depth_luma_minus8 = cursor.read_ue()? as u8;
-        let bit_depth_chroma_minus8 = cursor.read_ue()? as u8;
+        let bit_depth_luma_minus8 =
+            u8::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
+        let bit_depth_chroma_minus8 =
+            u8::try_from(cursor.read_ue()?).map_err(|_| H265Error::InvalidConfig)?;
 
         Ok(Self {
             profile_tier_level: ptl,

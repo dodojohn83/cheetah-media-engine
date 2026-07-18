@@ -422,6 +422,7 @@ impl H265CodecConfig {
             cfg.general_profile_space,
             cfg.general_tier_flag,
             cfg.general_profile_idc,
+            cfg.general_profile_compatibility_flags,
             cfg.general_constraint_indicator_flags,
             cfg.general_level_idc,
         );
@@ -433,24 +434,52 @@ impl H265CodecConfig {
         profile_space: u8,
         tier: u8,
         profile_idc: u8,
+        profile_compatibility_flags: u32,
         constraint: u64,
         level_idc: u8,
     ) -> alloc::string::String {
-        // HEVC RFC 6381 form:
-        //   hev1.<profile_space><tier><profile_idc>.<constraint>.<level>
-        // where profile_space 0 is omitted or printed directly; tier is 'L' or 'H'.
+        // RFC 6381 / ISO 14496-15 E.3 HEVC codec string:
+        //   hev1.<profile_space_letter?><profile_idc>.<profile_compatibility_hex>
+        //       .<tier_char><level_idc>.[<constraint_bytes...>]
+        // profile_space letters: 0 omitted, 1=A, 2=B, 3=C. Trailing zero
+        // constraint bytes are omitted.
         let tier_char = if tier == 0 { 'L' } else { 'H' };
+        let profile_prefix = match profile_space {
+            0 => "",
+            1 => "A",
+            2 => "B",
+            3 => "C",
+            _ => "",
+        };
         let constraint = constraint & 0xffff_ffff_ffff; // keep 48 bits
-        alloc::format!(
-            "hev1.{}{:.1}.{:x}.{}.{}.{}.{:x}",
-            profile_space,
-            tier_char,
+        let mut bytes = [0u8; 6];
+        for (i, byte) in bytes.iter_mut().enumerate() {
+            *byte = ((constraint >> ((5 - i) * 8)) & 0xff) as u8;
+        }
+        let last = bytes
+            .iter()
+            .rposition(|&b| b != 0)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        let mut out = alloc::format!(
+            "hev1.{}{}.{:x}.{}{}",
+            profile_prefix,
             profile_idc,
-            (constraint >> 40) & 0xff,
-            (constraint >> 32) & 0xff,
-            (constraint >> 24) & 0xff,
+            profile_compatibility_flags,
+            tier_char,
             level_idc
-        )
+        );
+        if last > 0 {
+            out.push('.');
+            for (i, byte) in bytes.iter().take(last).enumerate() {
+                if i > 0 {
+                    out.push('.');
+                }
+                out.push_str(&alloc::format!("{:02x}", byte));
+            }
+        }
+        out
     }
 
     /// Build a minimal HEVCDecoderConfigurationRecord containing VPS/SPS/PPS arrays.
@@ -574,12 +603,14 @@ mod tests {
         assert_eq!(parsed.pps_list, vec![pps.to_vec()]);
         assert_eq!(parsed.general_profile_idc, 1);
         assert_eq!(parsed.general_level_idc, 93);
+        assert_eq!(parsed.codec_string, "hev1.1.60000000.L93");
 
         // Parse/build round-trip preserves VPS/SPS/PPS boundaries.
         let rebuilt = H265CodecConfig::parse(&parsed.build()).unwrap();
         assert_eq!(rebuilt.vps_list, parsed.vps_list);
         assert_eq!(rebuilt.sps_list, parsed.sps_list);
         assert_eq!(rebuilt.pps_list, parsed.pps_list);
+        assert_eq!(rebuilt.codec_string, parsed.codec_string);
     }
 
     #[test]
