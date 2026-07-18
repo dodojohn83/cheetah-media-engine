@@ -17,6 +17,7 @@ pub struct SampleEntry {
     pub height: u16,
     pub codec_config: CodecConfig,
     pub audio_format: Option<AudioFormat>,
+    pub pixel_format: PixelFormat,
 }
 
 impl SampleEntry {
@@ -29,7 +30,7 @@ impl SampleEntry {
         }
         if self.kind == TrackKind::Video {
             let format = VideoFormat {
-                pixel_format: PixelFormat::Yuv420P,
+                pixel_format: self.pixel_format,
                 coded_width: u32::from(self.width),
                 coded_height: u32::from(self.height),
                 visible_width: u32::from(self.width),
@@ -83,6 +84,7 @@ fn parse_visual_sample_entry(body: &[u8], codec: CodecId) -> Result<Option<Sampl
                             .map_err(|_| Mp4Error::invalid_input(3101, Some("invalid avcC")))?,
                     ),
                     audio_format: None,
+                    pixel_format: cfg.pixel_format(),
                 }));
             }
             types::HVCC => {
@@ -110,6 +112,7 @@ fn parse_visual_sample_entry(body: &[u8], codec: CodecId) -> Result<Option<Sampl
                             .map_err(|_| Mp4Error::invalid_input(3102, Some("invalid hvcC")))?,
                     ),
                     audio_format: None,
+                    pixel_format: cfg.pixel_format(),
                 }));
             }
             _ => {}
@@ -123,6 +126,7 @@ fn parse_visual_sample_entry(body: &[u8], codec: CodecId) -> Result<Option<Sampl
         height,
         codec_config: CodecConfig::None,
         audio_format: None,
+        pixel_format: PixelFormat::Yuv420P,
     }))
 }
 
@@ -158,6 +162,7 @@ fn parse_audio_sample_entry(body: &[u8]) -> Result<Option<SampleEntry>, Mp4Error
                 height: 0,
                 codec_config: CodecConfig::AacAudioSpecificConfig(asc.build()),
                 audio_format: Some(fmt),
+                pixel_format: PixelFormat::Unknown(0),
             }));
         }
     }
@@ -180,6 +185,7 @@ fn parse_audio_sample_entry(body: &[u8]) -> Result<Option<SampleEntry>, Mp4Error
         height: 0,
         codec_config: CodecConfig::None,
         audio_format: Some(fmt),
+        pixel_format: PixelFormat::Unknown(0),
     }))
 }
 

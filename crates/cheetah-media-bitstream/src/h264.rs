@@ -7,6 +7,8 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use cheetah_media_types::PixelFormat;
+
 use crate::bit::{BitCursor, BitError};
 use crate::{ByteCursor, ReadError};
 
@@ -513,6 +515,29 @@ impl H264CodecConfig {
             height,
             codec_string,
         })
+    }
+
+    /// Derive the pixel format from the first SPS, if present and parsable.
+    /// Falls back to `Yuv420P` when the SPS is unavailable.
+    pub fn pixel_format(&self) -> PixelFormat {
+        if let Some(first_sps) = self.sps_list.first().filter(|s| !s.is_empty()) {
+            let header = first_sps[0];
+            let nal_type = header & 0x1f;
+            if nal_type == 7 {
+                let raw = &first_sps[1..];
+                let rbsp = unescape_rbsp(raw);
+                if let Ok(parsed) = Sps::parse(&rbsp) {
+                    return match parsed.chroma_format_idc {
+                        0 => PixelFormat::Unknown(0),
+                        1 => PixelFormat::Yuv420P,
+                        2 => PixelFormat::Yuv422P,
+                        3 => PixelFormat::Yuv444P,
+                        n => PixelFormat::Unknown(n as u32),
+                    };
+                }
+            }
+        }
+        PixelFormat::Yuv420P
     }
 
     /// Build an AVCDecoderConfigurationRecord from SPS/PPS.

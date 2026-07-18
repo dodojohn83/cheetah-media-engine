@@ -5,6 +5,8 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+use cheetah_media_types::PixelFormat;
+
 pub mod parameter_sets;
 
 pub use crate::rbsp::unescape_rbsp;
@@ -486,6 +488,17 @@ impl H265CodecConfig {
             }
         }
         out
+    }
+
+    /// Derive the pixel format from the `chroma_format` field.
+    pub fn pixel_format(&self) -> PixelFormat {
+        match self.chroma_format {
+            0 => PixelFormat::Unknown(0),
+            1 => PixelFormat::Yuv420P,
+            2 => PixelFormat::Yuv422P,
+            3 => PixelFormat::Yuv444P,
+            n => PixelFormat::Unknown(n as u32),
+        }
     }
 
     /// Build a minimal HEVCDecoderConfigurationRecord containing VPS/SPS/PPS arrays.
