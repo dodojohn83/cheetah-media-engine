@@ -466,7 +466,7 @@ impl H265CodecConfig {
             "hev1.{}{}.{:x}.{}{}",
             profile_prefix,
             profile_idc,
-            profile_compatibility_flags,
+            profile_compatibility_flags.reverse_bits(),
             tier_char,
             level_idc
         );
@@ -603,7 +603,7 @@ mod tests {
         assert_eq!(parsed.pps_list, vec![pps.to_vec()]);
         assert_eq!(parsed.general_profile_idc, 1);
         assert_eq!(parsed.general_level_idc, 93);
-        assert_eq!(parsed.codec_string, "hev1.1.60000000.L93");
+        assert_eq!(parsed.codec_string, "hev1.1.6.L93");
 
         // Parse/build round-trip preserves VPS/SPS/PPS boundaries.
         let rebuilt = H265CodecConfig::parse(&parsed.build()).unwrap();
