@@ -51,7 +51,7 @@ impl QueueConfig {
     /// For capacity 1 the high watermark is clamped to 1 so that an empty queue
     /// does not immediately report high pressure.
     pub const fn with_watermarks(capacity: usize) -> Self {
-        let mut high = capacity * 3 / 4;
+        let mut high = capacity.saturating_mul(3) / 4;
         if capacity > 0 && high == 0 {
             high = 1;
         }

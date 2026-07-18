@@ -144,21 +144,27 @@ pub struct StageBudget {
 }
 
 impl StageBudget {
-    /// Create a stage budget. Panics if watermarks are inconsistent.
+    /// Create a stage budget.
+    ///
+    /// Inconsistent watermarks are clamped so that `low <= high <= max` without
+    /// panicking; callers that need strict validation should check the returned
+    /// values.
     pub const fn new(
         max_in_flight: usize,
         high_watermark: usize,
         low_watermark: usize,
         drop_policy: DropPolicy,
     ) -> Self {
-        assert!(
-            low_watermark <= high_watermark,
-            "low watermark must not exceed high watermark"
-        );
-        assert!(
-            high_watermark <= max_in_flight,
-            "high watermark must not exceed max in-flight"
-        );
+        let high_watermark = if high_watermark > max_in_flight {
+            max_in_flight
+        } else {
+            high_watermark
+        };
+        let low_watermark = if low_watermark > high_watermark {
+            high_watermark
+        } else {
+            low_watermark
+        };
         Self {
             max_in_flight,
             high_watermark,

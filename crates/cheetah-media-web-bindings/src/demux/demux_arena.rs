@@ -1,5 +1,7 @@
 //! Helpers for storing demuxer output in a `MemoryArena`.
 
+use std::collections::BTreeMap;
+
 use cheetah_media_abi::{AbiError, Handle, MemoryArena, MemoryDescriptor};
 use cheetah_media_types::{CodecId, MediaPacket, MediaTime, MetadataItem, TimeBase, TrackInfo};
 
@@ -114,19 +116,37 @@ pub(crate) fn write_track(
 pub(crate) fn write_packet(
     arena: &mut MemoryArena,
     packet: &MediaPacket<'static>,
+    track: Option<&TrackInfo>,
 ) -> Result<(DemuxEvent, Option<Handle>), AbiError> {
     let payload = packet.payload.as_ref();
     let (data_handle, data_desc) = store_or_empty(arena, payload)?;
 
+    let track_kind = track
+        .map(|t| match t.kind {
+            cheetah_media_types::TrackKind::Video => 0,
+            cheetah_media_types::TrackKind::Audio => 1,
+            cheetah_media_types::TrackKind::Data => 2,
+        })
+        .unwrap_or(2);
+    let codec = track.map(|t| codec_to_u8(t.codec)).unwrap_or(255);
+    let (width, height) = track
+        .and_then(|t| t.video_format)
+        .map(|vf| (vf.visible_width, vf.visible_height))
+        .unwrap_or((0, 0));
+    let (sample_rate, channels) = track
+        .and_then(|t| t.audio_format)
+        .map(|af| (af.sample_rate, af.channel_layout.channels()))
+        .unwrap_or((0, 0));
+
     let event = DemuxEvent {
         kind: DemuxEventKind::Packet,
         track_id: packet.track_id.get(),
-        track_kind: 0,
-        codec: 255,
-        width: 0,
-        height: 0,
-        sample_rate: 0,
-        channels: 0,
+        track_kind,
+        codec,
+        width,
+        height,
+        sample_rate,
+        channels,
         config_slot: 0,
         config_generation: 0,
         config_offset: 0,
@@ -153,10 +173,12 @@ pub(crate) fn track_event(
     arena: &mut MemoryArena,
     track: TrackInfo,
     last_config: &mut Option<Handle>,
+    tracks: &mut BTreeMap<u32, TrackInfo>,
 ) -> Result<DemuxEvent, AbiError> {
     if let Some(h) = last_config.take() {
         let _ = arena.release(h);
     }
+    tracks.insert(track.id.get(), track.clone());
     let (event, handle) = write_track(arena, &track)?;
     *last_config = handle;
     Ok(event)
@@ -166,11 +188,13 @@ pub(crate) fn packet_event(
     arena: &mut MemoryArena,
     packet: MediaPacket<'static>,
     last_data: &mut Option<Handle>,
+    tracks: &BTreeMap<u32, TrackInfo>,
 ) -> Result<DemuxEvent, AbiError> {
+    let track = tracks.get(&packet.track_id.get());
     if let Some(h) = last_data.take() {
         let _ = arena.release(h);
     }
-    let (event, handle) = write_packet(arena, &packet)?;
+    let (event, handle) = write_packet(arena, &packet, track)?;
     *last_data = handle;
     Ok(event)
 }
@@ -184,9 +208,15 @@ pub(crate) fn write_metadata(
     arena: &mut MemoryArena,
     items: Vec<MetadataItem>,
 ) -> Result<(DemuxEvent, Option<Handle>), AbiError> {
+    if items.len() > u32::MAX as usize {
+        return Err(AbiError::OutOfBounds);
+    }
     let mut buf = Vec::new();
     buf.extend_from_slice(&(items.len() as u32).to_be_bytes());
     for item in items {
+        if item.value.len() > u32::MAX as usize {
+            return Err(AbiError::OutOfBounds);
+        }
         buf.push(item.source as u8);
         buf.extend_from_slice(&item.key.to_be_bytes());
         let has_ts = item.timestamp_ms.is_some() as u8;
