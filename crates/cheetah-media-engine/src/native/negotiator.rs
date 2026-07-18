@@ -70,11 +70,11 @@ impl BackendPlan {
         {
             decoder_registry
                 .select(codec, width, height, fps)
-                .unwrap_or(PlatformApi::Software)
+                .ok_or(NegotiationError::NoDecoder { codec })?
         } else {
             decoder_registry
                 .select_audio(codec)
-                .unwrap_or(PlatformApi::Software)
+                .ok_or(NegotiationError::NoDecoder { codec })?
         };
 
         let renderer = video.map(|v| {
@@ -105,6 +105,8 @@ pub enum NegotiationError {
     NoTarget,
     /// The URL scheme is not supported.
     UnsupportedUrl { url: String },
+    /// No decoder backend reports support for the requested codec.
+    NoDecoder { codec: CodecId },
 }
 
 impl core::fmt::Display for NegotiationError {
@@ -112,6 +114,7 @@ impl core::fmt::Display for NegotiationError {
         match self {
             Self::NoTarget => write!(f, "no video or audio target provided"),
             Self::UnsupportedUrl { url } => write!(f, "unsupported URL scheme: {}", url),
+            Self::NoDecoder { codec } => write!(f, "no decoder backend for codec {:?}", codec),
         }
     }
 }
@@ -152,6 +155,15 @@ mod tests {
                 channel_layout: ChannelLayout::Stereo,
                 sample_count: 0,
             },
+        }
+    }
+
+    fn h264_video_target() -> VideoTarget {
+        VideoTarget {
+            format: PixelFormat::Rgba32,
+            width: 1280,
+            height: 720,
+            fps: 30,
         }
     }
 
@@ -203,6 +215,27 @@ mod tests {
         assert!(
             BackendPlan::negotiate("memory://", CodecId::G711A, None, None, &dec, &ren, &aud,)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn unsupported_codec_is_rejected() {
+        let dec = decoder_registry();
+        let ren = RendererRegistry::with_probe(SoftwareRendererProbe);
+        let aud = AudioSinkRegistry::with_probe(NullAudioSinkProbe);
+        let result = BackendPlan::negotiate(
+            "memory://",
+            CodecId::H264,
+            Some(h264_video_target()),
+            None,
+            &dec,
+            &ren,
+            &aud,
+        );
+        assert!(
+            matches!(result, Err(NegotiationError::NoDecoder { codec }) if codec == CodecId::H264),
+            "expected NoDecoder for H264, got {:?}",
+            result
         );
     }
 }

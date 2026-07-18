@@ -173,3 +173,16 @@ fn cancel_resets_source() {
     );
     assert_eq!(src.stats().bytes_received, 0);
 }
+
+#[test]
+fn unbracketed_ipv6_url_is_rejected() {
+    let mut src = NativeByteSource::new().unwrap();
+    let result = src.start("http://2001:db8::1:8080/path");
+    assert!(matches!(
+        result,
+        Err(ByteSourceError::Fatal {
+            code: 1,
+            context: Some("unsupported_url_scheme")
+        })
+    ));
+}

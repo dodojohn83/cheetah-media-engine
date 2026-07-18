@@ -44,7 +44,7 @@ impl RendererRegistry {
             .iter()
             .filter(|cap| supports_format(cap, format, width, height))
             .collect();
-        candidates.sort_by_key(|cap| -cap.priority);
+        candidates.sort_by(|a, b| b.priority.cmp(&a.priority));
         candidates.first().map(|cap| cap.api)
     }
 

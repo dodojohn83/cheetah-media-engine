@@ -229,9 +229,9 @@ impl RecoveryPolicy {
         let in_window = attempts
             .iter()
             .filter(|&&t| t >= window_start && t <= now_ms)
-            .count() as u32;
+            .count() as u64;
 
-        if in_window >= budget.max_attempts {
+        if in_window >= budget.max_attempts as u64 {
             // Escalate through the action chain. If already at reconnect, become fatal.
             let next = match action {
                 RecoveryAction::RetrySame => RecoveryAction::RebuildStage,
@@ -246,9 +246,10 @@ impl RecoveryPolicy {
                 RecoveryDecision::Escalate { action: next }
             }
         } else {
-            let attempts_so_far = attempts.len() as u32;
+            // `delay_for` clamps at 30 anyway, so avoid `usize`/`u32` truncation.
+            let attempts_so_far = attempts.len().min(30) as u32;
             let delay = budget.delay_for(attempts_so_far);
-            let attempts_left = budget.max_attempts.saturating_sub(in_window);
+            let attempts_left = (budget.max_attempts as u64 - in_window) as u32;
             RecoveryDecision::Retry {
                 action,
                 delay_ms: delay,

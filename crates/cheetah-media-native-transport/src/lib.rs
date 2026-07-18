@@ -117,6 +117,11 @@ impl NativeByteSource {
             if h.is_empty() {
                 return None;
             }
+            // Reject unbracketed IPv6 addresses (e.g. 2001:db8::1) that would
+            // otherwise be parsed as a host:port pair.
+            if !authority.contains('@') && h.contains(':') {
+                return None;
+            }
             let port = p.parse::<u16>().ok()?;
             return Some((h.to_string(), Some(port)));
         }
@@ -215,7 +220,10 @@ impl ByteSource for NativeByteSource {
         // The previous slice is invalidated now; count whatever was outstanding
         // as consumed per the ByteSource contract.
         if !self.buffer.is_empty() {
-            self.stats.bytes_consumed += self.buffer.len() as u64;
+            self.stats.bytes_consumed = self
+                .stats
+                .bytes_consumed
+                .saturating_add(self.buffer.len() as u64);
             self.buffer.clear();
         }
 
@@ -242,7 +250,8 @@ impl ByteSource for NativeByteSource {
 
         match rx.try_recv() {
             Ok(Chunk::Data(data)) => {
-                self.stats.bytes_received += data.len() as u64;
+                self.stats.bytes_received =
+                    self.stats.bytes_received.saturating_add(data.len() as u64);
                 self.buffer = data;
                 ByteSourceEvent::Data(&self.buffer)
             }

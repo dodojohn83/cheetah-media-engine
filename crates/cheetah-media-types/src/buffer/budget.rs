@@ -64,18 +64,22 @@ impl CopyBudget {
     /// Record `bytes` copied for `reason`.
     pub fn record(&mut self, reason: CopyReason, bytes: u64) {
         let counter = self.counters.entry(reason).or_default();
-        counter.bytes += bytes;
-        counter.count += 1;
+        counter.bytes = counter.bytes.saturating_add(bytes);
+        counter.count = counter.count.saturating_add(1);
     }
 
     /// Total bytes copied across all reasons.
     pub fn total(&self) -> u64 {
-        self.counters.values().map(|c| c.bytes).sum()
+        self.counters
+            .values()
+            .fold(0u64, |acc, c| acc.saturating_add(c.bytes))
     }
 
     /// Total number of copy operations across all reasons.
     pub fn total_count(&self) -> u64 {
-        self.counters.values().map(|c| c.count).sum()
+        self.counters
+            .values()
+            .fold(0u64, |acc, c| acc.saturating_add(c.count))
     }
 
     /// Bytes copied for a specific reason.
@@ -250,6 +254,16 @@ mod tests {
         budget.record(CopyReason::DecoderToRenderer, 20);
         assert_eq!(budget.total(), 110);
         assert!(budget.check().is_err());
+    }
+
+    #[test]
+    fn copy_budget_saturates_on_overflow() {
+        let mut budget = CopyBudget::new(Some(u64::MAX - 1));
+        budget.record(CopyReason::ParserReassembly, u64::MAX);
+        budget.record(CopyReason::ParserReassembly, 1);
+        assert_eq!(budget.total(), u64::MAX);
+        assert!(budget.check().is_err());
+        assert_eq!(budget.total_count(), 2);
     }
 
     #[test]

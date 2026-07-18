@@ -41,6 +41,10 @@ impl NativeDecoder {
             }
         }
 
+        if backends.is_empty() {
+            return Err(AbiError::NotSupported);
+        }
+
         Ok(Self { backends })
     }
 
@@ -168,5 +172,13 @@ mod tests {
         assert!(dec.supports(CodecId::G711A));
         let out = dec.decode(&input(&[0x55, 0x55], CodecId::G711A)).unwrap();
         assert_eq!(out.data.len(), 4);
+    }
+
+    #[test]
+    fn from_registry_rejects_unsupported_codec() {
+        let mut reg = CapabilityRegistry::new();
+        reg.register(crate::probe::SoftwareProbe);
+        let result = NativeDecoder::from_registry(&reg, CodecId::H264, Some((1920, 1080, 30)));
+        assert!(matches!(result, Err(AbiError::NotSupported)));
     }
 }
