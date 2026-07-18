@@ -10,7 +10,7 @@ use cheetah_media_types::{
 use crate::{
     FlvError,
     amf::{AmfLimits, FlvScriptData, parse_script_data},
-    audio::{AudioTagHeader, parse_aac_config},
+    audio::{AudioTagHeader, audio_format_from_header, parse_aac_config},
     header::{FlvHeader, FlvTagHeader, parse_file_header, parse_tag_header},
     video::{VideoCodecId, VideoTagHeader, is_keyframe, parse_video_config},
 };
@@ -354,6 +354,14 @@ impl FlvDemuxer {
         }
 
         let payload = &data[ah.header_size..];
+
+        if let Some(info) = self.audio.info_mut()
+            && info.audio_format.is_none()
+            && let Some(fmt) = audio_format_from_header(&ah, payload)
+        {
+            let _ = info.set_audio_format(fmt);
+        }
+
         if payload.is_empty() {
             return Ok(None);
         }
