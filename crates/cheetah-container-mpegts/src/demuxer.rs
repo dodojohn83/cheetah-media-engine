@@ -26,6 +26,8 @@ use crate::{
 const MAX_PIDS: usize = 64;
 /// Maximum bytes to scan when trying to resync.
 const MAX_SYNC_SCAN: usize = 188 * 8;
+/// Maximum buffered bytes before the TS demuxer rejects further input.
+const MAX_BUFFER: usize = 64 * 1024 * 1024;
 
 /// Output event from the MPEG-TS demuxer.
 #[derive(Debug, Clone, PartialEq)]
@@ -97,6 +99,7 @@ pub struct TsDemuxer {
     pending_events: VecDeque<TsEvent>,
     clock: PcrClock,
     diagnostics: TsDiagnostics,
+    error: Option<TsError>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -129,6 +132,7 @@ impl TsDemuxer {
             pending_events: VecDeque::new(),
             clock: PcrClock::new(),
             diagnostics: TsDiagnostics::default(),
+            error: None,
         }
     }
 
@@ -139,6 +143,15 @@ impl TsDemuxer {
 
     /// Push more TS bytes.
     pub fn push(&mut self, data: &[u8]) {
+        if data.is_empty() || self.error.is_some() {
+            return;
+        }
+        if self.buffer.len().saturating_add(data.len()) > MAX_BUFFER {
+            self.error = Some(TsError::LimitExceeded {
+                limit: "demuxer buffer",
+            });
+            return;
+        }
         self.buffer.extend_from_slice(data);
     }
 
@@ -146,6 +159,10 @@ impl TsDemuxer {
     pub fn next_event(&mut self) -> Result<Option<TsEvent>, TsError> {
         if let Some(event) = self.pending_events.pop_front() {
             return Ok(Some(event));
+        }
+
+        if let Some(ref err) = self.error {
+            return Err(err.clone());
         }
 
         while let Some((packet, payload)) = self.parse_packet()? {

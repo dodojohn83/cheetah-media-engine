@@ -110,9 +110,16 @@ impl AnnexBDemuxer {
 
     /// Push more Annex-B bytes into the demuxer.
     pub fn push(&mut self, data: &[u8]) {
-        if !data.is_empty() {
-            self.buffer.extend_from_slice(data);
+        if data.is_empty() || self.codec_error.is_some() {
+            return;
         }
+        if self.buffer.len().saturating_add(data.len()) > self.config.max_buffer_bytes {
+            self.codec_error = Some(AnnexbError::BufferExceeded {
+                max: self.config.max_buffer_bytes,
+            });
+            return;
+        }
+        self.buffer.extend_from_slice(data);
     }
 
     /// Return the next parsed event, or `None` if more data is needed.

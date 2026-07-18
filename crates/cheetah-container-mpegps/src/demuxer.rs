@@ -21,6 +21,7 @@ pub struct MpegPsDemuxer {
     audio: crate::audio::AudioAssembler,
     ended: bool,
     eof_emitted: bool,
+    error: Option<MpegPsError>,
 }
 
 impl MpegPsDemuxer {
@@ -34,20 +35,32 @@ impl MpegPsDemuxer {
             audio: crate::audio::AudioAssembler::new(),
             ended: false,
             eof_emitted: false,
+            error: None,
         }
     }
 
     /// Push more MPEG-PS bytes into the demuxer.
     pub fn push(&mut self, data: &[u8]) {
-        if !data.is_empty() {
-            self.buffer.extend_from_slice(data);
+        if data.is_empty() || self.error.is_some() {
+            return;
         }
+        if self.buffer.len().saturating_add(data.len()) > self.config.max_buffer_bytes {
+            self.error = Some(MpegPsError::BufferExceeded {
+                max: self.config.max_buffer_bytes,
+            });
+            return;
+        }
+        self.buffer.extend_from_slice(data);
     }
 
     /// Return the next parsed event, or `None` if more data is needed.
     pub fn next_event(&mut self) -> Result<Option<MpegPsEvent>, MpegPsError> {
         if let Some(event) = self.pending_events.pop_front() {
             return Ok(Some(event));
+        }
+
+        if let Some(err) = self.error {
+            return Err(err);
         }
 
         loop {
@@ -89,6 +102,7 @@ impl MpegPsDemuxer {
         self.audio.reset();
         self.ended = false;
         self.eof_emitted = false;
+        self.error = None;
     }
 
     fn process_one(&mut self) -> Result<bool, MpegPsError> {
