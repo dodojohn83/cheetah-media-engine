@@ -257,6 +257,7 @@ export class WebSocketTransport implements Transport {
       };
 
       const deliver = (bytes: Uint8Array): void => {
+        if (this.ended) return;
         if (this.bytesRead + bytes.length > this.maxBytes) {
           socket.close();
           this.finish(makeError(TransportErrorCode.MaxBytesExceeded, 'Max response size exceeded', false));
@@ -269,7 +270,7 @@ export class WebSocketTransport implements Transport {
       };
 
       const onMessage = (event: MessageEvent) => {
-        if (this.controller?.signal.aborted) {
+        if (this.ended || this.controller?.signal.aborted) {
           return;
         }
         this.startIdleTimer();

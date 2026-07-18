@@ -231,8 +231,9 @@ describe('WebSocketTransport', () => {
           for (const message of messages) {
             this.dispatchEvent(new MessageEvent('message', { data: message }));
           }
-          // Yield so async Blob.arrayBuffer() microtasks can run before close.
-          await Promise.resolve();
+          // Yield to the next macrotask so async Blob.arrayBuffer() promises can
+          // resolve before we dispatch the close event.
+          await new Promise((resolve) => setTimeout(resolve, 0));
           this.dispatchEvent(new CloseEvent('close', { code: closeCode, reason: closeReason }));
         }, 0);
       }
