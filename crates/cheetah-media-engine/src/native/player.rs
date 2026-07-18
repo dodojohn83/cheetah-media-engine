@@ -233,7 +233,8 @@ impl NativePlayer {
     /// Drive one decoding/rendering tick. Call from a loop while the player is
     /// `Playing`.
     pub fn tick(&mut self) -> Result<Vec<EngineEvent>, NativePlayerError> {
-        self.engine.tick(self.start.elapsed().as_millis() as u64);
+        let elapsed_ms = u64::try_from(self.start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.engine.tick(elapsed_ms);
         if self.engine.state() != PlayerState::Playing {
             return Ok(Vec::new());
         }

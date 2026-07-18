@@ -347,10 +347,11 @@ impl AnnexBDemuxer {
 
     fn new_packet(&mut self, data: Vec<u8>, is_keyframe: bool) -> MediaPacket<'static> {
         let seq = SequenceNumber::new(self.sequence);
-        self.sequence += 1;
+        self.sequence = self.sequence.wrapping_add(1);
+        let ticks = i64::try_from(seq.get()).unwrap_or(i64::MAX);
         let time = MediaTime::from_pts_dts(
-            Timestamp::new(seq.get() as i64),
-            Timestamp::new(seq.get() as i64),
+            Timestamp::new(ticks),
+            Timestamp::new(ticks),
             self.config.timebase,
         );
         let mut packet = MediaPacket::new(

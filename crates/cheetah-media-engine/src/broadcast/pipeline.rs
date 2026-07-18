@@ -191,7 +191,7 @@ impl BroadcastPipeline {
             is_keyframe: packet.flags.is_keyframe,
             target_bitrate_bps,
         };
-        self.sequence += 1;
+        self.sequence = self.sequence.wrapping_add(1);
         Ok(Some(summary))
     }
 

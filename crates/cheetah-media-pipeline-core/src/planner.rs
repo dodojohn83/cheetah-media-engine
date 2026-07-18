@@ -224,20 +224,20 @@ pub fn plan(
     // Apply resource and constraint adjustments.
     if request.latency == LatencyMode::Low {
         plan.reason_codes.push("low_latency_prefer_hardware");
-        plan.score += 10;
+        plan.score = plan.score.saturating_add(10);
     }
 
     if request.isolation == IsolationState::Enabled && !caps.cross_origin_isolated {
         plan.reason_codes
             .push("isolation_requested_but_unavailable");
-        plan.score -= 20;
+        plan.score = plan.score.saturating_sub(20);
     }
 
     if let Some(max_bps) = request.constraints.max_bitrate_bps {
         // Estimate nominal 1080p30 as ~5 Mbps for comparison.
         if max_bps < 5_000_000 {
             plan.reason_codes.push("bitrate_constrained");
-            plan.score -= 5;
+            plan.score = plan.score.saturating_sub(5);
         }
     }
 
@@ -266,7 +266,7 @@ pub fn plan(
     // plan plus a single fallback so callers can observe deterministic ordering.
     let mut candidates = alloc::vec![plan];
     let mut fallback = fallback_plan(request, caps);
-    fallback.score = candidates[0].score - 1;
+    fallback.score = candidates[0].score.saturating_sub(1);
     fallback.estimated_copy_bytes_per_frame = bytes_per_frame;
     candidates.push(fallback);
 

@@ -296,7 +296,7 @@ impl HlsClient {
                     feature: alloc::format!("retries exhausted for {}", uri),
                 });
             }
-            *count += 1;
+            *count = count.saturating_add(1);
             self.request_epoch(k)
         } else {
             // Stale failure for a request we no longer track.

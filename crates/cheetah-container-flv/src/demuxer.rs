@@ -423,7 +423,7 @@ impl FlvDemuxer {
         // Detect a non-wrap backward jump (reset/discontinuity).
         const RESET_THRESHOLD: i64 = 10_000; // 10 seconds
         if unwrapped_ms < self.last_unwrapped_ms.saturating_sub(RESET_THRESHOLD) {
-            self.epoch_jumps += 1;
+            self.epoch_jumps = self.epoch_jumps.saturating_add(1);
             self.stream_epoch = StreamEpoch::new(self.epoch_jumps);
             unwrapped_ms = raw;
         }
@@ -441,7 +441,7 @@ impl FlvDemuxer {
         keyframe: bool,
     ) -> MediaPacket<'static> {
         let seq = SequenceNumber::new(self.sequence);
-        self.sequence += 1;
+        self.sequence = self.sequence.wrapping_add(1);
         let mut packet = MediaPacket::new(
             BufferRef::from_owned(payload.to_vec()),
             track_id,

@@ -241,7 +241,7 @@ impl VideoEsAssembler {
             media_time,
         );
         packet.flags = flags;
-        self.sequence += 1;
+        self.sequence = self.sequence.wrapping_add(1);
         events.push_back(MpegPsEvent::Packet(packet));
         Ok(())
     }

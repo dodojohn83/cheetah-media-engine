@@ -374,7 +374,7 @@ pub fn emit_packets(
             timebase,
         );
         let seq = SequenceNumber::new(*sequence);
-        *sequence += 1;
+        *sequence = sequence.wrapping_add(1);
         out.push(MediaPacket {
             payload,
             track_id: track.track.id,

@@ -115,7 +115,7 @@ impl MediaClock {
             epochs: BTreeMap::new(),
             last_overall_clock_us: 0,
             wrap_bits,
-            discontinuity_threshold_us: discontinuity_threshold_us.unwrap_or(5_000_000),
+            discontinuity_threshold_us: discontinuity_threshold_us.unwrap_or(5_000_000).max(0),
             state: ClockState::Preroll,
             stats: ClockStats::default(),
         }
@@ -207,10 +207,10 @@ impl MediaClock {
             current_raw_us.saturating_sub(existing.map_or(current_raw_us, |s| s.last_raw_us));
 
         if is_discontinuity {
-            self.stats.discontinuities += 1;
+            self.stats.discontinuities = self.stats.discontinuities.saturating_add(1);
         }
         if is_wrap {
-            self.stats.wraps += 1;
+            self.stats.wraps = self.stats.wraps.saturating_add(1);
         }
 
         // Update running jitter estimate: maximum absolute deviation of

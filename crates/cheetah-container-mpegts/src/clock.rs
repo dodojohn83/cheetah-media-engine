@@ -59,19 +59,26 @@ impl PcrClock {
             && wall > last_wall
         {
             let delta_pcr = pcr - last_pcr;
-            let delta_wall = (wall - last_wall) * (PCR_HZ / 1000);
+            let delta_wall = (wall - last_wall).saturating_mul(PCR_HZ / 1000);
             // Difference between observed PCR spacing and wall spacing.
-            let diff: i64 = delta_pcr as i64 - delta_wall as i64;
+            let diff = (delta_pcr as i128).saturating_sub(delta_wall as i128);
+            let abs_diff = u64::try_from(diff.saturating_abs()).unwrap_or(u64::MAX);
             // Update jitter estimate (EWMA-ish absolute deviation).
-            self.jitter_hz = ((self.jitter_hz * self.sample_count) + diff.unsigned_abs())
-                / (self.sample_count + 1);
+            let count = self.sample_count;
+            let denom = count.saturating_add(1).max(1);
+            let numerator = (self.jitter_hz as u128)
+                .saturating_mul(count as u128)
+                .saturating_add(abs_diff as u128);
+            self.jitter_hz = u64::try_from(numerator / denom as u128).unwrap_or(u64::MAX);
             if self.sample_count > 0 {
                 // Drift as Hz per second over the interval.
                 let interval_s = (wall - last_wall).max(1);
-                self.drift_hz_per_s = (diff as i128 * 1000 / interval_s as i128) as i64;
+                let drift = diff.saturating_mul(1000) / (interval_s as i128);
+                self.drift_hz_per_s =
+                    i64::try_from(drift).unwrap_or(if drift >= 0 { i64::MAX } else { i64::MIN });
             }
         }
-        self.sample_count += 1;
+        self.sample_count = self.sample_count.saturating_add(1);
         self.last_pcr = Some(pcr);
         self.last_arrival_ms = Some(wall);
 

@@ -298,12 +298,18 @@ impl<T> Scheduler<T> {
 
     /// Total number of items across all queues.
     pub fn total_len(&self) -> usize {
-        self.queues.iter().map(|q| q.len()).sum()
+        self.queues
+            .iter()
+            .map(|q| q.len())
+            .fold(0usize, usize::saturating_add)
     }
 
     /// Total number of dropped items across all queues.
     pub fn total_dropped(&self) -> u64 {
-        self.queues.iter().map(|q| q.dropped()).sum()
+        self.queues
+            .iter()
+            .map(|q| q.dropped())
+            .fold(0u64, u64::saturating_add)
     }
 }
 
