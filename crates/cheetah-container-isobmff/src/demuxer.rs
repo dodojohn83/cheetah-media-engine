@@ -165,9 +165,18 @@ impl IsobmffDemuxer {
             // Detect a backwards tfdt as a discontinuity and bump the epoch.
             let mut epoch = self.epoch;
             let mut discontinuity = false;
+            let total_duration = tf
+                .samples
+                .iter()
+                .map(|s| s.duration)
+                .try_fold(0u64, |acc, d| acc.checked_add(d));
+            let (fragment_end, overflow) = match total_duration {
+                Some(sum) => tf.base_decode_time.overflowing_add(sum),
+                None => (u64::MAX, true),
+            };
             if let Some(prev) = self.last_dts.get(&tf.track_id)
-                && (tf.base_decode_time + tf.samples.iter().map(|s| s.duration).sum::<u64>()
-                    < *prev
+                && (overflow
+                    || fragment_end < *prev
                     || tf.base_decode_time < prev.saturating_sub(10_000_000))
             {
                 epoch = epoch.next();

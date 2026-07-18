@@ -416,7 +416,16 @@ pub fn parse_media(input: &str, base_uri: &str) -> Result<MediaPlaylist, HlsErro
         });
     }
 
-    pl.duration = pl.segments.iter().map(|s| s.duration).sum();
+    pl.duration = pl
+        .segments
+        .iter()
+        .try_fold(0.0, |acc, s| {
+            let sum = acc + s.duration;
+            if sum.is_finite() { Some(sum) } else { None }
+        })
+        .ok_or(HlsError::LimitExceeded {
+            limit: "playlist duration",
+        })?;
 
     Ok(pl)
 }
@@ -623,7 +632,12 @@ fn parse_optional_f64(attrs: &AttrMap, key: &str) -> Result<Option<f64>, HlsErro
 }
 
 fn parse_f64_raw(s: &str) -> Result<f64, HlsError> {
-    f64::from_str(s).map_err(|_| HlsError::invalid_attr("", "", s.to_string()))
+    let v = f64::from_str(s).map_err(|_| HlsError::invalid_attr("", "", s.to_string()))?;
+    if v.is_finite() && v >= 0.0 {
+        Ok(v)
+    } else {
+        Err(HlsError::invalid_attr("", "", s.to_string()))
+    }
 }
 
 fn parse_u64_raw(s: &str) -> Result<u64, HlsError> {

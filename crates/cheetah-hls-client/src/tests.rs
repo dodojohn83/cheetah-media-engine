@@ -362,3 +362,25 @@ seg0.ts
             .any(|a| matches!(a.kind, ActionKind::ReportError { .. }))
     );
 }
+
+#[test]
+fn parse_media_rejects_non_finite_duration() {
+    let pl = r#"#EXTM3U
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:inf,
+seg0.ts
+"#;
+    assert!(parse_media(pl, "http://x/").is_err());
+}
+
+#[test]
+fn parse_media_rejects_negative_duration() {
+    let pl = r#"#EXTM3U
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:-1.0,
+seg0.ts
+"#;
+    assert!(parse_media(pl, "http://x/").is_err());
+}

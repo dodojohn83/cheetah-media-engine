@@ -107,6 +107,9 @@ impl MemoryArena {
             index as u32
         } else {
             let index = self.slots.len();
+            if index > u32::MAX as usize {
+                return Err(AbiError::OutOfBounds);
+            }
             self.slots.push(Slot::Occupied { generation, region });
             index as u32
         };

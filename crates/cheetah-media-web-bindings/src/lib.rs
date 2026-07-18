@@ -175,11 +175,23 @@ impl WebEngine {
     /// `is_live` is stored for later transport selection. The URL is validated
     /// but actual network/demux integration is added in later tasks.
     pub fn load(&mut self, url: &str, is_live: bool) -> Result<(), JsValue> {
-        if url.is_empty() || !url.contains("://") {
+        if url.is_empty()
+            || url
+                .split_once("://")
+                .is_none_or(|(scheme, _)| scheme.is_empty())
+        {
             return Err(js_error(AbiError::InvalidData));
         }
-        let sep = if url.contains('?') { '&' } else { '?' };
-        self.loaded_url = Some(format!("{url}{sep}live={is_live}"));
+        // Insert the `live=` query before any URL fragment so the fragment is
+        // not overwritten and the query is appended to the path/query portion.
+        let (base, fragment) = url.split_once('#').unwrap_or((url, ""));
+        let sep = if base.contains('?') { '&' } else { '?' };
+        let full = if fragment.is_empty() {
+            format!("{base}{sep}live={is_live}")
+        } else {
+            format!("{base}{sep}live={is_live}#{fragment}")
+        };
+        self.loaded_url = Some(full);
         self.playing = false;
         Ok(())
     }
@@ -284,11 +296,11 @@ impl WebEngine {
         _duration_ms: i64,
         _flags: u32,
     ) -> Result<(), JsValue> {
-        // Validate the handle; the actual decoder pipeline will be wired in
-        // later tasks (WP-16 and beyond).
-        self.arena
-            .read(make_handle(slot, generation))
-            .map_err(js_error)?;
+        // Validate the handle and release the region so the caller does not
+        // leak the committed slot while decoding is still unsupported.
+        let handle = make_handle(slot, generation);
+        self.arena.read(handle).map_err(js_error)?;
+        let _ = self.arena.release(handle);
         Err(js_error(AbiError::NotSupported))
     }
 
@@ -393,5 +405,44 @@ mod tests {
         assert_eq!(wrapped.offset, 1024);
         assert_eq!(wrapped.length, 16);
         assert_eq!(wrapped.capacity, 32);
+    }
+
+    #[test]
+    fn load_appends_live_before_fragment() {
+        let mut engine = WebEngine::new();
+        engine
+            .load("http://example.com/test.m3u8#t=10", false)
+            .unwrap();
+        assert_eq!(
+            engine.loaded_url,
+            Some("http://example.com/test.m3u8?live=false#t=10".to_string())
+        );
+    }
+
+    // These tests exercise error paths that create JS Error objects, which
+    // requires a wasm32 runtime. They are compiled on wasm32 but skipped on
+    // host targets where js_sys functions panic.
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn load_rejects_empty_scheme() {
+        let mut engine = WebEngine::new();
+        assert!(engine.load("://example.com/test.m3u8", false).is_err());
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn push_packet_releases_committed_region() {
+        let mut engine = WebEngine::new();
+        let desc = engine.request_write_region(4).unwrap();
+        engine
+            .commit_region(desc.slot(), desc.generation(), 4)
+            .unwrap();
+        assert!(
+            engine
+                .push_packet(desc.slot(), desc.generation(), 1, 0, 0, 0, 0)
+                .is_err()
+        );
+        // The region should be released after the unsupported push.
+        assert_eq!(engine.arena.occupied_count(), 0);
     }
 }
