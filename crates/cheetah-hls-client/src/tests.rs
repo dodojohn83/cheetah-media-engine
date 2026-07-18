@@ -384,3 +384,14 @@ seg0.ts
 "#;
     assert!(parse_media(pl, "http://x/").is_err());
 }
+
+#[test]
+fn parse_master_accepts_negative_start_time_offset() {
+    let pl = r#"#EXTM3U
+#EXT-X-START:TIME-OFFSET=-3.0,PRECISE=YES
+#EXT-X-STREAM-INF:BANDWIDTH=1000000
+playlist_1.m3u8
+"#;
+    let master = parse_master(pl, "http://x/master.m3u8").unwrap();
+    assert_eq!(master.start.unwrap().time_offset, -3.0);
+}
