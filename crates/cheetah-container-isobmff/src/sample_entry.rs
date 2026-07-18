@@ -83,11 +83,23 @@ fn parse_visual_sample_entry(body: &[u8], codec: CodecId) -> Result<Option<Sampl
             types::HVCC => {
                 let cfg = cheetah_media_bitstream::H265CodecConfig::parse(inner)
                     .map_err(|_| Mp4Error::invalid_input(3102, Some("invalid hvcC")))?;
+                let (w, h) = cfg
+                    .sps_list
+                    .first()
+                    .and_then(|sps| {
+                        let parsed =
+                            cheetah_media_bitstream::h265::parameter_sets::Sps::parse(sps).ok()?;
+                        Some((
+                            u16::try_from(parsed.width()).ok()?,
+                            u16::try_from(parsed.height()).ok()?,
+                        ))
+                    })
+                    .unwrap_or((width, height));
                 return Ok(Some(SampleEntry {
                     kind: TrackKind::Video,
                     codec,
-                    width,
-                    height,
+                    width: w,
+                    height: h,
                     codec_config: CodecConfig::HevcC(cfg.build()),
                     audio_format: None,
                 }));

@@ -168,15 +168,25 @@ fn parse_mdia(data: &[u8], mdia_offset: u64) -> Result<(TrackInfo, u32, u32), Mp
         Some("invalid mdhd timescale"),
     ))?;
     let mut info = TrackInfo::new(dummy_id, kind, codec, timebase);
-    if let Some(entry) = sample_entry {
+    if let Some(ref entry) = sample_entry {
         entry.apply(&mut info);
     }
-    let track_type = if kind == TrackKind::Video {
-        types::AVC1
-    } else {
-        types::MP4A
-    };
+    let track_type = sample_entry
+        .as_ref()
+        .map(|s| track_type_for(s.kind, s.codec))
+        .unwrap_or_else(|| track_type_for(kind, codec));
     Ok((info, timescale, track_type))
+}
+
+fn track_type_for(kind: TrackKind, codec: CodecId) -> u32 {
+    match kind {
+        TrackKind::Video => match codec {
+            CodecId::H265 => types::HVC1,
+            CodecId::H264 => types::AVC1,
+            _ => types::AVC1,
+        },
+        TrackKind::Audio | TrackKind::Data => types::MP4A,
+    }
 }
 
 fn parse_mdhd(data: &[u8]) -> Result<u32, Mp4Error> {

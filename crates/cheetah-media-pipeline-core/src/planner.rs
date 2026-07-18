@@ -244,7 +244,11 @@ pub fn plan(
     // Estimate copy bytes based on constraints.
     let width = request.constraints.max_width.unwrap_or(1920) as u64;
     let height = request.constraints.max_height.unwrap_or(1080) as u64;
-    let bytes_per_frame = width * height * 3 / 2; // conservative NV12-ish
+    let bytes_per_frame = width
+        .checked_mul(height)
+        .and_then(|v| v.checked_mul(3))
+        .map(|v| v / 2)
+        .unwrap_or(u64::MAX); // conservative NV12-ish
     plan.estimated_copy_bytes_per_frame = bytes_per_frame;
 
     // Check resolution limits.

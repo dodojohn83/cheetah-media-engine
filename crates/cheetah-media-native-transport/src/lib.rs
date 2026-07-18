@@ -99,6 +99,11 @@ impl NativeByteSource {
         if authority.is_empty() {
             return None;
         }
+        // Strip optional userinfo (e.g. user:pass@) before host/port parsing.
+        let authority = authority
+            .rsplit_once('@')
+            .map(|(_, host)| host)
+            .unwrap_or(authority);
 
         if let Some(end) = authority.find(']') {
             if !authority.starts_with('[') {

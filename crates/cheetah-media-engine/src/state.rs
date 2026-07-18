@@ -257,6 +257,8 @@ pub struct Engine {
     metrics: super::Metrics,
     /// Monotonic clock in milliseconds used for recovery/backoff.
     now_ms: u64,
+    /// Whether the current session is a live stream.
+    is_live: bool,
 }
 
 impl Default for Engine {
@@ -282,6 +284,7 @@ impl Engine {
             latency: LatencyController::default(),
             metrics: super::Metrics::new(),
             now_ms: 0,
+            is_live: false,
         }
     }
 
@@ -327,6 +330,11 @@ impl Engine {
         self.state
     }
 
+    /// Whether the current session was loaded as a live stream.
+    pub fn is_live(&self) -> bool {
+        self.is_live
+    }
+
     /// Current epoch.
     pub fn epoch(&self) -> StreamEpoch {
         self.epoch
@@ -369,7 +377,7 @@ impl Engine {
         match self.state {
             PlayerState::Idle | PlayerState::Failed => {
                 self.start_new_session(out);
-                let _ = req; // request is retained for logging/telemetry if needed
+                self.is_live = req.is_live;
                 self.transition(PlayerState::Loading, out);
             }
             PlayerState::Loading
@@ -381,6 +389,7 @@ impl Engine {
                 // A new load while another session is active is a stop+reload.
                 self.on_stop(out);
                 self.start_new_session(out);
+                self.is_live = req.is_live;
                 self.transition(PlayerState::Loading, out);
             }
             PlayerState::Destroyed => {
@@ -397,6 +406,7 @@ impl Engine {
         self.pre_rebuffer_state = PlayerState::Idle;
         self.recovery_tracker = RecoveryTracker::default();
         self.latency = LatencyController::default();
+        self.is_live = false;
         // Any resources still owned from a previous session are a leak.
         self.reset_ledger(out);
     }

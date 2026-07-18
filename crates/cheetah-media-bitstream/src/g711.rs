@@ -99,8 +99,11 @@ pub fn encode_buffer(kind: G711Kind, input: &[i16], output: &mut [u8]) {
 }
 
 /// Encode a single 32-bit float PCM sample (nominal range [-1.0, 1.0]) to G.711.
+/// Non-finite samples (NaN or infinity) are treated as silence.
 pub fn encode_f32(kind: G711Kind, sample: f32) -> u8 {
-    let clipped = if sample > 1.0 {
+    let clipped = if !sample.is_finite() {
+        0
+    } else if sample > 1.0 {
         i16::MAX
     } else if sample < -1.0 {
         i16::MIN
@@ -111,6 +114,7 @@ pub fn encode_f32(kind: G711Kind, sample: f32) -> u8 {
 }
 
 /// Encode a buffer of 32-bit float PCM samples (nominal range [-1.0, 1.0]) into `output`.
+/// Non-finite samples are treated as silence.
 pub fn encode_buffer_f32(kind: G711Kind, input: &[f32], output: &mut [u8]) {
     let f = match kind {
         G711Kind::ALaw => alaw_from_pcm,
@@ -119,7 +123,9 @@ pub fn encode_buffer_f32(kind: G711Kind, input: &[f32], output: &mut [u8]) {
     let n = input.len().min(output.len());
     for i in 0..n {
         let sample = input[i];
-        let clipped = if sample > 1.0 {
+        let clipped = if !sample.is_finite() {
+            0
+        } else if sample > 1.0 {
             i16::MAX
         } else if sample < -1.0 {
             i16::MIN
