@@ -97,7 +97,10 @@ impl MemoryArena {
         }
 
         let generation = self.next_generation;
-        self.next_generation += 1;
+        self.next_generation = self
+            .next_generation
+            .checked_add(1)
+            .ok_or(AbiError::OutOfBounds)?;
 
         let region = MemoryRegion::new(size);
         let descriptor = region.as_descriptor(generation);

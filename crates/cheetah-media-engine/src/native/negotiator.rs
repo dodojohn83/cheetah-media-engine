@@ -120,16 +120,15 @@ impl core::fmt::Display for NegotiationError {
 }
 
 fn transport_kind(url: &str) -> Result<TransportKind, NegotiationError> {
-    if let Some(scheme) = url.split("://").next() {
-        match scheme {
-            "memory" => Ok(TransportKind::Memory),
-            "tcp" => Ok(TransportKind::Tcp),
-            "http" | "https" => Ok(TransportKind::Http),
-            "ws" | "wss" => Ok(TransportKind::WebSocket),
-            _ => Err(NegotiationError::UnsupportedUrl { url: url.into() }),
-        }
-    } else {
-        Err(NegotiationError::UnsupportedUrl { url: url.into() })
+    let (scheme, _) = url
+        .split_once("://")
+        .ok_or_else(|| NegotiationError::UnsupportedUrl { url: url.into() })?;
+    match scheme.to_ascii_lowercase().as_str() {
+        "memory" => Ok(TransportKind::Memory),
+        "tcp" => Ok(TransportKind::Tcp),
+        "http" | "https" => Ok(TransportKind::Http),
+        "ws" | "wss" => Ok(TransportKind::WebSocket),
+        _ => Err(NegotiationError::UnsupportedUrl { url: url.into() }),
     }
 }
 
