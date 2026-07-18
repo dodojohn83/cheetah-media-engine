@@ -17,6 +17,7 @@ use crate::types::{AUDIO_TRACK_ID, MpegPsEvent};
 pub(crate) struct AudioAssembler {
     track: Option<TrackInfo>,
     sequence: u64,
+    leftover: Vec<u8>,
 }
 
 impl AudioAssembler {
@@ -24,12 +25,14 @@ impl AudioAssembler {
         Self {
             track: None,
             sequence: 0,
+            leftover: Vec::new(),
         }
     }
 
     pub(crate) fn reset(&mut self) {
         self.track = None;
         self.sequence = 0;
+        self.leftover.clear();
     }
 
     pub(crate) fn process_payload(
@@ -40,16 +43,23 @@ impl AudioAssembler {
     ) -> Result<(), MpegPsError> {
         let track_id = TrackId::new(AUDIO_TRACK_ID).ok_or(MpegPsError::InvalidInput)?;
 
+        // Audio PES payloads can be split across packet boundaries, so keep any
+        // trailing partial ADTS frame for the next payload.
+        let mut data = Vec::with_capacity(self.leftover.len() + payload.len());
+        data.extend_from_slice(&self.leftover);
+        data.extend_from_slice(payload);
+        self.leftover.clear();
+
         let mut offset = 0;
         let mut pts = media_time.pts;
         let mut dts = media_time.dts;
-        while offset < payload.len() {
-            let header = match AdtsHeader::parse(&payload[offset..]) {
+        while offset < data.len() {
+            let header = match AdtsHeader::parse(&data[offset..]) {
                 Ok(h) => h,
                 Err(_) => break,
             };
             let frame_len = header.frame_length as usize;
-            if frame_len == 0 || payload.len() - offset < frame_len {
+            if frame_len == 0 || data.len() - offset < frame_len {
                 break;
             }
 
@@ -59,7 +69,7 @@ impl AudioAssembler {
                 events.push_back(MpegPsEvent::Track(track));
             }
 
-            let frame = &payload[offset..offset + frame_len];
+            let frame = &data[offset..offset + frame_len];
             let flags = PacketFlags {
                 is_keyframe: true,
                 is_corrupt: false,
@@ -88,6 +98,10 @@ impl AudioAssembler {
             offset += frame_len;
             pts = pts.map(|p| Timestamp::new(p.ticks().saturating_add(duration_ticks)));
             dts = dts.map(|d| Timestamp::new(d.ticks().saturating_add(duration_ticks)));
+        }
+
+        if offset < data.len() {
+            self.leftover.extend_from_slice(&data[offset..]);
         }
         Ok(())
     }
