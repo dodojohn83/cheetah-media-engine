@@ -711,25 +711,28 @@ fn resolve_url(base_uri: &str, uri: &str) -> Result<String, HlsError> {
         return Ok(uri.to_string());
     }
     if uri.starts_with('/') {
-        // Absolute path: keep scheme://authority only.
+        // Absolute path: keep scheme://authority only (ignore base path, query, fragment).
         if let Some(scheme_end) = base_uri.find("://") {
             let after_scheme = &base_uri[scheme_end + 3..];
-            let authority_end = after_scheme.find('/').unwrap_or(after_scheme.len());
+            let authority_end = after_scheme
+                .find(&['/', '?', '#'][..])
+                .unwrap_or(after_scheme.len());
             let root = &base_uri[..scheme_end + 3 + authority_end];
             return Ok(format!("{}{}", root, uri));
         }
         return Ok(uri.to_string());
     }
-    // Relative path: append to directory of base.
-    let base_dir = if let Some(slash) = base_uri.rfind('/') {
+    // Relative path: append to directory of base, ignoring any query/fragment on the base.
+    let base_without_query = base_uri.split(&['?', '#'][..]).next().unwrap_or(base_uri);
+    let base_dir = if let Some(slash) = base_without_query.rfind('/') {
         // Make sure we don't match the '/' inside '://'.
-        if slash >= 2 && &base_uri[slash - 2..=slash] == "://" {
+        if slash >= 2 && &base_without_query[slash - 2..=slash] == "://" {
             // No path component; append a slash after the authority.
-            return Ok(format!("{}/{}", base_uri, uri));
+            return Ok(format!("{}/{}", base_without_query, uri));
         }
-        &base_uri[..slash + 1]
+        &base_without_query[..slash + 1]
     } else {
-        base_uri
+        base_without_query
     };
     Ok(format!("{}{}", base_dir, uri))
 }

@@ -304,7 +304,11 @@ mod tcp {
     use tokio::sync::mpsc;
 
     pub(crate) async fn run(host: String, port: u16, tx: mpsc::Sender<Chunk>) {
-        match TcpStream::connect((host.as_str(), port)).await {
+        let host = host
+            .strip_prefix('[')
+            .and_then(|h| h.strip_suffix(']'))
+            .unwrap_or(&host);
+        match TcpStream::connect((host, port)).await {
             Ok(mut stream) => {
                 let mut buf = vec![0u8; 8192];
                 loop {

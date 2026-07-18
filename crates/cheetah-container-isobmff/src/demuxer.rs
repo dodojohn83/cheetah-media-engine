@@ -140,8 +140,8 @@ impl IsobmffDemuxer {
         self.moov_seen = true;
 
         for (id, td) in new_tracks {
+            let event = Mp4Event::Track(td.track.clone());
             self.tracks.insert(id, td);
-            let event = Mp4Event::Track(self.tracks.get(&id).unwrap().track.clone());
             self.pending_events.push_back(event);
         }
         Ok(())

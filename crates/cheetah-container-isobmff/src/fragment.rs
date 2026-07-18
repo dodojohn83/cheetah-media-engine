@@ -135,11 +135,22 @@ fn parse_traf(
         }
 
         let data_offset = if let Some(d) = trun.data_offset {
-            data_offset_base
-                .wrapping_add(d as i64 as u64)
-                .wrapping_add(cumulative_size)
+            let signed = i64::from(d);
+            let base = if signed >= 0 {
+                data_offset_base.checked_add(signed as u64)
+            } else {
+                data_offset_base.checked_sub(signed.unsigned_abs())
+            }
+            .ok_or_else(|| Mp4Error::invalid_input(3302, Some("trun data_offset overflow")))?;
+            base.checked_add(cumulative_size).ok_or_else(|| {
+                Mp4Error::invalid_input(3302, Some("trun cumulative size overflow"))
+            })?
         } else {
-            data_offset_base.wrapping_add(cumulative_size)
+            data_offset_base
+                .checked_add(cumulative_size)
+                .ok_or_else(|| {
+                    Mp4Error::invalid_input(3302, Some("trun cumulative size overflow"))
+                })?
         };
 
         samples.push(FragmentSample {
@@ -149,7 +160,9 @@ fn parse_traf(
             composition_offset,
             data_offset,
         });
-        cumulative_size += size;
+        cumulative_size = cumulative_size
+            .checked_add(size)
+            .ok_or_else(|| Mp4Error::invalid_input(3302, Some("trun cumulative size overflow")))?;
     }
 
     Ok(Some(TrackFragment {
