@@ -201,16 +201,19 @@ export class WebSocketTransport implements Transport {
   private controller?: AbortController;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+  private idleTimer: ReturnType<typeof setTimeout> | undefined = undefined;
   private started = false;
   private ended = false;
   private bytesRead = 0;
   private maxBytes: number;
+  private timeoutMs: number;
   private onError?: (error: TransportError) => void;
   private onEnd?: () => void;
 
   constructor(config: WebSocketConfig) {
     this.config = config;
     this.maxBytes = config.maxBytes ?? Number.MAX_SAFE_INTEGER;
+    this.timeoutMs = config.timeoutMs ?? 30000;
   }
 
   start(onChunk: (chunk: Chunk) => void, onError: (error: TransportError) => void, onEnd: () => void): void {
@@ -234,6 +237,8 @@ export class WebSocketTransport implements Transport {
   private finish(error?: TransportError): void {
     if (this.ended) return;
     this.ended = true;
+    this.clearIdleTimer();
+    this.clearReconnectTimer();
     if (error) {
       this.onError?.(error);
     }
@@ -243,10 +248,12 @@ export class WebSocketTransport implements Transport {
   private async connect(onChunk: (chunk: Chunk) => void): Promise<void> {
     const socket = new WebSocket(this.config.url);
     socket.binaryType = this.config.binaryType ?? 'arraybuffer';
+    this.startIdleTimer();
 
     return new Promise<void>((resolve, reject) => {
       const onOpen = () => {
         this.reconnectAttempts = 0;
+        this.startIdleTimer();
       };
 
       const deliver = (bytes: Uint8Array): void => {
@@ -258,12 +265,14 @@ export class WebSocketTransport implements Transport {
         }
         this.bytesRead += bytes.length;
         onChunk({ bytes, timestamp: performance.now() });
+        this.startIdleTimer();
       };
 
       const onMessage = (event: MessageEvent) => {
         if (this.controller?.signal.aborted) {
           return;
         }
+        this.startIdleTimer();
         if (typeof event.data === 'string') {
           // Text messages are not media byte chunks. Discard silently.
           return;
@@ -277,6 +286,11 @@ export class WebSocketTransport implements Transport {
       };
 
       const onClose = (event: CloseEvent) => {
+        this.clearIdleTimer();
+        if (this.ended) {
+          resolve();
+          return;
+        }
         if (this.controller?.signal.aborted) {
           this.finish(makeError(TransportErrorCode.Canceled, 'Transport stopped', false));
           resolve();
@@ -327,13 +341,38 @@ export class WebSocketTransport implements Transport {
   }
 
   stop(): void {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = undefined;
+    this.clearIdleTimer();
+    this.clearReconnectTimer();
+    if (!this.ended) {
       this.finish(makeError(TransportErrorCode.Canceled, 'Transport stopped', false));
     }
     this.controller?.abort();
     this.socket?.close();
+  }
+
+  private startIdleTimer(): void {
+    if (this.idleTimer !== undefined) {
+      clearTimeout(this.idleTimer);
+    }
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = undefined;
+      this.finish(makeError(TransportErrorCode.Timeout, 'WebSocket idle/connect timeout', true));
+      this.socket?.close();
+    }, this.timeoutMs);
+  }
+
+  private clearIdleTimer(): void {
+    if (this.idleTimer !== undefined) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== undefined) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
   }
 }
 
