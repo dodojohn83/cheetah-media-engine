@@ -11,6 +11,13 @@ describe('diagnostics', () => {
     expect(sanitizeUrl('not-a-url')).toBe('<redacted>');
   });
 
+  it('redacts non-http schemes that can embed payloads', () => {
+    expect(sanitizeUrl('data:text/plain;base64,c2VjcmV0')).toBe('<redacted>');
+    expect(sanitizeUrl('blob:https://example.com/550e8400-e29b-41d4-a716-446655440000')).toBe(
+      '<redacted>',
+    );
+  });
+
   it('redacts sensitive headers and preserves non-sensitive ones', () => {
     expect(
       redactHeaders({
