@@ -40,7 +40,7 @@ impl CapabilityRegistry {
             .iter()
             .filter(|cap| supports_video(cap, codec, width, height, fps))
             .collect();
-        candidates.sort_by_key(|cap| -cap.priority);
+        candidates.sort_by(|a, b| b.priority.cmp(&a.priority));
         candidates.first().map(|cap| cap.api)
     }
 
@@ -51,7 +51,7 @@ impl CapabilityRegistry {
             .iter()
             .filter(|cap| cap.audio_codecs.contains(&codec))
             .collect();
-        candidates.sort_by_key(|cap| -cap.priority);
+        candidates.sort_by(|a, b| b.priority.cmp(&a.priority));
         candidates.first().map(|cap| cap.api)
     }
 

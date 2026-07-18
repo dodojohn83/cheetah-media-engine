@@ -74,8 +74,8 @@ impl Metrics {
 
     /// Record an allocation of `bytes`.
     pub fn record_allocation(&mut self, bytes: u64) {
-        self.allocations.count += 1;
-        self.allocations.bytes += bytes;
+        self.allocations.count = self.allocations.count.saturating_add(1);
+        self.allocations.bytes = self.allocations.bytes.saturating_add(bytes);
     }
 
     /// Update pool hit/miss counters from a `PoolStats` snapshot.

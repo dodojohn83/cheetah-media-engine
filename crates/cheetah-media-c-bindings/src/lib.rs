@@ -278,7 +278,13 @@ pub unsafe extern "C" fn cheetah_player_load(
     // SAFETY: `url` is claimed to be a valid, null-terminated C string.
     let cstr = unsafe { CStr::from_ptr(url) };
     let url = match cstr.to_str() {
-        Ok(s) if !s.is_empty() && s.contains("://") => s,
+        Ok(s)
+            if !s.is_empty()
+                && s.split_once("://")
+                    .is_some_and(|(scheme, _)| !scheme.is_empty()) =>
+        {
+            s
+        }
         _ => return CheetahResult::InvalidData.code(),
     };
 

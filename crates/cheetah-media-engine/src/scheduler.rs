@@ -98,7 +98,7 @@ impl<T> BoundedQueue<T> {
     /// was dropped.
     pub fn push(&mut self, priority: Priority, item: T) -> u64 {
         if self.config.capacity == 0 {
-            self.dropped += 1;
+            self.dropped = self.dropped.saturating_add(1);
             return 1;
         }
         if self.items.len() >= self.config.capacity {
@@ -114,10 +114,10 @@ impl<T> BoundedQueue<T> {
             match victim {
                 Some((victim_idx, victim_priority)) if priority < victim_priority => {
                     self.items.remove(victim_idx);
-                    self.dropped += 1;
+                    self.dropped = self.dropped.saturating_add(1);
                 }
                 _ => {
-                    self.dropped += 1;
+                    self.dropped = self.dropped.saturating_add(1);
                     return 1;
                 }
             }
