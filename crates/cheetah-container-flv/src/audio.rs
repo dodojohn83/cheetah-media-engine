@@ -160,11 +160,17 @@ pub fn parse_aac_config(track: &mut TrackInfo, payload: &[u8]) -> Result<(), Flv
     } else {
         ChannelLayout::Mono
     };
+    // HE-AAC / HE-AAC v2 (object types 5 and 29) output 2048 samples per frame.
+    let sample_count = if matches!(asc.audio_object_type, 5 | 29) {
+        2048
+    } else {
+        1024
+    };
     let format = AudioFormat {
         sample_format: SampleFormat::S16,
         sample_rate: asc.sampling_frequency,
         channel_layout: channels,
-        sample_count: 1024,
+        sample_count,
     };
     track
         .set_audio_format(format)

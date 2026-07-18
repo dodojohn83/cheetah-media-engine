@@ -68,6 +68,10 @@ impl FlvTagHeader {
     }
 }
 
+/// Maximum allowed FLV file header size. The spec defines the header as 9
+/// bytes, but some tools pad it; this cap prevents buffering unbounded data.
+const MAX_FLV_HEADER_SIZE: u32 = 1024 * 1024;
+
 /// Parse a 9-byte FLV file header.
 pub fn parse_file_header(input: &[u8]) -> Result<FlvHeader, FlvError> {
     if input.len() < 9 {
@@ -83,6 +87,9 @@ pub fn parse_file_header(input: &[u8]) -> Result<FlvHeader, FlvError> {
     let header_size = cursor.read_u32_be().map_err(|_| FlvError::NeedMoreData)?;
     if header_size < 9 {
         return Err(FlvError::MalformedHeader);
+    }
+    if header_size > MAX_FLV_HEADER_SIZE {
+        return Err(FlvError::LimitExceeded);
     }
 
     Ok(FlvHeader {

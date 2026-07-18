@@ -129,7 +129,14 @@ impl Mp4Muxer {
         }
         let moov = write_box(types::MOOV, &moov_body);
 
-        let mut mdat = Vec::with_capacity(mdat_total_size as usize);
+        if mdat_total_size > isize::MAX as u64 {
+            return Err(Mp4Error::limit_exceeded(
+                "mdat total size exceeds addressable memory",
+            ));
+        }
+        let mdat_capacity = usize::try_from(mdat_total_size)
+            .map_err(|_| Mp4Error::limit_exceeded("mdat size exceeds usize"))?;
+        let mut mdat = Vec::with_capacity(mdat_capacity);
         if needs_extended {
             mdat.extend_from_slice(&[0, 0, 0, 1]);
             mdat.extend_from_slice(&types::MDAT.to_be_bytes());
@@ -151,7 +158,7 @@ impl Mp4Muxer {
 
     fn write_moov_body(&self, cfg: &TrackConfig) -> Result<(Vec<u8>, Option<usize>), Mp4Error> {
         let mut moov_body = Vec::new();
-        moov_body.extend(write_mvhd_single(cfg));
+        moov_body.extend(write_mvhd_single(cfg)?);
 
         let trak = self.write_trak(cfg)?;
         moov_body.extend_from_slice(&trak);
@@ -179,7 +186,18 @@ impl Mp4Muxer {
         )
         .ok_or(Mp4Error::invalid_input(3604, Some("stco box not found")))?;
         // stco body: version/flags (4) + entry_count (4) + offset entries.
-        Ok(Some(stco_body_offset as usize + 8))
+        let pos = usize::try_from(stco_body_offset)
+            .map_err(|_| Mp4Error::limit_exceeded("stco patch offset exceeds usize"))?;
+        let end = pos
+            .checked_add(8)
+            .ok_or_else(|| Mp4Error::limit_exceeded("stco patch position overflow"))?;
+        if end > moov_body.len() {
+            return Err(Mp4Error::invalid_input(
+                3605,
+                Some("stco patch out of bounds"),
+            ));
+        }
+        Ok(Some(end))
     }
 
     fn write_trak(&self, cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
@@ -275,7 +293,7 @@ fn write_ftyp() -> Vec<u8> {
     write_box(types::FTYP, &body)
 }
 
-fn write_mvhd_single(cfg: &TrackConfig) -> Vec<u8> {
+fn write_mvhd_single(cfg: &TrackConfig) -> Result<Vec<u8>, Mp4Error> {
     let mut configs = alloc::collections::BTreeMap::new();
     configs.insert(cfg.track_id, cfg.clone());
     write_mvhd(&configs)

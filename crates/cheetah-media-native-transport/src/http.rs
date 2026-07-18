@@ -24,6 +24,7 @@ pub(crate) async fn run(url: String, tx: mpsc::Sender<Chunk>) {
     };
     match client.get(&url).send().await {
         Ok(resp) if resp.status().is_success() => {
+            let mut errored = false;
             let mut stream = resp.bytes_stream();
             while let Some(item) = stream.next().await {
                 match item {
@@ -48,11 +49,14 @@ pub(crate) async fn run(url: String, tx: mpsc::Sender<Chunk>) {
                                 }))
                                 .await;
                         }
+                        errored = true;
                         break;
                     }
                 }
             }
-            let _ = tx.send(Chunk::Eof).await;
+            if !errored {
+                let _ = tx.send(Chunk::Eof).await;
+            }
         }
         Ok(_) => {
             let _ = tx

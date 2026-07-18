@@ -664,60 +664,72 @@ impl TsDemuxer {
     }
 
     fn emit_aac(&mut self, pid: u16, es: &[u8], mut time: MediaTime) -> Result<(), TsError> {
-        let frames = cheetah_media_bitstream::aac::split_adts(es)
-            .map_err(|_| TsError::invalid_input(2206, Some("AAC ADTS split failed")))?;
-        if frames.is_empty() {
-            return Ok(());
-        }
-
-        {
-            let state = self
-                .tracks
-                .get_mut(&pid)
-                .ok_or_else(|| TsError::invalid_input(2203, Some("missing track state")))?;
-            if let Ok(header) = AdtsHeader::parse(frames[0]) {
-                let new_fmt = cheetah_media_types::AudioFormat {
-                    sample_format: SampleFormat::S16,
-                    sample_rate: header.sampling_frequency,
-                    channel_layout: if header.channel_count == 1 {
-                        ChannelLayout::Mono
-                    } else {
-                        ChannelLayout::Stereo
-                    },
-                    sample_count: header.samples_per_frame as u32,
-                };
-                let aot = header.profile + 1;
-                let asc = AudioSpecificConfig {
-                    audio_object_type: aot,
-                    sampling_frequency_index: header.sampling_frequency_index,
-                    sampling_frequency: header.sampling_frequency,
-                    channel_configuration: header.channel_configuration,
-                    channel_count: header.channel_count,
-                };
-                let new_config = CodecConfig::AacAudioSpecificConfig(asc.build());
-                let old_config = state.info.codec_config.clone();
-                let old_fmt = state.info.audio_format;
-                state.info.set_audio_format(new_fmt).ok();
-                state.info.set_codec_config(new_config);
-                if state.info.codec_config != old_config || state.info.audio_format != old_fmt {
-                    self.pending_events
-                        .push_back(TsEvent::Track(state.info.clone()));
-                }
-            }
-        }
-
         let track_id = self.track_id_for(pid)?;
-        for frame in frames {
-            let duration_ticks = AdtsHeader::parse(frame)
-                .map(|h| h.samples_per_frame as i64 * 90000 / h.sampling_frequency as i64)
-                .unwrap_or(0);
+        let mut offset = 0usize;
+        let mut first = true;
+
+        while offset < es.len() {
+            let header = match AdtsHeader::parse(&es[offset..]) {
+                Ok(h) => h,
+                Err(_) => break,
+            };
+            let header_size = header.header_size();
+            let frame_len = header.frame_length as usize;
+            if frame_len == 0 || frame_len < header_size {
+                break;
+            }
+            let end = offset
+                .checked_add(frame_len)
+                .ok_or_else(|| TsError::invalid_input(2206, Some("AAC frame length overflow")))?;
+            if end > es.len() {
+                break;
+            }
+
+            if first {
+                if let Some(state) = self.tracks.get_mut(&pid) {
+                    let new_fmt = cheetah_media_types::AudioFormat {
+                        sample_format: SampleFormat::S16,
+                        sample_rate: header.sampling_frequency,
+                        channel_layout: if header.channel_count == 1 {
+                            ChannelLayout::Mono
+                        } else {
+                            ChannelLayout::Stereo
+                        },
+                        sample_count: header.samples_per_frame as u32,
+                    };
+                    let aot = header.profile + 1;
+                    let asc = AudioSpecificConfig {
+                        audio_object_type: aot,
+                        sampling_frequency_index: header.sampling_frequency_index,
+                        sampling_frequency: header.sampling_frequency,
+                        channel_configuration: header.channel_configuration,
+                        channel_count: header.channel_count,
+                    };
+                    let new_config = CodecConfig::AacAudioSpecificConfig(asc.build());
+                    let old_config = state.info.codec_config.clone();
+                    let old_fmt = state.info.audio_format;
+                    state.info.set_audio_format(new_fmt).ok();
+                    state.info.set_codec_config(new_config);
+                    if state.info.codec_config != old_config || state.info.audio_format != old_fmt {
+                        let info = state.info.clone();
+                        self.pending_events.push_back(TsEvent::Track(info));
+                    }
+                }
+                first = false;
+            }
+
+            let frame = &es[offset..end];
+            let duration_ticks =
+                header.samples_per_frame as i64 * 90000 / header.sampling_frequency as i64;
             self.emit_packet(track_id, frame, time, false);
             if duration_ticks > 0 {
                 time = time
                     .checked_add(MediaDuration::new(duration_ticks))
                     .unwrap_or(time);
             }
+            offset = end;
         }
+
         if let Some(state) = self.tracks.get_mut(&pid) {
             state.last_time = time;
         }
