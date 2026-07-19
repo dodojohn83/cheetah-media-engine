@@ -493,6 +493,9 @@ function validateConfig(config: FullPlayerConfig): void {
   if (!Number.isFinite(config.diagnostics.statsIntervalMs) || config.diagnostics.statsIntervalMs < 16) {
     throw new CheetahMediaError(6001, 'config', 'statsIntervalMs must be a finite number at least 16');
   }
+  if (!Number.isFinite(config.audio.volume) || config.audio.volume < 0 || config.audio.volume > 1) {
+    throw new CheetahMediaError(6001, 'config', 'volume must be a finite number between 0 and 1');
+  }
   if (config.render.maxResolution !== undefined) {
     if (!Number.isFinite(config.render.maxResolution.width) || config.render.maxResolution.width <= 0 || !Number.isFinite(config.render.maxResolution.height) || config.render.maxResolution.height <= 0) {
       throw new CheetahMediaError(6001, 'config', 'maxResolution width and height must be finite positive numbers');
