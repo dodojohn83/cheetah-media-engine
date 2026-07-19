@@ -15,6 +15,7 @@ import {
   type TransportConfig,
   type TransportError,
   validateWebTransportUrl,
+  validateTransportConfig,
 } from './transport-common';
 
 interface WebTransportCloseInfo {
@@ -59,6 +60,8 @@ export class WebTransportTransport implements Transport {
   private closed = false;
   private bytesRead = 0;
   private maxBytes: number;
+  private timeoutMs = 30000;
+  private timedOut = false;
   private onError?: (error: TransportError) => void;
   private onEnd?: () => void;
   private inFlight = new Set<Promise<void>>();
@@ -90,6 +93,14 @@ export class WebTransportTransport implements Transport {
       return;
     }
 
+    const configError = validateTransportConfig(this.config);
+    if (configError) {
+      this.finish(configError);
+      return;
+    }
+    this.timeoutMs = this.config.timeoutMs ?? 30000;
+    this.timedOut = false;
+
     const Ctor = getWebTransportConstructor();
     if (!Ctor) {
       this.finish(makeError(TransportErrorCode.WebTransportNotSupported, 'WebTransport API is not available', false));
@@ -98,6 +109,7 @@ export class WebTransportTransport implements Transport {
 
     this.transport = new Ctor(this.config.url);
     this.run(this.transport, onChunk).catch((err) => {
+      this.stop();
       this.finish(this.toError(err));
     });
   }
@@ -111,11 +123,43 @@ export class WebTransportTransport implements Transport {
     this.onEnd?.();
   }
 
+  private withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+    if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) {
+      return promise;
+    }
+    let settled = false;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        settled = true;
+        this.timedOut = true;
+        if (this.transport) {
+          this.transport.close().catch(() => undefined);
+        }
+        reject(new Error(message));
+      }, this.timeoutMs);
+
+      promise.then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (reason) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(reason);
+        },
+      );
+    });
+  }
+
   private async run(
     transport: WebTransportHandle,
     onChunk: (chunk: Chunk) => void,
   ): Promise<void> {
-    await transport.ready;
+    await this.withTimeout(transport.ready, 'WebTransport connection timed out');
 
     const streams = transport.incomingUnidirectionalStreams;
     if (streams) {
@@ -184,6 +228,9 @@ export class WebTransportTransport implements Transport {
   }
 
   private toError(err: unknown): TransportError {
+    if (this.timedOut) {
+      return makeError(TransportErrorCode.Timeout, 'WebTransport operation timed out', true);
+    }
     if (this.stopped) {
       return makeError(TransportErrorCode.Canceled, 'Transport stopped', false);
     }
