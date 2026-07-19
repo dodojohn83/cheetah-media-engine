@@ -10,6 +10,7 @@ pub mod error;
 pub mod header;
 pub mod muxer;
 pub mod recorder;
+pub mod transmux_fmp4;
 pub mod video;
 
 pub use amf::{AmfLimits, AmfValue, FlvScriptData, parse_script_data};
@@ -19,4 +20,5 @@ pub use error::FlvError;
 pub use header::{FlvHeader, FlvTagHeader, TagType};
 pub use muxer::FlvMuxer;
 pub use recorder::{FlvRecorder, FlvRecordingCancel, FlvWriter};
+pub use transmux_fmp4::{FlvToFmp4Transmuxer, TransmuxError};
 pub use video::{FrameType, VideoCodecId, VideoTagHeader};

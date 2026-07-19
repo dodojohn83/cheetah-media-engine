@@ -96,6 +96,33 @@ export {
   type MediaSourceLike,
 } from './mse';
 export {
+  PlaybackSession,
+  detectProtocol,
+  protocolSupportedByMseSession,
+  type PlaybackSessionEvent,
+  type PlaybackSessionOptions,
+} from './playback-session';
+export {
+  splitFmp4,
+  concatUint8,
+  peekBox,
+  Fmp4BoxAccumulator,
+  Fmp4SegmentBuilder,
+  type Fmp4Split,
+  type BoxHeader,
+} from './fmp4';
+export {
+  FlvFmp4TransmuxerJs,
+  type FlvFmp4Segment,
+  type FlvTrackInfo,
+  type FlvTransmuxEvent,
+} from './flv-transmux';
+export {
+  TsFmp4TransmuxerJs,
+  type TsFmp4Segment,
+  type TsTrackInfo,
+} from './ts-transmux';
+export {
   FfmpegPackImpl,
   FfmpegPackError,
   PackReturnCode,

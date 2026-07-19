@@ -8,6 +8,9 @@ import {
   BlobSink,
   StreamDownloader,
   CompositeRecorder,
+  PlaybackSession,
+  detectProtocol,
+  protocolSupportedByMseSession,
   type EngineRuntime,
   type MetricsSnapshot,
   type WorkerErrorPayload,
@@ -19,6 +22,9 @@ import {
   type TransportError,
   type CompositeRecordingOptions as CompositeRecordingOptionsType,
   type CompositeRecordingResult as CompositeRecordingResultType,
+  type HTMLVideoElementLike,
+  type PlaybackSessionEvent,
+  type Protocol,
 } from '@cheetah-media/runtime';
 import { createGb28181PtzCmd, type PtzCommand } from './ptz';
 import { NoopVrRenderer, NoopAiFrameProcessor, type VrRenderer, type AiFrameProcessor } from './vr';
@@ -259,6 +265,12 @@ export interface CheetahPlayer {
   readonly vrActive: boolean;
   readonly aiActive: boolean;
 
+  /**
+   * Attach a video element used by the main-thread MSE playback session.
+   * Without a media element, load/play only drive the WASM control shell
+   * (useful for unit tests); real browser playback requires attach + load.
+   */
+  attachMediaElement(element: HTMLVideoElementLike | null): void;
   load(url: string, options?: { isLive?: boolean }): Promise<void>;
   play(): void;
   pause(): void;
@@ -574,6 +586,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   private _lastCompositeOptions: CompositeRecordingOptionsType | undefined;
   private _vrRenderer: VrRenderer = new NoopVrRenderer();
   private _aiProcessor: AiFrameProcessor = new NoopAiFrameProcessor();
+  private mediaElement: HTMLVideoElementLike | null = null;
+  private session: PlaybackSession | undefined;
+  private mediaRecorder: MediaRecorder | undefined;
+  private mediaRecorderChunks: Blob[] = [];
+  private mediaRecorderMime: string | undefined;
+  private mediaRecorderFilename: string | undefined;
 
   constructor(
     config: PlayerConfig,
@@ -590,6 +608,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     });
     this.runtime.onEvent = (event, details) => this.handleRuntimeEvent(event, details);
     this.runtime.onError = (error) => this.handleRuntimeError(error);
+  }
+
+  attachMediaElement(element: HTMLVideoElementLike | null): void {
+    this.guardDestroyed();
+    this.mediaElement = element;
   }
 
   get state(): PlayerState {
@@ -791,8 +814,63 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   async load(url: string, options: { isLive?: boolean } = {}): Promise<void> {
     this.guardDestroyed();
     this.setState('loading');
+    await this.teardownSession();
+    const isLive = options.isLive ?? false;
+
+    // Prefer main-thread MSE session when a media element is attached and the
+    // protocol is natively MSE-compatible. Otherwise fall back to the WASM
+    // control shell so unit tests and Future demux paths keep working.
+    const protocolHint = this.config.transport.protocol;
+    const protocol = detectProtocol(
+      url,
+      protocolHint === 'auto' ? 'auto' : (protocolHint as Protocol),
+    );
+
+    if (this.mediaElement && protocolSupportedByMseSession(protocol)) {
+      try {
+        // Best-effort worker bootstrap; ignore missing worker in pure-MSE mode.
+        try {
+          await this.runtime.load(url, { isLive });
+        } catch {
+          // Worker/wasm may be unavailable in lightweight demos.
+        }
+        this.session = new PlaybackSession({
+          videoElement: this.mediaElement,
+          url,
+          protocol,
+          isLive,
+          headers: this.config.transport.headers,
+          softLatencyMs: this.config.latency.softMs,
+          hardLatencyMs: this.config.latency.hardMs,
+          maxPlaybackRate: this.config.latency.maxPlaybackRate,
+          onEvent: (event) => this.handleSessionEvent(event),
+        });
+        await this.session.start();
+        if (this._state !== 'failed' && this._state !== 'destroyed') {
+          this.setState('preroll');
+        }
+        return;
+      } catch (cause) {
+        this.setState('failed');
+        await this.teardownSession();
+        throw new CheetahMediaError(6100, 'load', cause instanceof Error ? cause.message : 'Load failed', {
+          cause,
+          recoverable: true,
+        });
+      }
+    }
+
+    if (this.mediaElement && !protocolSupportedByMseSession(protocol)) {
+      // Clearer than a fake preroll for Future/raw protocols (Annex-B, MPEG-PS, …).
+      const message = `Protocol ${protocol} is not supported by the attached media element session`;
+      this.setState('failed');
+      const err = new CheetahMediaError(6003, 'source', message, { recoverable: false });
+      this.emit('error', { error: err.toJSON() });
+      throw err;
+    }
+
     try {
-      await this.runtime.load(url, { isLive: options.isLive ?? false });
+      await this.runtime.load(url, { isLive });
       if (this._state !== 'failed') {
         this.setState('preroll');
       }
@@ -804,12 +882,20 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   play(): void {
     this.guardDestroyed();
+    if (this.session) {
+      this.session.play();
+      return;
+    }
     this.runtime.play();
     this.setState('playing');
   }
 
   pause(): void {
     this.guardDestroyed();
+    if (this.session) {
+      this.session.pause();
+      return;
+    }
     this.runtime.pause();
     this.setState('paused');
   }
@@ -820,6 +906,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       throw new CheetahMediaError(6002, 'sdk', 'Seek requires an active stream', { recoverable: true });
     }
     try {
+      if (this.session) {
+        await this.session.seek(timeMs);
+        return;
+      }
       await this.runtime.seek(timeMs);
     } catch (cause) {
       throw new CheetahMediaError(6999, 'seek', 'Seek failed', { cause, recoverable: true });
@@ -829,6 +919,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   async setPlaybackRate(rate: number): Promise<void> {
     this.guardDestroyed();
     try {
+      if (this.session) {
+        await this.session.setPlaybackRate(rate);
+        return;
+      }
       await this.runtime.setPlaybackRate(rate);
     } catch (cause) {
       throw new CheetahMediaError(6999, 'playback-rate', 'Set playback rate failed', { cause, recoverable: true });
@@ -841,6 +935,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       throw new CheetahMediaError(6002, 'sdk', 'Frame step requires an active stream', { recoverable: true });
     }
     try {
+      if (this.session) {
+        await this.session.frameStep(direction, keyframeOnly);
+        return;
+      }
       await this.runtime.frameStep(direction, keyframeOnly);
     } catch (cause) {
       throw new CheetahMediaError(6999, 'frame-step', 'Frame step failed', { cause, recoverable: true });
@@ -853,6 +951,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       throw new CheetahMediaError(6002, 'sdk', 'Pause display requires an active stream', { recoverable: true });
     }
     try {
+      if (this.session) {
+        await this.session.pauseDisplay(keepConnection);
+        return;
+      }
       await this.runtime.pauseDisplay(keepConnection);
     } catch (cause) {
       throw new CheetahMediaError(6999, 'pause-display', 'Pause display failed', { cause, recoverable: true });
@@ -876,7 +978,15 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this.guardDestroyed();
     this.setState('stopping');
     try {
-      await this.runtime.stop();
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        await this.stopRecording().catch(() => undefined);
+      }
+      await this.teardownSession();
+      try {
+        await this.runtime.stop();
+      } catch {
+        // Worker may be absent when only the MSE session was used.
+      }
     } catch (cause) {
       this.setState('failed');
       throw new CheetahMediaError(6100, 'stop', 'Stop failed', { cause, recoverable: true });
@@ -892,6 +1002,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     await this.cleanupDownload().catch(() => undefined);
     await this.cleanupIntercom().catch(() => undefined);
     await this.cleanupCompositeRecording().catch(() => undefined);
+    await this.teardownSession();
     try {
       this._vrRenderer.destroy();
     } catch {
@@ -914,6 +1025,15 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Snapshot requires an active stream', { recoverable: true });
     }
+    // Prefer capturing from the attached video element (real MSE path).
+    if (this.mediaElement && typeof document !== 'undefined') {
+      try {
+        return this.snapshotFromMediaElement(options);
+      } catch (cause) {
+        if (cause instanceof CheetahMediaError) throw cause;
+        // Fall through to worker path.
+      }
+    }
     try {
       const result = await this.runtime.request('snapshot', options, 5000);
       const data = result as { width: number; height: number; data?: Uint8ClampedArray } | undefined;
@@ -935,8 +1055,49 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (this._state !== 'playing' && this._state !== 'paused') {
       throw new CheetahMediaError(6002, 'sdk', 'Recording requires an active stream', { recoverable: true });
     }
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      throw new CheetahMediaError(6002, 'recording', 'Recording already active', { recoverable: true });
+    }
+
+    // Main-thread MediaRecorder from the video element when available.
+    const video = this.mediaElement as HTMLVideoElement | null;
+    if (
+      video &&
+      typeof MediaRecorder !== 'undefined' &&
+      typeof (video as HTMLVideoElement & { captureStream?: (fps?: number) => MediaStream }).captureStream === 'function'
+    ) {
+      try {
+        const stream = (
+          video as HTMLVideoElement & { captureStream: (fps?: number) => MediaStream }
+        ).captureStream(30);
+        const preferred = options.mimeType ?? this.config.recording.mimeType;
+        const mimeType =
+          preferred && MediaRecorder.isTypeSupported(preferred)
+            ? preferred
+            : ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find((m) => MediaRecorder.isTypeSupported(m)) ??
+              '';
+        this.mediaRecorderChunks = [];
+        this.mediaRecorderMime = mimeType || undefined;
+        this.mediaRecorderFilename = options.filename ?? this.config.recording.filename;
+        this.mediaRecorder = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream);
+        this.mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            this.mediaRecorderChunks.push(event.data);
+          }
+        };
+        this.mediaRecorder.start(1000);
+        this.emit('recording', { active: true, mimeType: this.mediaRecorder.mimeType });
+        return;
+      } catch (cause) {
+        throw new CheetahMediaError(6999, 'recording', 'Recording failed', { cause, recoverable: false });
+      }
+    }
+
     try {
       await this.runtime.request('start-recording', options, 5000);
+      this.emit('recording', { active: true, ...options });
     } catch (cause) {
       throw new CheetahMediaError(6999, 'recording', 'Recording failed', { cause, recoverable: false });
     }
@@ -944,11 +1105,151 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async stopRecording(): Promise<void> {
     this.guardDestroyed();
+    if (this.mediaRecorder) {
+      const recorder = this.mediaRecorder;
+      this.mediaRecorder = undefined;
+      await new Promise<void>((resolve) => {
+        if (recorder.state === 'inactive') {
+          resolve();
+          return;
+        }
+        recorder.onstop = () => resolve();
+        try {
+          recorder.stop();
+        } catch {
+          resolve();
+        }
+      });
+      const blob = new Blob(this.mediaRecorderChunks, {
+        type: this.mediaRecorderMime ?? recorder.mimeType ?? 'video/webm',
+      });
+      this.mediaRecorderChunks = [];
+      this.emit('recording', {
+        active: false,
+        blob,
+        filename: this.mediaRecorderFilename,
+        mimeType: blob.type,
+        size: blob.size,
+      });
+      return;
+    }
     try {
       await this.runtime.request('stop-recording', undefined, 5000);
+      this.emit('recording', { active: false });
     } catch (cause) {
       throw new CheetahMediaError(6999, 'recording', 'Stop recording failed', { cause, recoverable: false });
     }
+  }
+
+  private async teardownSession(): Promise<void> {
+    const session = this.session;
+    this.session = undefined;
+    if (session) {
+      await session.stop().catch(() => undefined);
+    }
+  }
+
+  private handleSessionEvent(event: PlaybackSessionEvent): void {
+    switch (event.type) {
+      case 'state': {
+        if (event.state === 'ended') {
+          this.setState('idle');
+          return;
+        }
+        if (event.state === 'failed') {
+          this.setState('failed');
+          return;
+        }
+        if (event.state === 'loading') {
+          this.setState('loading');
+          return;
+        }
+        if (event.state === 'preroll') {
+          this.setState('preroll');
+          return;
+        }
+        if (event.state === 'playing') {
+          this.setState('playing');
+          return;
+        }
+        if (event.state === 'paused') {
+          this.setState('paused');
+          return;
+        }
+        if (event.state === 'rebuffering') {
+          this.setState('rebuffering');
+          this.emit('buffering', { reason: 'mse-waiting' });
+          return;
+        }
+        return;
+      }
+      case 'tracks':
+        this.emit('tracks', { tracks: event.tracks });
+        return;
+      case 'backend':
+        this.emit('backendchange', { to: event.backend, reason: 'playback-session' });
+        return;
+      case 'firstframe':
+        this.emit('firstframe', {});
+        return;
+      case 'error': {
+        this.setState('failed');
+        const err = new CheetahMediaError(event.code, event.stage, event.message, {
+          recoverable: event.recoverable,
+        });
+        this.emit('error', { error: err.toJSON() });
+        return;
+      }
+      case 'stats': {
+        const bufferedMs =
+          Number.isFinite(event.metrics.bufferedEnd) && Number.isFinite(event.metrics.bufferedStart)
+            ? Math.max(0, (event.metrics.bufferedEnd - event.metrics.bufferedStart) * 1000)
+            : undefined;
+        this.emit('stats', {
+          bufferedMs,
+          networkBytes: event.networkBytes,
+          droppedFrames: event.metrics.droppedSegments,
+          stallCount: event.metrics.stallCount,
+        });
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  private snapshotFromMediaElement(options: { maxWidth?: number; maxHeight?: number }): ImageData {
+    const video = this.mediaElement as HTMLVideoElement;
+    const srcW =
+      (video as HTMLVideoElement).videoWidth ||
+      (video as HTMLVideoElement).clientWidth ||
+      0;
+    const srcH =
+      (video as HTMLVideoElement).videoHeight ||
+      (video as HTMLVideoElement).clientHeight ||
+      0;
+    if (srcW <= 0 || srcH <= 0) {
+      throw new CheetahMediaError(6999, 'snapshot', 'Video frame not available', { recoverable: true });
+    }
+    let width = srcW;
+    let height = srcH;
+    if (options.maxWidth && width > options.maxWidth) {
+      height = Math.max(1, Math.round((height * options.maxWidth) / width));
+      width = options.maxWidth;
+    }
+    if (options.maxHeight && height > options.maxHeight) {
+      width = Math.max(1, Math.round((width * options.maxHeight) / height));
+      height = options.maxHeight;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new CheetahMediaError(6999, 'snapshot', 'Canvas 2D unavailable', { recoverable: false });
+    }
+    ctx.drawImage(video as CanvasImageSource, 0, 0, width, height);
+    return ctx.getImageData(0, 0, width, height);
   }
 
   async startIntercom(options: IntercomOptions): Promise<void> {

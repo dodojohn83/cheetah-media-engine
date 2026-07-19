@@ -456,8 +456,17 @@ impl Engine {
 
     fn on_stop(&mut self, out: &mut EngineOutput) {
         match self.state {
-            PlayerState::Idle | PlayerState::Stopping => {
+            PlayerState::Idle => {
                 // idempotent
+            }
+            PlayerState::Stopping => {
+                // Second stop while waiting for backend: if the ledger is already
+                // clean (no backend resources), complete the transition to Idle so
+                // shell/no-backend callers are not stuck in Stopping forever.
+                if self.ledger.is_zero() {
+                    self.transition(PlayerState::Idle, out);
+                    out.push(EngineEvent::Stopped);
+                }
             }
             PlayerState::Loading
             | PlayerState::Preroll
@@ -474,6 +483,13 @@ impl Engine {
         // Stop should release all resources; warn and reset if the ledger is not empty.
         if self.state == PlayerState::Stopping && !self.ledger.is_zero() {
             self.reset_ledger(out);
+        }
+        // When no resource handles remain, complete Stopping → Idle without
+        // requiring a backend to inject BackendEvent::Stopped. Native players
+        // with real backends still inject Stopped explicitly after teardown.
+        if self.state == PlayerState::Stopping && self.ledger.is_zero() {
+            self.transition(PlayerState::Idle, out);
+            out.push(EngineEvent::Stopped);
         }
     }
 
@@ -732,20 +748,18 @@ mod tests {
             vec![(PlayerState::Paused, PlayerState::Playing)]
         );
 
+        // With an empty resource ledger (no attached backend handles), Stop
+        // completes Stopping → Idle in one apply so shell callers are not stuck.
         let out = engine.apply(EngineCommand::Stop).unwrap();
         assert_eq!(
             transition_events(&out),
-            vec![(PlayerState::Playing, PlayerState::Stopping)]
-        );
-
-        let out = engine
-            .apply(EngineCommand::Backend(BackendEvent::Stopped))
-            .unwrap();
-        assert_eq!(
-            transition_events(&out),
-            vec![(PlayerState::Stopping, PlayerState::Idle)]
+            vec![
+                (PlayerState::Playing, PlayerState::Stopping),
+                (PlayerState::Stopping, PlayerState::Idle),
+            ]
         );
         assert!(out.events.contains(&EngineEvent::Stopped));
+        assert_eq!(engine.state(), PlayerState::Idle);
     }
 
     #[test]
@@ -832,14 +846,15 @@ mod tests {
     }
 
     #[test]
-    fn stop_is_idempotent_from_stopping() {
+    fn stop_is_idempotent_from_idle_after_clean_stop() {
         let mut engine = Engine::new();
         load(&mut engine);
+        // Empty ledger completes stop to Idle immediately.
         engine.apply(EngineCommand::Stop).unwrap();
-        assert_eq!(engine.state(), PlayerState::Stopping);
+        assert_eq!(engine.state(), PlayerState::Idle);
         let out = engine.apply(EngineCommand::Stop).unwrap();
         assert!(transition_events(&out).is_empty());
-        assert_eq!(engine.state(), PlayerState::Stopping);
+        assert_eq!(engine.state(), PlayerState::Idle);
     }
 
     #[test]

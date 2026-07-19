@@ -122,6 +122,36 @@ impl AnnexBDemuxer {
         self.errored = false;
     }
 
+    /// Copy bytes from a demux arena region into a new `Uint8Array`.
+    ///
+    /// Callers must copy before the next `next_event` that may release the slot.
+    #[wasm_bindgen(js_name = readRegion)]
+    pub fn read_region(&self, slot: u32, generation: u64) -> Result<js_sys::Uint8Array, JsValue> {
+        let handle = Handle {
+            instance_id: self.arena.instance_id(),
+            slot,
+            generation,
+        };
+        let data = self
+            .arena
+            .read(handle)
+            .map_err(|e| JsValue::from_str(e.as_str()))?;
+        Ok(js_sys::Uint8Array::from(data))
+    }
+
+    /// Release a previously emitted region without waiting for the next event.
+    #[wasm_bindgen(js_name = releaseRegion)]
+    pub fn release_region(&mut self, slot: u32, generation: u64) -> Result<(), JsValue> {
+        let handle = Handle {
+            instance_id: self.arena.instance_id(),
+            slot,
+            generation,
+        };
+        self.arena
+            .release(handle)
+            .map_err(|e| JsValue::from_str(e.as_str()))
+    }
+
     /// Return the next event, or `undefined` if more data is needed.
     pub fn next_event(&mut self) -> Option<DemuxEvent> {
         if self.errored {
@@ -238,6 +268,34 @@ impl MpegPsDemuxer {
         self.last_config = None;
         self.tracks.clear();
         self.errored = false;
+    }
+
+    /// Copy bytes from a demux arena region into a new `Uint8Array`.
+    #[wasm_bindgen(js_name = readRegion)]
+    pub fn read_region(&self, slot: u32, generation: u64) -> Result<js_sys::Uint8Array, JsValue> {
+        let handle = Handle {
+            instance_id: self.arena.instance_id(),
+            slot,
+            generation,
+        };
+        let data = self
+            .arena
+            .read(handle)
+            .map_err(|e| JsValue::from_str(e.as_str()))?;
+        Ok(js_sys::Uint8Array::from(data))
+    }
+
+    /// Release a previously emitted region without waiting for the next event.
+    #[wasm_bindgen(js_name = releaseRegion)]
+    pub fn release_region(&mut self, slot: u32, generation: u64) -> Result<(), JsValue> {
+        let handle = Handle {
+            instance_id: self.arena.instance_id(),
+            slot,
+            generation,
+        };
+        self.arena
+            .release(handle)
+            .map_err(|e| JsValue::from_str(e.as_str()))
     }
 
     /// Return the next event, or `undefined` if more data is needed.

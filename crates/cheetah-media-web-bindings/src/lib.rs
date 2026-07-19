@@ -10,9 +10,11 @@ use wasm_bindgen::prelude::*;
 
 mod demux;
 mod g711;
+mod transmux;
 
 pub use demux::{AnnexBDemuxer, DemuxEvent, DemuxEventKind, MpegPsDemuxer};
 pub use g711::g711_encode_f32;
+pub use transmux::{FlvFmp4Transmuxer, Fmp4Segment, TsFmp4Transmuxer};
 
 const INSTANCE_ID: u64 = 1;
 

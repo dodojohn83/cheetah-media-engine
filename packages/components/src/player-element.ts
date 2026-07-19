@@ -54,6 +54,7 @@ export class CheetahPlayerElement extends HTMLElement {
   private _lastError: ErrorDetail | undefined;
   private _autoplayTimer: ReturnType<typeof setTimeout> | undefined;
   private _resizeObserver: ResizeObserver | undefined;
+  private _video: HTMLVideoElement | undefined;
 
   private _playButton!: HTMLButtonElement;
   private _muteButton!: HTMLButtonElement;
@@ -298,6 +299,10 @@ export class CheetahPlayerElement extends HTMLElement {
     }
 
     if (name === 'volume' || name === 'muted') {
+      if (this._video) {
+        this._video.muted = this.muted;
+        this._video.volume = this.volume;
+      }
       this._updateVolumeUI();
       return;
     }
@@ -332,6 +337,18 @@ export class CheetahPlayerElement extends HTMLElement {
     surface.setAttribute('part', 'surface');
     const slot = document.createElement('slot');
     slot.name = 'surface';
+    // Default media surface for the MSE playback session. A light-DOM
+    // slotted surface (video/canvas) still wins for snapshot/composite when present.
+    const video = document.createElement('video');
+    video.setAttribute('part', 'video');
+    video.playsInline = true;
+    video.muted = this.muted;
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'contain';
+    video.style.background = '#000';
+    this._video = video;
+    surface.appendChild(video);
     surface.appendChild(slot);
     shadow.appendChild(surface);
 
@@ -562,6 +579,11 @@ export class CheetahPlayerElement extends HTMLElement {
     const player = createPlayer(config);
     this._player = player;
     this._bindPlayer();
+    if (this._video) {
+      this._video.muted = this.muted;
+      this._video.volume = this.volume;
+      player.attachMediaElement(this._video);
+    }
 
     try {
       await player.load(src, { isLive: this.live });
@@ -823,7 +845,8 @@ export class CheetahPlayerElement extends HTMLElement {
   private _recordingSource(): HTMLVideoElement | HTMLCanvasElement | undefined {
     const surface =
       this.querySelector('[slot="surface"]') ??
-      this.querySelector('video, canvas');
+      this.querySelector('video, canvas') ??
+      this._video;
     if (surface instanceof HTMLVideoElement || surface instanceof HTMLCanvasElement) {
       return surface;
     }

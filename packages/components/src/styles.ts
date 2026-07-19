@@ -32,6 +32,8 @@ export const styles = /*css*/ `
     overflow: hidden;
   }
 
+  .surface video,
+  .surface canvas,
   ::slotted(video),
   ::slotted(canvas) {
     display: block;

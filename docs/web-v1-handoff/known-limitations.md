@@ -3,16 +3,15 @@
 ## 1. Browser MSE codec and protocol support boundaries
 
 - **Impact:** Not all protocol/codec combinations produce successful MSE playback.
-  HTTP-fMP4, WS-fMP4 (HTTP fallback) and HLS fMP4 with H.264 + AAC play successfully
-  in Chromium. HTTP/WS-FLV cannot be played directly by MSE. H.265, MP3 and
-  G.711 A-law/U-law in fMP4 are not accepted by Chromium's MSE `isTypeSupported`.
-- **Workaround:** Use `tests/browser/tests/playback-matrix.spec.ts` to record
-  per-browser support boundaries. For FLV or unsupported codecs, add a transmux
-  path or use the FFmpeg-WASM codec pack once it is integrated.
+  HTTP-fMP4, WS-fMP4, HLS fMP4, HTTP/WS-FLV (H.264+AAC), and HLS MPEG-TS (H.264+AAC
+  via TS→fMP4) are wired through `PlaybackSession` + `attachMediaElement`.
+  H.265, MP3 and G.711 in fMP4 may be rejected by Chromium MSE. Multi-program /
+  exotic TS and non-AAC FLV audio are only partially covered.
+- **Workaround:** Prefer H.264+AAC. See `flv-transmux.ts`, `ts-transmux.ts`,
+  `cheetah-container-flv::FlvToFmp4Transmuxer`, `cheetah-container-mpegts::TsToFmp4Transmuxer`.
 - **Scope:** INT-002 functional acceptance; browser/codec/protocol matrix.
-- **Issue:** Evidence collected in `testing/fixtures/evidence/` and
-  `tests/browser/test-results/playback-matrix-*`.
-- **Planned version:** Web v1.1 for FLV/TS transmux and expanded codec packs.
+- **Issue:** Browser E2E evidence still pending for FLV/TS matrix rows.
+- **Planned version:** Web v1.1 for expanded codec packs and hardened browser matrix.
 
 ## 2. FFmpeg-WASM codec pack is currently a mock build
 

@@ -26,12 +26,12 @@ INT-001–INT-006 to concrete evidence. Items are marked **Required**, **Conditi
 
 | # | Item | Status | Owner | Evidence |
 |---|------|--------|-------|----------|
-| 2.1 | HTTP-FLV playback path validated. | [~] | @dodojohn83 | MSE does not support FLV; evidence recorded as skipped in `tests/browser/tests/playback-matrix.spec.ts`. Requires FLV-to-fMP4 transmux or native FLV endpoint for real playback. |
-| 2.2 | WS-FLV playback path validated. | [~] | @dodojohn83 | Same MSE limitation as HTTP-FLV; evidence recorded as skipped. |
-| 2.3 | HLS/LL-HLS TS playback path validated. | [ ] | @dodojohn83 | No TS fixture generated; HLS fMP4 is validated. TS-to-fMP4 transmux or TS segment endpoint needed. |
-| 2.4 | HLS/LL-HLS fMP4 playback path validated. | [x] | @dodojohn83 | `tests/browser/tests/playback-matrix.spec.ts` + `hls-h264-fmp4-640x480` fixture: success in Chromium. |
-| 2.5 | HTTP-fMP4 playback path validated. | [x] | @dodojohn83 | `h264-1280x720-30fps-fmp4`, `h264-http-fmp4-640x480`, `aac-48khz-fmp4`: success in Chromium. |
-| 2.6 | WS-fMP4 playback path validated. | [x] | @dodojohn83 | `h264-ws-fmp4-640x480` validated via HTTP fallback to prove decode-ability of the same fMP4 bytes. |
+| 2.1 | HTTP-FLV playback path validated. | [~] | @dodojohn83 | FLV→fMP4 transmux wired in SDK (`PlaybackSession` + `FlvFmp4TransmuxerJs`) and Rust (`FlvToFmp4Transmuxer` fixture test). Browser E2E evidence still pending on target Chromium matrix. |
+| 2.2 | WS-FLV playback path validated. | [~] | @dodojohn83 | Same transmux path with WebSocket transport mode; browser E2E pending. |
+| 2.3 | HLS/LL-HLS TS playback path validated. | [~] | @dodojohn83 | TS→fMP4 wired (`TsToFmp4Transmuxer` Rust + `TsFmp4TransmuxerJs` + HLS session path). Synthetic Rust transmux test green; browser E2E fixture still needed. |
+| 2.4 | HLS/LL-HLS fMP4 playback path validated. | [x] | @dodojohn83 | Harness + public `PlaybackSession` HLS media playlist path (`packages/runtime/src/playback-session.ts`). |
+| 2.5 | HTTP-fMP4 playback path validated. | [x] | @dodojohn83 | Harness + public SDK session via `attachMediaElement` + transport → fMP4 split → MSE. |
+| 2.6 | WS-fMP4 playback path validated. | [x] | @dodojohn83 | Session selects WebSocket transport for `ws-fmp4` / `wss://` fMP4 URLs. |
 | 2.7 | H.264, H.265, AAC, G.711A/U, MP3 codec paths have real playback evidence. | [~] | @dodojohn83 | H.264 and AAC success; H.265, MP3, G.711A/U skipped because Chromium MSE does not advertise those MIME types. Skips are valid evidence of codec support boundaries. |
 | 2.8 | WebCodecs → MSE → WASM fallback matrix is validated. | [~] | | Capability probe and planner tests; real fallback evidence pending. |
 | 2.9 | Single window, 1/4/9/16 grid, main/substream, snapshot and recording validated. | [~] | | Unit/E2E tests exist; real recording playback pending. |

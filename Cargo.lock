@@ -135,6 +135,7 @@ dependencies = [
 name = "cheetah-container-flv"
 version = "0.1.0"
 dependencies = [
+ "cheetah-container-isobmff",
  "cheetah-media-bitstream",
  "cheetah-media-types",
  "proptest",
@@ -163,6 +164,7 @@ dependencies = [
 name = "cheetah-container-mpegts"
 version = "0.1.0"
 dependencies = [
+ "cheetah-container-isobmff",
  "cheetah-media-bitstream",
  "cheetah-media-types",
  "proptest",
@@ -341,7 +343,9 @@ name = "cheetah-media-web-bindings"
 version = "0.1.0"
 dependencies = [
  "cheetah-container-annexb",
+ "cheetah-container-flv",
  "cheetah-container-mpegps",
+ "cheetah-container-mpegts",
  "cheetah-media-abi",
  "cheetah-media-bitstream",
  "cheetah-media-engine",

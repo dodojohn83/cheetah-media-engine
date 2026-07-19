@@ -1,8 +1,9 @@
 import '@cheetah-media/components';
 
 const params = new URLSearchParams(window.location.search);
-const pathname = window.location.pathname;
-const src = params.get('src') ?? (pathname === '/isolated' || pathname === '/isolated/' ? 'http://example.com/demo.flv' : 'test.flv');
+// Prefer a real fMP4 fixture so the main-thread MSE session can play without
+// FLV transmux. Override with ?src= for live/other streams.
+const src = params.get('src') ?? '/fixtures/media/h264-http-fmp4/clip.mp4';
 
 const app = document.getElementById('app');
 if (app) {
