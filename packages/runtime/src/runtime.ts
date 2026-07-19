@@ -51,6 +51,9 @@ interface PendingCommand {
  */
 export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
   const { workerUrl, wasmUrl: _wasmUrl, maxPendingCommands = 64 } = options;
+  if (!Number.isInteger(maxPendingCommands) || maxPendingCommands < 1) {
+    throw new Error('maxPendingCommands must be a finite positive integer');
+  }
 
   let worker: Worker | undefined;
   let instance = 0;
