@@ -138,4 +138,21 @@ describe('AudioPipeline', () => {
     pipeline.push(makeFrame(48000, 1, 10, 0, 0.5));
     expect(onError).toHaveBeenCalled();
   });
+
+  it('rejects invalid configure parameters', async () => {
+    const context = makeContext();
+    const pipeline = new AudioPipeline({ audioContext: context });
+    await expect(pipeline.configure({ inputSampleRate: 0, inputChannels: 1 })).rejects.toThrow();
+    await expect(pipeline.configure({ inputSampleRate: 48000, inputChannels: 0 })).rejects.toThrow();
+    await expect(pipeline.configure({ inputSampleRate: 48000, inputChannels: 1, outputSampleRate: NaN })).rejects.toThrow();
+  });
+
+  it('emits error for malformed audio frames', async () => {
+    const context = makeContext(48000, 0);
+    const onError = vi.fn();
+    const pipeline = new AudioPipeline({ audioContext: context, callbacks: { onError } });
+    await pipeline.configure({ inputSampleRate: 48000, inputChannels: 1 });
+    pipeline.push(makeFrame(48000, 1, 10, NaN, 0.5));
+    expect(onError).toHaveBeenCalled();
+  });
 });

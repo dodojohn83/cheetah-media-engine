@@ -82,4 +82,10 @@ describe('AudioResampler', () => {
     resampler.reset();
     expect(resampler.currentRatio).toBeCloseTo(44100 / 48000);
   });
+
+  it('rejects zero or non-finite sample rates and channel counts', () => {
+    expect(() => new AudioResampler({ inputSampleRate: 0, outputSampleRate: 48000, channels: 1 })).toThrow();
+    expect(() => new AudioResampler({ inputSampleRate: 48000, outputSampleRate: NaN, channels: 1 })).toThrow();
+    expect(() => new AudioResampler({ inputSampleRate: 48000, outputSampleRate: 48000, channels: 0 })).toThrow();
+  });
 });

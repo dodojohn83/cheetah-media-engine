@@ -157,14 +157,26 @@ export class AudioPipeline {
   }
 
   async configure(config: AudioPipelineConfig): Promise<void> {
+    if (!Number.isFinite(config.inputSampleRate) || config.inputSampleRate <= 0) {
+      throw new AudioPipelineError('bad-config', 'inputSampleRate must be a finite positive number');
+    }
+    if (!Number.isFinite(config.inputChannels) || config.inputChannels <= 0 || config.inputChannels % 1 !== 0) {
+      throw new AudioPipelineError('bad-config', 'inputChannels must be a positive integer');
+    }
     this.inputSampleRate = config.inputSampleRate;
     this.inputChannels = config.inputChannels;
-    this.outputSampleRate = config.outputSampleRate ?? this.audioContext.sampleRate;
-    this.outputChannels = config.outputChannels ?? this.inputChannels;
 
-    if (this.outputChannels < 1) {
-      throw new AudioPipelineError('bad-config', 'outputChannels must be >= 1');
+    const outputSampleRate = config.outputSampleRate ?? this.audioContext.sampleRate;
+    if (!Number.isFinite(outputSampleRate) || outputSampleRate <= 0) {
+      throw new AudioPipelineError('bad-config', 'outputSampleRate must be a finite positive number');
     }
+    const outputChannels = config.outputChannels ?? this.inputChannels;
+    if (!Number.isFinite(outputChannels) || outputChannels <= 0 || outputChannels % 1 !== 0) {
+      throw new AudioPipelineError('bad-config', 'outputChannels must be a positive integer');
+    }
+
+    this.outputSampleRate = outputSampleRate;
+    this.outputChannels = outputChannels;
 
     const resamplerOptions: ResamplerOptions = {
       inputSampleRate: this.inputSampleRate,
@@ -209,6 +221,22 @@ export class AudioPipeline {
   push(frame: AudioFrame): void {
     if (!this.configured || !this.resampler || !this.ring) {
       this.emitError(new AudioPipelineError('not-configured', 'pipeline not configured'));
+      return;
+    }
+
+    if (
+      !frame ||
+      !Number.isFinite(frame.timestamp) ||
+      !Number.isFinite(frame.sampleRate) ||
+      frame.sampleRate <= 0 ||
+      !Number.isFinite(frame.channels) ||
+      frame.channels <= 0 ||
+      frame.channels % 1 !== 0 ||
+      !Number.isFinite(frame.numberOfFrames) ||
+      frame.numberOfFrames <= 0 ||
+      frame.numberOfFrames % 1 !== 0
+    ) {
+      this.emitError(new AudioPipelineError('bad-frame', 'AudioFrame has invalid timestamp, sampleRate, channels or numberOfFrames'));
       return;
     }
 
