@@ -61,6 +61,9 @@ export function startTrace(playerId: string, name: string, epoch = 0, sequence =
 }
 
 export function endTrace(context: TraceContext): TraceContext {
+  if (!context || typeof context !== 'object') {
+    throw new Error('context must be a TraceContext');
+  }
   return { ...context, root: endSpan(context.root) };
 }
 
@@ -87,11 +90,20 @@ export function childSpan(parent: TraceSpan, name: string, sequence = 0): TraceS
 }
 
 export function endSpan(span: TraceSpan): TraceSpan {
+  if (!span || typeof span !== 'object') {
+    throw new Error('span must be a TraceSpan');
+  }
   if (span.endTime !== undefined) return span;
   return { ...span, endTime: nowMs() };
 }
 
 export function addChild(parent: TraceSpan, child: TraceSpan): TraceSpan {
+  if (!parent || typeof parent !== 'object') {
+    throw new Error('parent must be a TraceSpan');
+  }
+  if (!child || typeof child !== 'object') {
+    throw new Error('child must be a TraceSpan');
+  }
   return { ...parent, children: [...parent.children, child] };
 }
 
