@@ -32,7 +32,7 @@ export class MemoryArenaView {
   /** Return a Uint8Array slice for the descriptor's region. */
   getUint8Array(desc: MemoryDescriptor): Uint8Array {
     const buffer = this.memory.buffer;
-    const offset = Number(desc.offset);
+    const offset = memoryOffsetToNumber(desc.offset);
     const length = desc.length;
     if (offset + length > buffer.byteLength) {
       throw new Error('Descriptor region out of bounds');
@@ -47,4 +47,15 @@ export class MemoryArenaView {
     dst.set(src);
     return dst.buffer;
   }
+}
+
+/** Convert a possibly-bigint offset to a byte offset, guarding precision. */
+function memoryOffsetToNumber(offset: number | bigint): number {
+  if (typeof offset === 'number') {
+    return offset;
+  }
+  if (offset > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new RangeError('Memory offset exceeds safe integer range');
+  }
+  return Number(offset);
 }
