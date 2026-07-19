@@ -472,26 +472,34 @@ function withDefaults(config: PlayerConfig = {}): FullPlayerConfig {
 }
 
 function validateConfig(config: FullPlayerConfig): void {
-  if (config.latency.softMs < 0 || config.latency.hardMs < 0) {
-    throw new CheetahMediaError(6001, 'config', 'Latency targets must be non-negative');
+  if (!Number.isFinite(config.latency.softMs) || !Number.isFinite(config.latency.hardMs) || config.latency.softMs < 0 || config.latency.hardMs < 0) {
+    throw new CheetahMediaError(6001, 'config', 'Latency targets must be finite and non-negative');
   }
   if (config.latency.hardMs <= config.latency.softMs) {
     throw new CheetahMediaError(6001, 'config', 'Latency hard target must be greater than soft target');
   }
-  if (config.latency.maxPlaybackRate < 1 || config.latency.maxPlaybackRate > 2) {
-    throw new CheetahMediaError(6001, 'config', 'maxPlaybackRate must be between 1 and 2');
+  if (!Number.isFinite(config.latency.maxPlaybackRate) || config.latency.maxPlaybackRate < 1 || config.latency.maxPlaybackRate > 2) {
+    throw new CheetahMediaError(6001, 'config', 'maxPlaybackRate must be a finite number between 1 and 2');
   }
-  if (config.memory.maxWasmMemoryMB < 16) {
-    throw new CheetahMediaError(6001, 'config', 'maxWasmMemoryMB must be at least 16');
+  if (!Number.isFinite(config.memory.maxWasmMemoryMB) || config.memory.maxWasmMemoryMB < 16) {
+    throw new CheetahMediaError(6001, 'config', 'maxWasmMemoryMB must be a finite number at least 16');
   }
-  if (config.memory.maxThreads < 1) {
-    throw new CheetahMediaError(6001, 'config', 'maxThreads must be at least 1');
+  if (!Number.isFinite(config.memory.maxThreads) || config.memory.maxThreads < 1) {
+    throw new CheetahMediaError(6001, 'config', 'maxThreads must be a finite positive integer');
   }
-  if (config.diagnostics.maxEventHistory < 0) {
-    throw new CheetahMediaError(6001, 'config', 'maxEventHistory must be non-negative');
+  if (!Number.isFinite(config.diagnostics.maxEventHistory) || config.diagnostics.maxEventHistory < 0) {
+    throw new CheetahMediaError(6001, 'config', 'maxEventHistory must be a finite non-negative number');
   }
-  if (config.diagnostics.statsIntervalMs < 16) {
-    throw new CheetahMediaError(6001, 'config', 'statsIntervalMs must be at least 16');
+  if (!Number.isFinite(config.diagnostics.statsIntervalMs) || config.diagnostics.statsIntervalMs < 16) {
+    throw new CheetahMediaError(6001, 'config', 'statsIntervalMs must be a finite number at least 16');
+  }
+  if (!Number.isFinite(config.audio.volume) || config.audio.volume < 0 || config.audio.volume > 1) {
+    throw new CheetahMediaError(6001, 'config', 'volume must be a finite number between 0 and 1');
+  }
+  if (config.render.maxResolution !== undefined) {
+    if (!Number.isFinite(config.render.maxResolution.width) || config.render.maxResolution.width <= 0 || !Number.isFinite(config.render.maxResolution.height) || config.render.maxResolution.height <= 0) {
+      throw new CheetahMediaError(6001, 'config', 'maxResolution width and height must be finite positive numbers');
+    }
   }
 }
 
