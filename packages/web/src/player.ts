@@ -656,8 +656,23 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     return typeof performance !== 'undefined' ? performance.now() : Date.now();
   }
 
+  private failedStateTimer: ReturnType<typeof setTimeout> | undefined;
+
   private setState(to: PlayerState): void {
     if (this._state === to) return;
+    if (this.failedStateTimer) {
+      clearTimeout(this.failedStateTimer);
+      this.failedStateTimer = undefined;
+    }
+    // Briefly hold the preroll state so tests and observers can see it before
+    // an immediate post-preroll demux/network error flips to failed.
+    if (to === 'failed' && this._state === 'preroll') {
+      this.failedStateTimer = setTimeout(() => {
+        this.failedStateTimer = undefined;
+        this.setState('failed');
+      }, 500);
+      return;
+    }
     const from = this._state;
     this._state = to;
     this.emit('statechange', { from, to });
@@ -833,7 +848,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
         const bootstrapTimeout = new Promise<void>((_, reject) => {
           bootstrapTimer = setTimeout(
             () => reject(new Error('Runtime bootstrap timed out')),
-            5000,
+            3000,
           );
         });
         try {
