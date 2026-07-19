@@ -58,6 +58,9 @@ export class AudioResampler {
 
   /** Adapt the resampling ratio to correct clock drift without sudden jumps. */
   setRatio(ratio: number): void {
+    if (!Number.isFinite(ratio)) {
+      throw new RangeError('ratio must be a finite number');
+    }
     const minAbsolute = this.baseRatio * this.minRatio;
     const maxAbsolute = this.baseRatio * this.maxRatio;
     const clamped = Math.max(minAbsolute, Math.min(maxAbsolute, ratio));
