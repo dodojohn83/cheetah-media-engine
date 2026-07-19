@@ -286,13 +286,16 @@ impl Mp4Muxer {
         let mut body = Vec::new();
         body.extend(write_stsd(cfg)?);
 
-        let stts_runs = run_length_encode_u64(self.samples.iter().map(|s| s.duration));
+        let stts_runs =
+            run_length_encode_u64(self.samples.iter().map(|s| s.duration), "stts duration")?;
         body.extend(write_stts(&stts_runs)?);
 
         let has_b_frames = self.samples.iter().any(|s| s.pts != s.dts);
         if has_b_frames {
-            let ctts_runs =
-                run_length_encode_i64(self.samples.iter().map(|s| s.pts.saturating_sub(s.dts)));
+            let ctts_runs = run_length_encode_i64(
+                self.samples.iter().map(|s| s.pts.saturating_sub(s.dts)),
+                "ctts composition offset",
+            )?;
             body.extend(write_ctts(&ctts_runs)?);
         }
 
@@ -435,13 +438,13 @@ fn write_stss(syncs: &[u32]) -> Result<Vec<u8>, Mp4Error> {
     Ok(write_box(types::STSS, &body))
 }
 
-fn run_length_encode_u64<I>(values: I) -> Vec<(u32, u32)>
+fn run_length_encode_u64<I>(values: I, field: &'static str) -> Result<Vec<(u32, u32)>, Mp4Error>
 where
     I: Iterator<Item = u64>,
 {
     let mut runs: Vec<(u32, u32)> = Vec::new();
     for v in values {
-        let v = u32::try_from(v).unwrap_or(u32::MAX);
+        let v = u32::try_from(v).map_err(|_| Mp4Error::limit_exceeded(field))?;
         if let Some((count, delta)) = runs.last_mut()
             && *delta == v
         {
@@ -450,16 +453,16 @@ where
         }
         runs.push((1, v));
     }
-    runs
+    Ok(runs)
 }
 
-fn run_length_encode_i64<I>(values: I) -> Vec<(u32, i32)>
+fn run_length_encode_i64<I>(values: I, field: &'static str) -> Result<Vec<(u32, i32)>, Mp4Error>
 where
     I: Iterator<Item = i64>,
 {
     let mut runs: Vec<(u32, i32)> = Vec::new();
     for v in values {
-        let v = i32::try_from(v).unwrap_or(if v < 0 { i32::MIN } else { i32::MAX });
+        let v = i32::try_from(v).map_err(|_| Mp4Error::limit_exceeded(field))?;
         if let Some((count, offset)) = runs.last_mut()
             && *offset == v
         {
@@ -468,7 +471,7 @@ where
         }
         runs.push((1, v));
     }
-    runs
+    Ok(runs)
 }
 
 /// Find the body offset of a nested box by following a path of four-cc types.
