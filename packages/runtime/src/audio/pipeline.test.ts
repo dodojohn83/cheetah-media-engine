@@ -160,4 +160,20 @@ describe('AudioPipeline', () => {
     pipeline.push(makeFrame(48000, 1, 10, NaN, 0.5));
     expect(onError).toHaveBeenCalled();
   });
+
+  it('emits error when frame data is shorter than numberOfFrames', async () => {
+    const context = makeContext(48000, 0);
+    const onError = vi.fn();
+    const pipeline = new AudioPipeline({ audioContext: context, callbacks: { onError } });
+    await pipeline.configure({ inputSampleRate: 48000, inputChannels: 1 });
+    pipeline.push({
+      sampleRate: 48000,
+      channels: 1,
+      numberOfFrames: 100,
+      timestamp: 0,
+      format: 'f32-planar',
+      data: [new Float32Array(10)],
+    });
+    expect(onError).toHaveBeenCalled();
+  });
 });
