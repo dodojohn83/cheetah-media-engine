@@ -1083,6 +1083,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Snapshot requires an active stream', { recoverable: true });
     }
+    this.validateSnapshotOptions(options);
     // Prefer capturing from the attached video element (real MSE path).
     if (this.mediaElement && typeof document !== 'undefined') {
       try {
@@ -1273,6 +1274,38 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       }
       default:
         return;
+    }
+  }
+
+  private validateSnapshotOptions(options: { maxWidth?: number; maxHeight?: number }): void {
+    if (options.maxWidth !== undefined) {
+      if (!Number.isFinite(options.maxWidth) || options.maxWidth <= 0 || options.maxWidth % 1 !== 0) {
+        throw new CheetahMediaError(6002, 'sdk', 'maxWidth must be a positive integer', { recoverable: true });
+      }
+    }
+    if (options.maxHeight !== undefined) {
+      if (!Number.isFinite(options.maxHeight) || options.maxHeight <= 0 || options.maxHeight % 1 !== 0) {
+        throw new CheetahMediaError(6002, 'sdk', 'maxHeight must be a positive integer', { recoverable: true });
+      }
+    }
+  }
+
+  private validateSwitchVariant(variant: { bandwidth?: number; index?: number }): void {
+    if (!variant || typeof variant !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Variant must be an object', { recoverable: true });
+    }
+    const hasBandwidth = variant.bandwidth !== undefined;
+    const hasIndex = variant.index !== undefined;
+    if (!hasBandwidth && !hasIndex) {
+      throw new CheetahMediaError(6002, 'sdk', 'Variant bandwidth or index required', { recoverable: true });
+    }
+    const isValidInteger = (value: unknown): value is number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 && value % 1 === 0;
+    if (hasBandwidth && !isValidInteger(variant.bandwidth)) {
+      throw new CheetahMediaError(6002, 'sdk', 'Variant bandwidth must be a non-negative integer', { recoverable: true });
+    }
+    if (hasIndex && !isValidInteger(variant.index)) {
+      throw new CheetahMediaError(6002, 'sdk', 'Variant index must be a non-negative integer', { recoverable: true });
     }
   }
 
@@ -1662,9 +1695,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async switchVariant(variant: { bandwidth?: number; index?: number }): Promise<void> {
     this.guardDestroyed();
-    if (variant.bandwidth === undefined && variant.index === undefined) {
-      throw new CheetahMediaError(6002, 'sdk', 'Variant bandwidth or index required', { recoverable: true });
-    }
+    this.validateSwitchVariant(variant);
     try {
       await this.runtime.request('switch-variant', variant, 10000);
     } catch (cause) {
