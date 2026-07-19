@@ -109,7 +109,7 @@ export function buildDiagnostics(
     throw new Error('maxTraceDepth must be a finite non-negative integer');
   }
 
-  const recentEvents = extras.events ? extras.events.slice(-maxEventCount) : [];
+  const recentEvents = extras.events ? (maxEventCount === 0 ? [] : extras.events.slice(-maxEventCount)) : [];
   const trace = maxTraceDepth !== undefined && extras.trace
     ? truncateTrace(extras.trace, maxTraceDepth)
     : extras.trace;
