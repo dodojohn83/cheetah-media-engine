@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AudioPipeline, type AudioContextLike, type AudioFrame } from './index';
+import { AudioPipeline, AudioPipelineError, type AudioContextLike, type AudioFrame } from './index';
 
 function setCurrentTime(ctx: AudioContextLike, t: number): void {
   (ctx as unknown as { currentTime: number }).currentTime = t;
@@ -139,12 +139,17 @@ describe('AudioPipeline', () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it('rejects invalid configure parameters', async () => {
+  it('rejects invalid constructor and configure options', async () => {
     const context = makeContext();
+    expect(() => new AudioPipeline({ audioContext: context, ringCapacityFrames: NaN })).toThrow(AudioPipelineError);
+    expect(() => new AudioPipeline({ audioContext: context, smallDriftMs: 100, largeDriftMs: 50 })).toThrow(AudioPipelineError);
+    expect(() => new AudioPipeline({ audioContext: context, minRatio: 1.1, maxRatio: 1.0 })).toThrow(AudioPipelineError);
+
     const pipeline = new AudioPipeline({ audioContext: context });
-    await expect(pipeline.configure({ inputSampleRate: 0, inputChannels: 1 })).rejects.toThrow();
-    await expect(pipeline.configure({ inputSampleRate: 48000, inputChannels: 0 })).rejects.toThrow();
-    await expect(pipeline.configure({ inputSampleRate: 48000, inputChannels: 1, outputSampleRate: NaN })).rejects.toThrow();
+    await expect(pipeline.configure({ inputSampleRate: NaN, inputChannels: 1 })).rejects.toBeInstanceOf(AudioPipelineError);
+    await expect(pipeline.configure({ inputSampleRate: 48000, inputChannels: 0 })).rejects.toBeInstanceOf(AudioPipelineError);
+    await expect(pipeline.configure({ inputSampleRate: 48000, inputChannels: 1, outputSampleRate: NaN })).rejects.toBeInstanceOf(AudioPipelineError);
+    await expect(pipeline.configure({ inputSampleRate: 48000, inputChannels: 1, outputSampleRate: 44100.5 })).rejects.toBeInstanceOf(AudioPipelineError);
   });
 
   it('emits error for malformed audio frames', async () => {
