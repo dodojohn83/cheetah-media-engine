@@ -34,7 +34,10 @@ export class MemoryArenaView {
     const buffer = this.memory.buffer;
     const offset = memoryOffsetToNumber(desc.offset);
     const length = desc.length;
-    if (offset + length > buffer.byteLength) {
+    if (!Number.isFinite(offset) || offset < 0 || !Number.isFinite(length) || length < 0) {
+      throw new RangeError('Descriptor offset and length must be finite non-negative numbers');
+    }
+    if (offset > buffer.byteLength || length > buffer.byteLength - offset) {
       throw new Error('Descriptor region out of bounds');
     }
     return new Uint8Array(buffer, offset, length);
@@ -52,10 +55,13 @@ export class MemoryArenaView {
 /** Convert a possibly-bigint offset to a byte offset, guarding precision. */
 function memoryOffsetToNumber(offset: number | bigint): number {
   if (typeof offset === 'number') {
+    if (!Number.isFinite(offset) || offset < 0) {
+      throw new RangeError('Memory offset must be a finite non-negative number');
+    }
     return offset;
   }
-  if (offset > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new RangeError('Memory offset exceeds safe integer range');
+  if (offset < 0n || offset > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new RangeError('Memory offset exceeds safe integer range or is negative');
   }
   return Number(offset);
 }
