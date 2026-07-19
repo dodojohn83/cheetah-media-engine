@@ -51,6 +51,12 @@ interface PendingCommand {
  */
 export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
   const { workerUrl, wasmUrl: _wasmUrl, maxPendingCommands = 64 } = options;
+  if (workerUrl !== undefined && (typeof workerUrl !== 'string' || workerUrl.length === 0)) {
+    throw new Error('workerUrl must be a non-empty string');
+  }
+  if (_wasmUrl !== undefined && (typeof _wasmUrl !== 'string' || _wasmUrl.length === 0)) {
+    throw new Error('wasmUrl must be a non-empty string');
+  }
   if (!Number.isInteger(maxPendingCommands) || maxPendingCommands < 1) {
     throw new Error('maxPendingCommands must be a finite positive integer');
   }
@@ -177,6 +183,16 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
 
     async load(url: string, options = {}): Promise<void> {
       if (destroyed) throw new Error('Runtime destroyed');
+      if (typeof url !== 'string' || url.length === 0) {
+        throw new Error('load url must be a non-empty string');
+      }
+      if (options !== null && typeof options !== 'object') {
+        throw new Error('load options must be an object');
+      }
+      const isLive = options?.isLive;
+      if (isLive !== undefined && typeof isLive !== 'boolean') {
+        throw new Error('load options.isLive must be a boolean');
+      }
       instance += 1;
       epoch += 1;
       sequence = 0;
@@ -187,7 +203,7 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
         const bootstrap: BootstrapPayload = { wasmUrl: _wasmUrl };
         await post('bootstrap', bootstrap, 30000);
       }
-      const payload: LoadPayload = { url, isLive: options.isLive ?? false };
+      const payload: LoadPayload = { url, isLive: isLive ?? false };
       await post('load', payload, 30000);
     },
 
