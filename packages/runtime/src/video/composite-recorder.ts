@@ -205,6 +205,19 @@ export class CompositeRecorder {
     this.bytesWritten = 0;
     this.startTime = 0;
 
+    if (options.fps !== undefined && (!Number.isFinite(options.fps) || options.fps <= 0)) {
+      throw new RendererError('invalid-option', 'fps must be a finite positive number');
+    }
+    if (options.segmentDurationMs !== undefined && (!Number.isFinite(options.segmentDurationMs) || options.segmentDurationMs < 0)) {
+      throw new RendererError('invalid-option', 'segmentDurationMs must be a finite non-negative number');
+    }
+    if (options.maxDurationMs !== undefined && (!Number.isFinite(options.maxDurationMs) || options.maxDurationMs < 0)) {
+      throw new RendererError('invalid-option', 'maxDurationMs must be a finite non-negative number');
+    }
+    if (options.maxSizeBytes !== undefined && (!Number.isFinite(options.maxSizeBytes) || options.maxSizeBytes < 0)) {
+      throw new RendererError('invalid-option', 'maxSizeBytes must be a finite non-negative number');
+    }
+
     const { width, height } = getSourceSize(options.source);
     const outputWidth = options.width && options.width > 0 ? options.width : width;
     const outputHeight = options.height && options.height > 0 ? options.height : height;
