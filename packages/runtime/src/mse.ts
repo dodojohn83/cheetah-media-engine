@@ -239,14 +239,17 @@ function validateMseOptions(options: MseBackendOptions): void {
   validatePositiveFiniteNumber(o.liveLatencyTargetMs, 'liveLatencyTargetMs');
   validateNonNegativeFiniteNumber(o.liveDriftSmallMs, 'liveDriftSmallMs');
   validateNonNegativeFiniteNumber(o.liveDriftLargeMs, 'liveDriftLargeMs');
+  if (o.liveDriftSmallMs > o.liveDriftLargeMs) {
+    throw new MseError('invalid-config', 'liveDriftSmallMs must be <= liveDriftLargeMs');
+  }
   if (!Number.isFinite(o.minPlaybackRate) || o.minPlaybackRate <= 0) {
     throw new MseError('invalid-config', 'minPlaybackRate must be a finite positive number');
   }
   if (!Number.isFinite(o.maxPlaybackRate) || o.maxPlaybackRate <= 0) {
     throw new MseError('invalid-config', 'maxPlaybackRate must be a finite positive number');
   }
-  if (o.minPlaybackRate >= o.maxPlaybackRate) {
-    throw new MseError('invalid-config', 'minPlaybackRate must be less than maxPlaybackRate');
+  if (o.minPlaybackRate > o.maxPlaybackRate) {
+    throw new MseError('invalid-config', 'minPlaybackRate must not exceed maxPlaybackRate');
   }
   validatePositiveFiniteNumber(o.liveControlIntervalMs, 'liveControlIntervalMs');
   validatePositiveFiniteNumber(o.sourceOpenTimeoutMs, 'sourceOpenTimeoutMs');
