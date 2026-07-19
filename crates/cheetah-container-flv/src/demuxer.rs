@@ -1,5 +1,6 @@
 //! Incremental FLV demuxer.
 
+use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 
 use cheetah_media_types::{
@@ -10,7 +11,7 @@ use cheetah_media_types::{
 use crate::{
     FlvError,
     amf::{AmfLimits, FlvScriptData, parse_script_data},
-    audio::{AudioTagHeader, parse_aac_config},
+    audio::{AudioTagHeader, audio_format_from_header, parse_aac_config},
     header::{FlvHeader, FlvTagHeader, parse_file_header, parse_tag_header},
     video::{VideoCodecId, VideoTagHeader, is_keyframe, parse_video_config},
 };
@@ -77,6 +78,7 @@ pub struct FlvDemuxer {
     next_video_id: u32,
     amf_limits: AmfLimits,
     epoch_jumps: u64,
+    pending_events: VecDeque<FlvEvent>,
     error: Option<FlvError>,
 }
 
@@ -106,6 +108,7 @@ impl FlvDemuxer {
             next_video_id: 2,
             amf_limits: AmfLimits::default(),
             epoch_jumps: 0,
+            pending_events: VecDeque::new(),
             error: None,
         }
     }
@@ -137,6 +140,9 @@ impl FlvDemuxer {
         }
         if self.buffer.len() > MAX_BUFFER {
             return Err(FlvError::LimitExceeded);
+        }
+        if let Some(event) = self.pending_events.pop_front() {
+            return Ok(Some(event));
         }
         loop {
             if self.header.is_none() {
@@ -346,21 +352,48 @@ impl FlvDemuxer {
             .to_codec_id()
             .ok_or(FlvError::UnsupportedCodec)?;
 
-        // Update track codec if it changed (e.g. first raw frame before config).
+        let mut track_changed = false;
         if let Some(info) = self.audio.info_mut()
             && info.codec != codec
         {
             info.codec = codec;
+            track_changed = true;
         }
 
         let payload = &data[ah.header_size..];
+
+        // Non-AAC codecs carry their parameters in each raw frame. Derive the
+        // AudioFormat from the first non-empty payload and emit a Track event so
+        // downstream consumers learn the codec and sample parameters.
+        let mut format_set = false;
+        if !payload.is_empty()
+            && let Some(info) = self.audio.info_mut()
+            && info.audio_format.is_none()
+            && let Some(fmt) = audio_format_from_header(&ah, payload)
+        {
+            let _ = info.set_audio_format(fmt);
+            format_set = true;
+        }
+        track_changed |= format_set;
+
+        if track_changed && let Some(track) = self.audio.info.clone() {
+            self.pending_events.push_back(FlvEvent::Track(track));
+        }
+
         if payload.is_empty() {
-            return Ok(None);
+            return Ok(self.pending_events.pop_front());
         }
 
         let dts_ms = self.unwrapped_timestamp_ms(header.timestamp_ms);
         let time = MediaTime::from_ticks(Some(dts_ms), Some(dts_ms), None, TimeBase::DEFAULT);
         let packet = self.new_packet(track_id, payload, time, false);
+
+        if let Some(track) = self.pending_events.pop_front() {
+            // The pending Track event must be delivered before its Packet.
+            self.pending_events.push_back(FlvEvent::Packet(packet));
+            return Ok(Some(track));
+        }
+
         Ok(Some(FlvEvent::Packet(packet)))
     }
 
@@ -499,5 +532,94 @@ mod proptests {
             // Further calls after an error must also be safe.
             let _ = demuxer.next_event();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cheetah_media_types::{ChannelLayout, SampleFormat};
+
+    fn build_audio_tag(data: &[u8], timestamp_ms: u32) -> Vec<u8> {
+        let mut tag = Vec::with_capacity(11 + data.len());
+        tag.push(8); // audio tag
+        tag.extend_from_slice(&data_size_to_u24_be(data.len() as u32));
+        tag.extend_from_slice(&timestamp_to_u24(timestamp_ms));
+        tag.push(((timestamp_ms >> 24) & 0xFF) as u8); // timestamp extended
+        tag.extend_from_slice(&[0, 0, 0]); // stream id
+        tag.extend_from_slice(data);
+        tag
+    }
+
+    fn data_size_to_u24_be(v: u32) -> [u8; 3] {
+        [(v >> 16) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8]
+    }
+
+    fn timestamp_to_u24(v: u32) -> [u8; 3] {
+        [(v >> 16) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8]
+    }
+
+    #[test]
+    fn g711_raw_tag_emits_track_then_packet() {
+        let mut demuxer = FlvDemuxer::new(FlvMode::Stream);
+        // FLV header: audio-only.
+        demuxer.push(b"FLV\x01\x04\x00\x00\x00\x09");
+        assert!(matches!(
+            demuxer.next_event().unwrap(),
+            Some(FlvEvent::Header(_))
+        ));
+
+        // G.711 A-law, 8-bit, mono, 160 samples.
+        let audio_data = [[0x70].as_slice(), &[0u8; 160]].concat();
+        demuxer.push(&build_audio_tag(&audio_data, 0));
+
+        let track = match demuxer.next_event().unwrap() {
+            Some(FlvEvent::Track(t)) => t,
+            other => panic!("expected Track event, got {:?}", other),
+        };
+        assert_eq!(track.codec, CodecId::G711A);
+        let fmt = track.audio_format.unwrap();
+        assert_eq!(fmt.sample_format, SampleFormat::U8);
+        assert_eq!(fmt.sample_rate, 8000);
+        assert_eq!(fmt.channel_layout, ChannelLayout::Mono);
+        assert_eq!(fmt.sample_count, 160);
+
+        assert!(matches!(
+            demuxer.next_event().unwrap(),
+            Some(FlvEvent::Packet(_))
+        ));
+    }
+
+    #[test]
+    fn empty_first_g711_tag_emits_track_without_zero_sample_count() {
+        let mut demuxer = FlvDemuxer::new(FlvMode::Stream);
+        demuxer.push(b"FLV\x01\x04\x00\x00\x00\x09");
+        assert!(matches!(
+            demuxer.next_event().unwrap(),
+            Some(FlvEvent::Header(_))
+        ));
+
+        // Empty G.711 A-law tag: header byte only.
+        demuxer.push(&build_audio_tag(&[0x70], 0));
+        assert!(matches!(
+            demuxer.next_event().unwrap(),
+            Some(FlvEvent::Track(_))
+        ));
+
+        // Follow with a real G.711 frame.
+        let audio_data = [[0x70].as_slice(), &[0u8; 160]].concat();
+        demuxer.push(&build_audio_tag(&audio_data, 20));
+
+        let track = match demuxer.next_event().unwrap() {
+            Some(FlvEvent::Track(t)) => t,
+            other => panic!("expected Track event, got {:?}", other),
+        };
+        let fmt = track.audio_format.unwrap();
+        assert_eq!(fmt.sample_count, 160);
+
+        assert!(matches!(
+            demuxer.next_event().unwrap(),
+            Some(FlvEvent::Packet(_))
+        ));
     }
 }

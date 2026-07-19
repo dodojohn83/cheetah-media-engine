@@ -3,6 +3,7 @@
 use alloc::vec::Vec;
 
 use cheetah_media_bitstream::aac::AudioSpecificConfig;
+use cheetah_media_bitstream::mp3::Mp3Header;
 use cheetah_media_types::{
     AudioFormat, ChannelLayout, CodecConfig, CodecId, MediaError, SampleFormat, TrackInfo,
     TrackKind,
@@ -223,6 +224,49 @@ pub const fn sound_rate_to_hz(sound_rate: u8, format: SoundFormat) -> u32 {
     }
 }
 
+/// Derive an `AudioFormat` for MP3/G.711 raw tags from the tag header and payload.
+///
+/// For AAC the format comes from the AudioSpecificConfig; this helper is used for
+/// codecs that do not have a separate config tag and carry all needed parameters
+/// in each raw frame.
+pub fn audio_format_from_header(ah: &AudioTagHeader, payload: &[u8]) -> Option<AudioFormat> {
+    let channels = if ah.sound_type == 1 { 2 } else { 1 };
+    match ah.sound_format.to_codec_id()? {
+        CodecId::G711A | CodecId::G711U => {
+            // G.711 A-law/µ-law is always 8-bit companded, one byte per sample.
+            // The FLV SoundSize bit only applies to uncompressed formats; many
+            // encoders set it to 1 for compressed data, so it must be ignored.
+            let sample_count = u32::try_from(payload.len() / channels as usize).ok()?;
+            Some(AudioFormat {
+                sample_format: SampleFormat::U8,
+                sample_rate: sound_rate_to_hz(ah.sound_rate, ah.sound_format),
+                channel_layout: ChannelLayout::from_channel_count(channels),
+                sample_count,
+            })
+        }
+        CodecId::Mp3 => {
+            if let Ok(header) = Mp3Header::parse(payload) {
+                Some(AudioFormat {
+                    sample_format: SampleFormat::S16,
+                    sample_rate: header.sample_rate,
+                    channel_layout: ChannelLayout::from_channel_count(u32::from(
+                        header.channel_count,
+                    )),
+                    sample_count: u32::from(header.samples_per_frame),
+                })
+            } else {
+                Some(AudioFormat {
+                    sample_format: SampleFormat::S16,
+                    sample_rate: sound_rate_to_hz(ah.sound_rate, ah.sound_format),
+                    channel_layout: ChannelLayout::from_channel_count(channels),
+                    sample_count: 1152,
+                })
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Build a generic audio tag body (1-byte header + payload) for MP3/G.711.
 pub fn build_audio_raw_frame(
     codec: CodecId,
@@ -284,5 +328,40 @@ mod tests {
         assert_eq!(track.codec, CodecId::Aac);
         let built = build_aac_config(&track).unwrap();
         assert_eq!(&built[2..], &payload);
+    }
+
+    #[test]
+    fn g711_audio_format_from_header() {
+        // 0x70 -> G.711 A-law, sound rate 0, 8-bit, mono.
+        let header = AudioTagHeader::parse(&[0x70]).unwrap();
+        let payload = [0u8; 160];
+        let fmt = audio_format_from_header(&header, &payload).unwrap();
+        assert_eq!(fmt.sample_format, SampleFormat::U8);
+        assert_eq!(fmt.sample_rate, 8000);
+        assert_eq!(fmt.channel_layout, ChannelLayout::Mono);
+        assert_eq!(fmt.sample_count, 160);
+    }
+
+    #[test]
+    fn g711_audio_format_ignores_sound_size_bit() {
+        // 0x72 -> G.711 A-law, sound rate 0, 16-bit flag set, mono.
+        // The SoundSize bit must be ignored for compressed codecs.
+        let header = AudioTagHeader::parse(&[0x72]).unwrap();
+        let payload = [0u8; 160];
+        let fmt = audio_format_from_header(&header, &payload).unwrap();
+        assert_eq!(fmt.sample_format, SampleFormat::U8);
+        assert_eq!(fmt.sample_count, 160);
+    }
+
+    #[test]
+    fn mp3_audio_format_from_header() {
+        // 0x22 -> MP3, sound rate 0 (5.5 kHz index), 8-bit, mono.
+        let header = AudioTagHeader::parse(&[0x22]).unwrap();
+        let payload = [0xff, 0xfb, 0x90, 0x64];
+        let fmt = audio_format_from_header(&header, &payload).unwrap();
+        assert_eq!(fmt.sample_format, SampleFormat::S16);
+        assert_eq!(fmt.sample_rate, 44100);
+        assert_eq!(fmt.channel_layout.channels(), 2);
+        assert_eq!(fmt.sample_count, 1152);
     }
 }
