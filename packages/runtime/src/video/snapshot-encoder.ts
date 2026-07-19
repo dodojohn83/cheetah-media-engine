@@ -39,16 +39,21 @@ export function computeTargetSize(
   maxWidth?: number,
   maxHeight?: number,
 ): { width: number; height: number } {
+  if (!Number.isFinite(sourceWidth) || sourceWidth <= 0 || !Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+    throw new RendererError('invalid-source', 'Snapshot source dimensions must be finite and positive');
+  }
   let width = sourceWidth;
   let height = sourceHeight;
-  if (maxWidth !== undefined && maxWidth > 0 && width > maxWidth) {
-    const scale = maxWidth / width;
-    width = maxWidth;
+  const limitWidth = maxWidth !== undefined && Number.isFinite(maxWidth) && maxWidth > 0 ? maxWidth : undefined;
+  const limitHeight = maxHeight !== undefined && Number.isFinite(maxHeight) && maxHeight > 0 ? maxHeight : undefined;
+  if (limitWidth !== undefined && width > limitWidth) {
+    const scale = limitWidth / width;
+    width = limitWidth;
     height = Math.max(1, Math.round(height * scale));
   }
-  if (maxHeight !== undefined && maxHeight > 0 && height > maxHeight) {
-    const scale = maxHeight / height;
-    height = maxHeight;
+  if (limitHeight !== undefined && height > limitHeight) {
+    const scale = limitHeight / height;
+    height = limitHeight;
     width = Math.max(1, Math.round(width * scale));
   }
   return { width, height };
@@ -176,6 +181,10 @@ export async function encodeSnapshot(
     };
     const quality = options.quality;
     if (quality !== undefined && format !== 'png') {
+      if (!Number.isFinite(quality)) {
+        reject(new RendererError('invalid-option', 'quality must be a finite number'));
+        return;
+      }
       canvas.toBlob(onBlob, mimeType, Math.min(1, Math.max(0, quality)));
     } else {
       canvas.toBlob(onBlob, mimeType);
