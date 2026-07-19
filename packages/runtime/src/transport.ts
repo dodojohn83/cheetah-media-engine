@@ -15,6 +15,7 @@ import {
   type TransportConfig,
   type TransportError,
   validateUrl,
+  validateTransportConfig,
 } from './transport-common';
 
 import { WebRtcTransport } from './webrtc';
@@ -55,6 +56,13 @@ export class FetchTransport implements Transport {
   start(onChunk: (chunk: Chunk) => void, onError: (error: TransportError) => void, onEnd: () => void): void {
     if (this.started) return;
     this.started = true;
+
+    const configError = validateTransportConfig(this.config);
+    if (configError) {
+      onError(configError);
+      onEnd();
+      return;
+    }
 
     const urlError = validateUrl(this.config.url);
     if (urlError) {
@@ -230,6 +238,12 @@ export class WebSocketTransport implements Transport {
     this.started = true;
     this.onError = onError;
     this.onEnd = onEnd;
+
+    const configError = validateTransportConfig(this.config);
+    if (configError) {
+      this.finish(configError);
+      return;
+    }
 
     const urlError = validateUrl(this.config.url);
     if (urlError) {

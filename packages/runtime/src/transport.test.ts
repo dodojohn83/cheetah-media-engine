@@ -197,6 +197,30 @@ describe('FetchTransport', () => {
     expect(err.code).toBe(TransportErrorCode.Canceled);
   });
 
+  it('rejects non-finite or non-positive transport config', async () => {
+    const transport = new FetchTransport({ url: 'https://example.com/stream', timeoutMs: NaN });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+    expect(err.code).toBe(TransportErrorCode.InvalidConfig);
+  });
+
+  it('rejects NaN maxBytes and negative maxRetries', async () => {
+    const transport = new FetchTransport({ url: 'https://example.com/stream', maxBytes: NaN, maxRetries: -1 });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+    expect(err.code).toBe(TransportErrorCode.InvalidConfig);
+  });
+
   it('resets the idle timeout on each chunk for long-running streams', async () => {
     const slowStream = new ReadableStream<Uint8Array>({
       start(controller) {
