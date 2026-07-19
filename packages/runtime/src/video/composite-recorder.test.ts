@@ -268,4 +268,10 @@ describe('CompositeRecorder', () => {
     const recorder = new CompositeRecorder();
     await expect(recorder.start(makeOptions({} as CanvasImageSource))).rejects.toBeInstanceOf(RendererError);
   });
+
+  it('throws with non-finite output dimensions', async () => {
+    const source = new MockVideoElement() as unknown as HTMLVideoElement;
+    const recorder = new CompositeRecorder();
+    await expect(recorder.start(makeOptions(source, undefined, { width: Infinity }))).rejects.toBeInstanceOf(RendererError);
+  });
 });

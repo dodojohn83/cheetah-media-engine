@@ -202,6 +202,9 @@ export class CompositeRecorder {
     const { width, height } = getSourceSize(options.source);
     const outputWidth = options.width && options.width > 0 ? options.width : width;
     const outputHeight = options.height && options.height > 0 ? options.height : height;
+    if (!Number.isFinite(outputWidth) || !Number.isFinite(outputHeight) || outputWidth <= 0 || outputHeight <= 0) {
+      throw new RendererError('invalid-source', 'Composite recording output dimensions must be finite and positive');
+    }
 
     this.canvas = createCanvas(outputWidth, outputHeight);
     this.ctx = this.canvas.getContext('2d');
