@@ -158,6 +158,12 @@ function copyInterleavedFromFrame(
 }
 
 export function extractPlanarF32(frame: AudioFrame, outputChannels: number): Float32Array[] {
+  if (!frame || typeof frame !== 'object') {
+    throw new Error('frame must be an object');
+  }
+  if (!Number.isInteger(outputChannels) || outputChannels < 1 || !Number.isFinite(outputChannels)) {
+    throw new Error('outputChannels must be a finite positive integer');
+  }
   const { numberOfFrames } = frame;
 
   if (frame.data) {
