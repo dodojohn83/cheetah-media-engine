@@ -844,6 +844,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async load(url: string, options: { isLive?: boolean } = {}): Promise<void> {
     this.guardDestroyed();
+    if (typeof url !== 'string' || url.length === 0) {
+      throw new CheetahMediaError(7001, 'load', 'URL must be a non-empty string', { recoverable: false });
+    }
+    if (options.isLive !== undefined && typeof options.isLive !== 'boolean') {
+      throw new CheetahMediaError(6002, 'sdk', 'isLive must be a boolean', { recoverable: true });
+    }
     this.setState('loading');
     await this.teardownSession();
     const isLive = options.isLive ?? false;
@@ -952,6 +958,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async seek(timeMs: number): Promise<void> {
     this.guardDestroyed();
+    if (!Number.isFinite(timeMs) || timeMs < 0) {
+      throw new CheetahMediaError(6002, 'sdk', 'seek timeMs must be a finite non-negative number', { recoverable: true });
+    }
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Seek requires an active stream', { recoverable: true });
     }
@@ -968,6 +977,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async setPlaybackRate(rate: number): Promise<void> {
     this.guardDestroyed();
+    if (!Number.isFinite(rate) || rate < 0.1 || rate > 16) {
+      throw new CheetahMediaError(6002, 'sdk', 'playback rate must be between 0.1 and 16', { recoverable: true });
+    }
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Set playback rate requires an active stream', { recoverable: true });
     }
@@ -984,6 +996,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async frameStep(direction: 'forward' | 'backward', keyframeOnly = false): Promise<void> {
     this.guardDestroyed();
+    if (direction !== 'forward' && direction !== 'backward') {
+      throw new CheetahMediaError(6002, 'sdk', 'frameStep direction must be forward or backward', { recoverable: true });
+    }
+    if (typeof keyframeOnly !== 'boolean') {
+      throw new CheetahMediaError(6002, 'sdk', 'frameStep keyframeOnly must be a boolean', { recoverable: true });
+    }
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Frame step requires an active stream', { recoverable: true });
     }
@@ -1000,6 +1018,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async pauseDisplay(keepConnection = true): Promise<void> {
     this.guardDestroyed();
+    if (typeof keepConnection !== 'boolean') {
+      throw new CheetahMediaError(6002, 'sdk', 'pauseDisplay keepConnection must be a boolean', { recoverable: true });
+    }
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Pause display requires an active stream', { recoverable: true });
     }
