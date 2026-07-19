@@ -242,6 +242,28 @@ describe('StreamDownloader', () => {
     expect(sink.close).toHaveBeenCalledTimes(1);
   });
 
+  it('times out a stalled download', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        return new Promise<Response>((_, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(new Error('aborted'));
+            return;
+          }
+          const abort = () => reject(new Error('aborted'));
+          signal?.addEventListener('abort', abort, { once: true });
+        });
+      }),
+    );
+    const dl = new StreamDownloader();
+    await expect(
+      dl.start({ ...makeOptions('https://example.com/slow'), timeoutMs: 10 }),
+    ).rejects.toMatchObject({ code: 7006 });
+    expect(dl.progress.state).toBe('error');
+  });
+
   it('stop aborts a running download', async () => {
     const dl = new StreamDownloader();
     const start = dl.start({
