@@ -260,7 +260,7 @@ describe('StreamDownloader', () => {
     const dl = new StreamDownloader();
     await expect(
       dl.start({ ...makeOptions('https://example.com/slow'), timeoutMs: 10 }),
-    ).rejects.toMatchObject({ code: 7006 });
+    ).rejects.toMatchObject({ code: 7005 });
     expect(dl.progress.state).toBe('error');
   });
 
