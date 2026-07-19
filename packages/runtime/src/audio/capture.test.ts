@@ -228,4 +228,12 @@ describe('MicrophoneCapture', () => {
 
     await capture.stop();
   });
+
+  it('rejects invalid capture options', () => {
+    expect(() => new MicrophoneCapture({ sampleRate: 0 })).toThrow(CaptureError);
+    expect(() => new MicrophoneCapture({ sampleRate: NaN })).toThrow(CaptureError);
+    expect(() => new MicrophoneCapture({ frameDurationMs: -10 })).toThrow(CaptureError);
+    expect(() => new MicrophoneCapture({ maxBufferedFrames: -1 })).toThrow(CaptureError);
+    expect(() => new MicrophoneCapture({ encoder: 'pcm' as unknown as 'mulaw' })).toThrow(CaptureError);
+  });
 });
