@@ -523,6 +523,9 @@ export class CapabilityCache {
   private codecPackVersion = '';
 
   constructor(ttlMs = 30000) {
+    if (typeof ttlMs !== 'number' || Number.isNaN(ttlMs) || ttlMs < 0) {
+      throw new Error('ttlMs must be a non-negative number');
+    }
     this.ttlMs = ttlMs;
   }
 
