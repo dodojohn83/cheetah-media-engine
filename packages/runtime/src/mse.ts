@@ -13,6 +13,7 @@ import type { BackendContext, MediaBackend } from './fallback';
 
 export type MseErrorCode =
   | 'not-configured'
+  | 'invalid-config'
   | 'mse-not-supported'
   | 'source-open-timeout'
   | 'append-error'
@@ -188,6 +189,72 @@ function isQuotaExceeded(err: unknown): boolean {
   );
 }
 
+function validatePositiveFiniteInteger(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new MseError('invalid-config', `${name} must be a finite positive integer`);
+  }
+}
+
+function validateNonNegativeFiniteInteger(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new MseError('invalid-config', `${name} must be a finite non-negative integer`);
+  }
+}
+
+function validateNonNegativeFiniteNumber(value: number, name: string): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new MseError('invalid-config', `${name} must be a finite non-negative number`);
+  }
+}
+
+function validatePositiveFiniteNumber(value: number, name: string): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new MseError('invalid-config', `${name} must be a finite positive number`);
+  }
+}
+
+function validateMseOptions(options: MseBackendOptions): void {
+  if (!options.videoElement) {
+    throw new MseError('invalid-config', 'videoElement is required');
+  }
+  if (!Array.isArray(options.tracks) || options.tracks.length === 0) {
+    throw new MseError('invalid-config', 'tracks must be a non-empty array');
+  }
+  const o = {
+    maxBufferAheadMs: options.maxBufferAheadMs ?? 5000,
+    maxBufferBehindMs: options.maxBufferBehindMs ?? 5000,
+    liveLatencyTargetMs: options.liveLatencyTargetMs ?? 1000,
+    liveDriftSmallMs: options.liveDriftSmallMs ?? 200,
+    liveDriftLargeMs: options.liveDriftLargeMs ?? 1000,
+    minPlaybackRate: options.minPlaybackRate ?? 0.8,
+    maxPlaybackRate: options.maxPlaybackRate ?? 1.2,
+    liveControlIntervalMs: options.liveControlIntervalMs ?? 250,
+    sourceOpenTimeoutMs: options.sourceOpenTimeoutMs ?? 5000,
+    maxAppendQueue: options.maxAppendQueue ?? 32,
+    maxQuotaRetries: options.maxQuotaRetries ?? 1,
+    videoFrameRate: options.videoFrameRate ?? 30,
+  };
+  validateNonNegativeFiniteNumber(o.maxBufferAheadMs, 'maxBufferAheadMs');
+  validateNonNegativeFiniteNumber(o.maxBufferBehindMs, 'maxBufferBehindMs');
+  validatePositiveFiniteNumber(o.liveLatencyTargetMs, 'liveLatencyTargetMs');
+  validateNonNegativeFiniteNumber(o.liveDriftSmallMs, 'liveDriftSmallMs');
+  validateNonNegativeFiniteNumber(o.liveDriftLargeMs, 'liveDriftLargeMs');
+  if (!Number.isFinite(o.minPlaybackRate) || o.minPlaybackRate <= 0) {
+    throw new MseError('invalid-config', 'minPlaybackRate must be a finite positive number');
+  }
+  if (!Number.isFinite(o.maxPlaybackRate) || o.maxPlaybackRate <= 0) {
+    throw new MseError('invalid-config', 'maxPlaybackRate must be a finite positive number');
+  }
+  if (o.minPlaybackRate >= o.maxPlaybackRate) {
+    throw new MseError('invalid-config', 'minPlaybackRate must be less than maxPlaybackRate');
+  }
+  validatePositiveFiniteNumber(o.liveControlIntervalMs, 'liveControlIntervalMs');
+  validatePositiveFiniteNumber(o.sourceOpenTimeoutMs, 'sourceOpenTimeoutMs');
+  validatePositiveFiniteInteger(o.maxAppendQueue, 'maxAppendQueue');
+  validateNonNegativeFiniteInteger(o.maxQuotaRetries, 'maxQuotaRetries');
+  validatePositiveFiniteNumber(o.videoFrameRate, 'videoFrameRate');
+}
+
 function mediaErrorMessage(code: number): string {
   const map: Record<number, string> = {
     1: 'MEDIA_ERR_ABORTED',
@@ -245,6 +312,7 @@ export class MseBackend implements MediaBackend {
   };
 
   constructor(_ctx: BackendContext, options: MseBackendOptions) {
+    validateMseOptions(options);
     this.videoElement = options.videoElement;
     this.tracks = options.tracks;
     this.callbacks = options.callbacks ?? {};
