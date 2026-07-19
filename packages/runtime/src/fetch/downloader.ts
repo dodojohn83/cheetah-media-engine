@@ -33,6 +33,8 @@ export interface DownloadOptions {
   readonly onProgress?: (progress: DownloadProgress) => void;
   readonly onError?: (error: TransportError) => void;
   readonly onComplete?: () => void;
+  /** Per-request timeout in milliseconds (default 30s). */
+  readonly timeoutMs?: number;
 }
 
 export interface DownloadResult {
@@ -164,6 +166,18 @@ export class StreamDownloader {
     this.controller = new AbortController();
     const signal = this.controller.signal;
 
+    const timeoutMs = options.timeoutMs ?? 30000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const startTimer = () => {
+      if (timeoutMs > 0 && timeoutMs !== Infinity) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          this.controller?.abort();
+        }, timeoutMs);
+      }
+    };
+    startTimer();
+
     const headers = new Headers(options.headers ?? {});
     if (isResume && this.bytesReceived > 0) {
       headers.set('Range', `bytes=${this.bytesReceived}-`);
@@ -178,45 +192,51 @@ export class StreamDownloader {
     if (options.body !== undefined && options.body !== null) {
       init.body = options.body;
     }
-    const response = await fetch(options.url, init);
-
-    if (!response.ok) {
-      throw makeError(
-        TransportErrorCode.HttpStatus,
-        `HTTP ${response.status} ${response.statusText}`,
-        response.status >= 500 || response.status === 429,
-      );
-    }
-
-    if (isResume && this.bytesReceived > 0 && response.status !== 206) {
-      throw makeError(TransportErrorCode.HttpStatus, 'Server does not support byte-range resume', false);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw makeError(TransportErrorCode.Network, 'Response body is not readable', false);
-    }
-
     try {
-      while (true) {
-        if (this.state !== 'running') {
-          throw makeError(TransportErrorCode.Canceled, 'Download canceled', false);
+      const response = await fetch(options.url, init);
+      startTimer();
+
+      if (!response.ok) {
+        throw makeError(
+          TransportErrorCode.HttpStatus,
+          `HTTP ${response.status} ${response.statusText}`,
+          response.status >= 500 || response.status === 429,
+        );
+      }
+
+      if (isResume && this.bytesReceived > 0 && response.status !== 206) {
+        throw makeError(TransportErrorCode.HttpStatus, 'Server does not support byte-range resume', false);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw makeError(TransportErrorCode.Network, 'Response body is not readable', false);
+      }
+
+      try {
+        while (true) {
+          if (this.state !== 'running') {
+            throw makeError(TransportErrorCode.Canceled, 'Download canceled', false);
+          }
+          const { done, value } = await reader.read();
+          if (this.state !== 'running') {
+            throw makeError(TransportErrorCode.Canceled, 'Download canceled', false);
+          }
+          if (done || !value) break;
+          this.bytesReceived += value.length;
+          const chunk = options.transform ? options.transform(value) : value;
+          if (chunk) {
+            await options.sink.write(chunk);
+            this.bytesWritten += chunk.length;
+          }
+          options.onProgress?.(this.progress);
+          startTimer();
         }
-        const { done, value } = await reader.read();
-        if (this.state !== 'running') {
-          throw makeError(TransportErrorCode.Canceled, 'Download canceled', false);
-        }
-        if (done || !value) break;
-        this.bytesReceived += value.length;
-        const chunk = options.transform ? options.transform(value) : value;
-        if (chunk) {
-          await options.sink.write(chunk);
-          this.bytesWritten += chunk.length;
-        }
-        options.onProgress?.(this.progress);
+      } finally {
+        reader.releaseLock();
       }
     } finally {
-      reader.releaseLock();
+      if (timer) clearTimeout(timer);
     }
   }
 

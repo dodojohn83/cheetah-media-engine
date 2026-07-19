@@ -242,6 +242,65 @@ describe('StreamDownloader', () => {
     expect(sink.close).toHaveBeenCalledTimes(1);
   });
 
+  it('times out a stalled download', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        return new Promise<Response>((_, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(new Error('aborted'));
+            return;
+          }
+          const abort = () => reject(new Error('aborted'));
+          signal?.addEventListener('abort', abort, { once: true });
+        });
+      }),
+    );
+    const dl = new StreamDownloader();
+    await expect(
+      dl.start({ ...makeOptions('https://example.com/slow'), timeoutMs: 10 }),
+    ).rejects.toMatchObject({ code: 7006 });
+    expect(dl.progress.state).toBe('error');
+  });
+
+  it('does not time out while data keeps arriving', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            let count = 0;
+            const timer = setInterval(() => {
+              if (init?.signal?.aborted) {
+                clearInterval(timer);
+                try {
+                  controller.error(new Error('aborted'));
+                } catch {
+                  // ignore
+                }
+                return;
+              }
+              count += 1;
+              controller.enqueue(new Uint8Array([count]));
+              if (count >= 3) {
+                clearInterval(timer);
+                controller.close();
+              }
+            }, 5);
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }),
+    );
+    const dl = new StreamDownloader();
+    const result = await dl.start({
+      ...makeOptions('https://example.com/slow-active'),
+      timeoutMs: 10,
+    });
+    expect(result.bytesWritten).toBe(3);
+  });
+
   it('stop aborts a running download', async () => {
     const dl = new StreamDownloader();
     const start = dl.start({
