@@ -162,16 +162,48 @@ export function encodeEnvelope(envelope: Envelope): string {
   return JSON.stringify(envelope);
 }
 
+const VALID_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  'bootstrap',
+  'capabilities',
+  'load',
+  'play',
+  'pause',
+  'frame-step',
+  'pause-display',
+  'stop',
+  'destroy',
+  'config',
+  'packet',
+  'output',
+  'seek',
+  'set-playback-rate',
+  'event',
+  'error',
+  'memory-growth',
+  'metrics',
+  'snapshot',
+  'switch-variant',
+  'start-recording',
+  'stop-recording',
+  'get-stats',
+  'get-diagnostics',
+]);
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && Number.isInteger(value);
+}
+
 export function decodeEnvelope(data: string): Envelope {
   const parsed = JSON.parse(data) as Envelope;
   if (parsed.protocolVersion !== PROTOCOL_VERSION) {
     throw new Error(`Unsupported protocol version ${parsed.protocolVersion}`);
   }
   if (
-    typeof parsed.instance !== 'number' ||
-    typeof parsed.epoch !== 'number' ||
-    typeof parsed.sequence !== 'number' ||
-    typeof parsed.type !== 'string'
+    !isNonNegativeInteger(parsed.instance) ||
+    !isNonNegativeInteger(parsed.epoch) ||
+    !isNonNegativeInteger(parsed.sequence) ||
+    typeof parsed.type !== 'string' ||
+    !VALID_MESSAGE_TYPES.has(parsed.type)
   ) {
     throw new Error('Malformed envelope');
   }
