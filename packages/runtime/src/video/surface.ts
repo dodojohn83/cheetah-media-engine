@@ -3,6 +3,7 @@
  */
 
 import type { FitMode, VisibleRect, RendererConfig } from './types';
+import { RendererError } from './types';
 
 export interface Viewport {
   readonly x: number;
@@ -66,11 +67,28 @@ export class RendererSurface {
   }
 
   configure(config: RendererConfig): void {
-    if (config.dpr !== undefined && config.dpr > 0) {
+    if (!config.canvas) {
+      throw new RendererError('invalid-config', 'RendererSurface requires a canvas');
+    }
+    if (config.dpr !== undefined) {
+      if (!Number.isFinite(config.dpr) || config.dpr <= 0) {
+        throw new RendererError('invalid-config', 'dpr must be a finite positive number');
+      }
       this._dpr = config.dpr;
     }
-    if (config.fit) this.fit = config.fit;
-    if (config.rotation !== undefined) this.rotation = config.rotation % 360;
+    if (config.fit) {
+      const allowed: readonly FitMode[] = ['contain', 'cover', 'fill', 'stretch'];
+      if (!allowed.includes(config.fit)) {
+        throw new RendererError('invalid-config', `Unknown fit mode: ${config.fit}`);
+      }
+      this.fit = config.fit;
+    }
+    if (config.rotation !== undefined) {
+      if (!Number.isFinite(config.rotation)) {
+        throw new RendererError('invalid-config', 'rotation must be a finite number');
+      }
+      this.rotation = config.rotation % 360;
+    }
     if (config.mirror !== undefined) this.mirror = config.mirror;
     this.resize(config.canvas.width, config.canvas.height);
   }
