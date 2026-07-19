@@ -273,12 +273,22 @@ export class AudioPipeline {
   private async attachWorklet(): Promise<void> {
     const AudioWorkletNode = this.workletNodeCtor ?? getAudioWorkletNodeConstructor();
     if (this.isIsolated()) {
-      const url = this.workletSourceUrl ?? buildWorkletBlobUrl(getSharedRingProcessorSource());
+      const generatedUrl = this.workletSourceUrl ? undefined : buildWorkletBlobUrl(getSharedRingProcessorSource());
+      const url = this.workletSourceUrl ?? generatedUrl;
+      if (!url) {
+        throw new AudioPipelineError('no-worklet-source', 'No AudioWorklet source URL available');
+      }
       try {
         await this.audioContext.audioWorklet.addModule(url);
       } catch (err) {
+        if (generatedUrl) {
+          try { URL.revokeObjectURL(generatedUrl); } catch { /* ignore */ }
+        }
         this.emitError(err instanceof Error ? err : new Error(String(err)));
         return;
+      }
+      if (generatedUrl) {
+        try { URL.revokeObjectURL(generatedUrl); } catch { /* ignore */ }
       }
       this.workletNode = new AudioWorkletNode(this.audioContext, 'cheetah-audio-processor', {
         processorOptions: {
@@ -290,8 +300,18 @@ export class AudioPipeline {
       });
       this.workletNode.connect(this.audioContext.destination);
     } else {
-      const url = this.workletSourceUrl ?? buildWorkletBlobUrl(getTransferRingProcessorSource());
-      await this.audioContext.audioWorklet.addModule(url);
+      const generatedUrl = this.workletSourceUrl ? undefined : buildWorkletBlobUrl(getTransferRingProcessorSource());
+      const url = this.workletSourceUrl ?? generatedUrl;
+      if (!url) {
+        throw new AudioPipelineError('no-worklet-source', 'No AudioWorklet source URL available');
+      }
+      try {
+        await this.audioContext.audioWorklet.addModule(url);
+      } finally {
+        if (generatedUrl) {
+          try { URL.revokeObjectURL(generatedUrl); } catch { /* ignore */ }
+        }
+      }
       const channel = new MessageChannel();
       this.transferPort = channel.port1 as MessagePortLike;
       this.workletNode = new AudioWorkletNode(this.audioContext, 'cheetah-audio-transfer-processor', {

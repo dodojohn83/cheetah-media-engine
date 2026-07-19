@@ -199,6 +199,12 @@ export class CompositeRecorder {
       throw new RendererError('invalid-state', `Cannot start composite recording from state ${this.state}`);
     }
 
+    // Reset any state left over from a previous recording session so that
+    // progress and early stop() calls do not report stale results.
+    this.lastResult = undefined;
+    this.bytesWritten = 0;
+    this.startTime = 0;
+
     const { width, height } = getSourceSize(options.source);
     const outputWidth = options.width && options.width > 0 ? options.width : width;
     const outputHeight = options.height && options.height > 0 ? options.height : height;

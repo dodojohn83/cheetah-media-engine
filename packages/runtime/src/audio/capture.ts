@@ -245,9 +245,20 @@ export class MicrophoneCapture {
         channels: 1,
       });
 
-      const workletUrl =
-        this.options.workletSourceUrl ?? buildWorkletBlobUrl(getCaptureProcessorSource());
-      await this.audioContext.audioWorklet.addModule(workletUrl);
+      const generatedWorkletUrl = this.options.workletSourceUrl
+        ? undefined
+        : buildWorkletBlobUrl(getCaptureProcessorSource());
+      const workletUrl = this.options.workletSourceUrl ?? generatedWorkletUrl;
+      if (!workletUrl) {
+        throw new CaptureError('not-supported', 'No AudioWorklet source URL available');
+      }
+      try {
+        await this.audioContext.audioWorklet.addModule(workletUrl);
+      } finally {
+        if (generatedWorkletUrl) {
+          try { URL.revokeObjectURL(generatedWorkletUrl); } catch { /* ignore */ }
+        }
+      }
 
       const contextFrameSize = Math.round(
         (this.audioContext.sampleRate * this.options.frameDurationMs) / 1000,
