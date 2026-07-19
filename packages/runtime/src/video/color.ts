@@ -41,15 +41,6 @@ export function getYuvMatrix(matrix?: string): YuvMatrix {
   return { kr: 0.2126, kg: 0.7152, kb: 0.0722 };
 }
 
-/**
- * Build the column-major 3x3 GLSL matrix and constant offset that converts
- * raw normalized YUV data to RGB.
- *
- * The shader performs `u_matrix * vec3(y, u - 0.5, v - 0.5) + u_offset`, where
- * `y` is in [0,1] and `u`/`v` are sampled from [0,1] textures then shifted to
- * be centered at 0. The returned coefficients absorb limited/full range and the
- * BT.601/709 primaries so the output is linear 0..1 RGB.
- */
 function validateYuvMatrix(matrix: YuvMatrix): void {
   if (!matrix || typeof matrix !== 'object') {
     throw new Error('matrix must be an object');
@@ -82,6 +73,15 @@ function validateColorRange(range: ColorRange): void {
   }
 }
 
+/**
+ * Build the column-major 3x3 GLSL matrix and constant offset that converts
+ * raw normalized YUV data to RGB.
+ *
+ * The shader performs `u_matrix * vec3(y, u - 0.5, v - 0.5) + u_offset`, where
+ * `y` is in [0,1] and `u`/`v` are sampled from [0,1] textures then shifted to
+ * be centered at 0. The returned coefficients absorb limited/full range and the
+ * BT.601/709 primaries so the output is linear 0..1 RGB.
+ */
 export function buildYuvToRgbCoeffs(matrix: YuvMatrix, range: ColorRange): { coeffs: number[]; offset: number[] } {
   validateYuvMatrix(matrix);
   validateColorRange(range);
