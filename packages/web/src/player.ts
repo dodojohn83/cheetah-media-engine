@@ -657,18 +657,32 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   }
 
   private failedStateTimer: ReturnType<typeof setTimeout> | undefined;
+  private pendingFailed = false;
 
   private setState(to: PlayerState): void {
     if (this._state === to) return;
-    if (this.failedStateTimer) {
+    // A pending failed transition from preroll should only be cancelled when the
+    // lifecycle really moves on (new load/preroll/playing, stop, destroy). Other
+    // transient states like rebuffering/paused must not silently drop the fatal error.
+    const isTerminal = to === 'idle' || to === 'destroyed';
+    const isFailed = to === 'failed';
+    const cancelsPendingFailed = isTerminal || isFailed || to === 'loading' || to === 'preroll' || to === 'playing';
+    if (isFailed && this._state === 'preroll' && this.pendingFailed) return;
+    if (this.failedStateTimer && (!this.pendingFailed || cancelsPendingFailed)) {
       clearTimeout(this.failedStateTimer);
       this.failedStateTimer = undefined;
     }
+    if (cancelsPendingFailed) {
+      this.pendingFailed = false;
+    }
     // Briefly hold the preroll state so tests and observers can see it before
     // an immediate post-preroll demux/network error flips to failed.
-    if (to === 'failed' && this._state === 'preroll') {
+    if (isFailed && this._state === 'preroll') {
+      this.pendingFailed = true;
       this.failedStateTimer = setTimeout(() => {
         this.failedStateTimer = undefined;
+        this.pendingFailed = false;
+        if (this._state === 'failed') return;
         const from = this._state;
         this._state = 'failed';
         this.emit('statechange', { from, to: 'failed' });
@@ -1026,6 +1040,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       clearTimeout(this.failedStateTimer);
       this.failedStateTimer = undefined;
     }
+    this.pendingFailed = false;
     this.destroyed = true;
     this._intercomActive = false;
     this._intercomStarting = false;
