@@ -83,10 +83,17 @@ export class FetchTransport implements Transport {
     while (this.retries <= maxRetries) {
       this.timedOut = false;
       this.controller = new AbortController();
-      const timer = setTimeout(() => {
-        this.timedOut = true;
-        this.controller?.abort();
-      }, timeoutMs);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const startIdleTimer = () => {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
+        timer = setTimeout(() => {
+          this.timedOut = true;
+          this.controller?.abort();
+        }, timeoutMs);
+      };
+      startIdleTimer();
 
       try {
         const init: RequestInit = {
@@ -116,6 +123,7 @@ export class FetchTransport implements Transport {
 
         const reader = response.body.getReader();
         let done = false;
+        startIdleTimer();
         while (!done) {
           const { value, done: d } = await reader.read();
           done = d;
@@ -129,6 +137,7 @@ export class FetchTransport implements Transport {
             }
             this.bytesRead += value.byteLength;
             onChunk({ bytes: new Uint8Array(value), timestamp: performance.now() });
+            startIdleTimer();
           }
         }
 
