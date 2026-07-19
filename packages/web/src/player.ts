@@ -1132,6 +1132,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async startRecording(options: { mimeType?: string; filename?: string } = {}): Promise<void> {
     this.guardDestroyed();
+    this.validateRecordingOptions(options);
     if (this._state !== 'playing' && this._state !== 'paused') {
       throw new CheetahMediaError(6002, 'sdk', 'Recording requires an active stream', { recoverable: true });
     }
@@ -1330,6 +1331,44 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     }
   }
 
+  private validateIntercomOptions(options: IntercomOptions): void {
+    if (!options || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom options must be an object', { recoverable: true });
+    }
+    if (options.codec !== undefined && options.codec !== 'g711a' && options.codec !== 'g711u' && options.codec !== 'opus') {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom codec must be g711a, g711u or opus', { recoverable: true });
+    }
+    if (typeof options.sendPacket !== 'function') {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom sendPacket must be a function', { recoverable: true });
+    }
+    if (options.onError !== undefined && typeof options.onError !== 'function') {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom onError must be a function', { recoverable: true });
+    }
+    if (options.payloadType !== undefined) {
+      if (
+        typeof options.payloadType !== 'number' ||
+        !Number.isFinite(options.payloadType) ||
+        options.payloadType < 0 ||
+        options.payloadType > 127 ||
+        options.payloadType % 1 !== 0
+      ) {
+        throw new CheetahMediaError(6002, 'sdk', 'Intercom payloadType must be an integer between 0 and 127', { recoverable: true });
+      }
+    }
+  }
+
+  private validateRecordingOptions(options: { mimeType?: string; filename?: string }): void {
+    if (!options || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Recording options must be an object', { recoverable: true });
+    }
+    if (options.mimeType !== undefined && typeof options.mimeType !== 'string') {
+      throw new CheetahMediaError(6002, 'sdk', 'Recording mimeType must be a string', { recoverable: true });
+    }
+    if (options.filename !== undefined && typeof options.filename !== 'string') {
+      throw new CheetahMediaError(6002, 'sdk', 'Recording filename must be a string', { recoverable: true });
+    }
+  }
+
   private snapshotFromMediaElement(options: { maxWidth?: number; maxHeight?: number }): ImageData {
     const video = this.mediaElement as HTMLVideoElement;
     const srcW =
@@ -1366,6 +1405,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async startIntercom(options: IntercomOptions): Promise<void> {
     this.guardDestroyed();
+    this.validateIntercomOptions(options);
     if (this._intercomActive || this._intercomStarting) {
       throw new CheetahMediaError(6002, 'sdk', 'Intercom already active', { recoverable: true });
     }
@@ -1615,6 +1655,16 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   setVrRenderer(renderer: VrRenderer): void {
     this.guardDestroyed();
+    if (renderer !== undefined && renderer !== null) {
+      if (
+        typeof renderer !== 'object' ||
+        typeof renderer.initialize !== 'function' ||
+        typeof renderer.render !== 'function' ||
+        typeof renderer.destroy !== 'function'
+      ) {
+        throw new CheetahMediaError(6002, 'sdk', 'VR renderer must expose initialize, render and destroy methods', { recoverable: true });
+      }
+    }
     try {
       this._vrRenderer.destroy();
     } catch {
@@ -1625,6 +1675,16 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   setAiProcessor(processor: AiFrameProcessor): void {
     this.guardDestroyed();
+    if (processor !== undefined && processor !== null) {
+      if (
+        typeof processor !== 'object' ||
+        typeof processor.initialize !== 'function' ||
+        typeof processor.process !== 'function' ||
+        typeof processor.destroy !== 'function'
+      ) {
+        throw new CheetahMediaError(6002, 'sdk', 'AI processor must expose initialize, process and destroy methods', { recoverable: true });
+      }
+    }
     try {
       this._aiProcessor.destroy();
     } catch {
