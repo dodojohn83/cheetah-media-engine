@@ -829,10 +829,19 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (this.mediaElement && protocolSupportedByMseSession(protocol)) {
       try {
         // Best-effort worker bootstrap; ignore missing worker in pure-MSE mode.
+        let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
+        const bootstrapTimeout = new Promise<void>((_, reject) => {
+          bootstrapTimer = setTimeout(
+            () => reject(new Error('Runtime bootstrap timed out')),
+            5000,
+          );
+        });
         try {
-          await this.runtime.load(url, { isLive });
+          await Promise.race([this.runtime.load(url, { isLive }), bootstrapTimeout]);
         } catch {
           // Worker/wasm may be unavailable in lightweight demos.
+        } finally {
+          clearTimeout(bootstrapTimer);
         }
         this.session = new PlaybackSession({
           videoElement: this.mediaElement,

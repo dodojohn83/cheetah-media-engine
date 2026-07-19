@@ -77,10 +77,14 @@ export function validateUrl(url: string): TransportError | undefined {
       false,
     );
   }
+  const currentProtocol =
+    typeof globalThis !== 'undefined' &&
+    (globalThis as unknown as { location?: { protocol?: string } }).location?.protocol
+      ? (globalThis as unknown as { location: { protocol: string } }).location.protocol
+      : undefined;
   if (
     (parsed.protocol === 'http:' || parsed.protocol === 'ws:') &&
-    typeof globalThis !== 'undefined' &&
-    (globalThis as unknown as { isSecureContext?: boolean }).isSecureContext
+    currentProtocol === 'https:'
   ) {
     return makeError(
       TransportErrorCode.InsecureContent,

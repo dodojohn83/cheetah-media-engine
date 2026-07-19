@@ -376,6 +376,7 @@ export class MseBackend implements MediaBackend {
 
       this.objectUrl = URL.createObjectURL(mediaSource);
       this.videoElement.src = this.objectUrl;
+      this.videoElement.load();
 
       if (mediaSource.readyState !== 'open') {
         await this.waitForSourceOpen(mediaSource);
