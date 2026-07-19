@@ -180,11 +180,11 @@ export async function encodeSnapshot(
       resolve(blob);
     };
     const quality = options.quality;
-    if (quality !== undefined && !Number.isFinite(quality)) {
-      reject(new RendererError('invalid-option', 'quality must be a finite number'));
-      return;
-    }
     if (quality !== undefined && format !== 'png') {
+      if (!Number.isFinite(quality)) {
+        reject(new RendererError('invalid-option', 'quality must be a finite number'));
+        return;
+      }
       canvas.toBlob(onBlob, mimeType, Math.min(1, Math.max(0, quality)));
     } else {
       canvas.toBlob(onBlob, mimeType);

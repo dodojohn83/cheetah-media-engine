@@ -197,10 +197,17 @@ describe('encodeSnapshot', () => {
     expect(calls!.toBlobCalls[0]?.quality).toBeUndefined();
   });
 
-  it('rejects non-finite quality', async () => {
+  it('rejects non-finite quality for lossy formats', async () => {
     const drawn: { source?: unknown; type?: string | undefined; quality?: number | undefined }[] = [];
     const canvas = makeMockCanvas(10, 10, drawn);
     await expect(encodeSnapshot(canvas, { format: 'jpeg', quality: NaN })).rejects.toBeInstanceOf(RendererError);
+  });
+
+  it('ignores non-finite quality for PNG', async () => {
+    const drawn: { source?: unknown; type?: string | undefined; quality?: number | undefined }[] = [];
+    const canvas = makeMockCanvas(10, 10, drawn);
+    const blob = await encodeSnapshot(canvas, { format: 'png', quality: NaN });
+    expect(blob).toBeInstanceOf(Blob);
   });
 
   it('scales ImageData down using an intermediate canvas', async () => {
