@@ -86,6 +86,9 @@ export class WebRtcTransport implements Transport {
   private channelCloseWaiter?: { closeWith: (error?: TransportError) => void } | undefined;
 
   constructor(config: TransportConfig) {
+    if (!config || typeof config !== 'object' || typeof config.url !== 'string' || config.url.length === 0) {
+      throw new Error('WebRtcTransport config requires a non-empty url string');
+    }
     this.config = config;
     this.maxBytes = config.maxBytes ?? Number.MAX_SAFE_INTEGER;
   }
@@ -106,15 +109,15 @@ export class WebRtcTransport implements Transport {
     this.onError = onError;
     this.onEnd = onEnd;
 
-    const urlError = validateUrl(this.config.url);
-    if (urlError) {
-      this.finish(urlError);
-      return;
-    }
-
     const configError = validateTransportConfig(this.config);
     if (configError) {
       this.finish(configError);
+      return;
+    }
+
+    const urlError = validateUrl(this.config.url);
+    if (urlError) {
+      this.finish(urlError);
       return;
     }
     this.timeoutMs = this.config.timeoutMs ?? 30000;

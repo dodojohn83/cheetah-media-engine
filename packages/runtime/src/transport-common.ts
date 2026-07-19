@@ -99,6 +99,12 @@ export function validateUrl(url: string): TransportError | undefined {
 }
 
 export function validateTransportConfig(config: TransportConfig): TransportError | undefined {
+  if (!config || typeof config !== 'object') {
+    return makeError(TransportErrorCode.InvalidConfig, 'Transport config must be an object', false);
+  }
+  if (typeof config.url !== 'string' || config.url.length === 0) {
+    return makeError(TransportErrorCode.InvalidConfig, 'Transport config requires a non-empty url string', false);
+  }
   const timeoutMs = config.timeoutMs ?? 30000;
   const maxBytes = config.maxBytes ?? Number.MAX_SAFE_INTEGER;
   const maxRetries = config.maxRetries ?? 0;
