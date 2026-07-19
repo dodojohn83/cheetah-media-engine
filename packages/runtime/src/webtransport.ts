@@ -109,8 +109,9 @@ export class WebTransportTransport implements Transport {
 
     this.transport = new Ctor(this.config.url);
     this.run(this.transport, onChunk).catch((err) => {
+      const error = this.toError(err);
       this.stop();
-      this.finish(this.toError(err));
+      this.finish(error);
     });
   }
 
