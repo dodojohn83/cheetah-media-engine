@@ -152,27 +152,45 @@ export class AudioPipeline {
     this.smallDriftMs = options.smallDriftMs ?? DEFAULT_SMALL_DRIFT_MS;
     this.minRatio = options.minRatio ?? 0.95;
     this.maxRatio = options.maxRatio ?? 1.05;
+
+    if (!Number.isFinite(this.ringCapacity) || this.ringCapacity < 1 || !Number.isInteger(this.ringCapacity)) {
+      throw new AudioPipelineError('bad-config', 'ringCapacityFrames must be a finite positive integer');
+    }
+    if (!Number.isFinite(this.smallDriftMs) || this.smallDriftMs <= 0) {
+      throw new AudioPipelineError('bad-config', 'smallDriftMs must be a finite positive number');
+    }
+    if (!Number.isFinite(this.largeDriftMs) || this.largeDriftMs <= this.smallDriftMs) {
+      throw new AudioPipelineError('bad-config', 'largeDriftMs must be a finite number greater than smallDriftMs');
+    }
+    if (!Number.isFinite(this.minRatio) || this.minRatio <= 0) {
+      throw new AudioPipelineError('bad-config', 'minRatio must be a finite positive number');
+    }
+    if (!Number.isFinite(this.maxRatio) || this.maxRatio <= this.minRatio) {
+      throw new AudioPipelineError('bad-config', 'maxRatio must be a finite number greater than minRatio');
+    }
+
     this.workletSourceUrl = options.workletSourceUrl;
     this.workletNodeCtor = options.workletNodeCtor;
   }
 
   async configure(config: AudioPipelineConfig): Promise<void> {
-    if (!Number.isFinite(config.inputSampleRate) || config.inputSampleRate <= 0) {
-      throw new AudioPipelineError('bad-config', 'inputSampleRate must be a finite positive number');
+    if (!Number.isFinite(config.inputSampleRate) || config.inputSampleRate <= 0 || !Number.isInteger(config.inputSampleRate)) {
+      throw new AudioPipelineError('bad-config', 'inputSampleRate must be a finite positive integer');
     }
-    if (!Number.isFinite(config.inputChannels) || config.inputChannels <= 0 || config.inputChannels % 1 !== 0) {
-      throw new AudioPipelineError('bad-config', 'inputChannels must be a positive integer');
+    if (!Number.isFinite(config.inputChannels) || config.inputChannels <= 0 || !Number.isInteger(config.inputChannels)) {
+      throw new AudioPipelineError('bad-config', 'inputChannels must be a finite positive integer');
     }
+
     this.inputSampleRate = config.inputSampleRate;
     this.inputChannels = config.inputChannels;
 
     const outputSampleRate = config.outputSampleRate ?? this.audioContext.sampleRate;
-    if (!Number.isFinite(outputSampleRate) || outputSampleRate <= 0) {
-      throw new AudioPipelineError('bad-config', 'outputSampleRate must be a finite positive number');
+    if (!Number.isFinite(outputSampleRate) || outputSampleRate <= 0 || !Number.isInteger(outputSampleRate)) {
+      throw new AudioPipelineError('bad-config', 'outputSampleRate must be a finite positive integer');
     }
     const outputChannels = config.outputChannels ?? this.inputChannels;
-    if (!Number.isFinite(outputChannels) || outputChannels <= 0 || outputChannels % 1 !== 0) {
-      throw new AudioPipelineError('bad-config', 'outputChannels must be a positive integer');
+    if (!Number.isFinite(outputChannels) || outputChannels <= 0 || !Number.isInteger(outputChannels)) {
+      throw new AudioPipelineError('bad-config', 'outputChannels must be a finite positive integer');
     }
 
     this.outputSampleRate = outputSampleRate;

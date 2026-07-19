@@ -26,14 +26,14 @@ export class AudioResampler {
   private leftover: Float32Array[] = [];
 
   constructor(options: ResamplerOptions) {
-    if (!Number.isFinite(options.inputSampleRate) || options.inputSampleRate <= 0) {
-      throw new Error('Resampler inputSampleRate must be a finite positive number');
+    if (!Number.isFinite(options.inputSampleRate) || options.inputSampleRate <= 0 || !Number.isInteger(options.inputSampleRate)) {
+      throw new RangeError('inputSampleRate must be a finite positive integer');
     }
-    if (!Number.isFinite(options.outputSampleRate) || options.outputSampleRate <= 0) {
-      throw new Error('Resampler outputSampleRate must be a finite positive number');
+    if (!Number.isFinite(options.outputSampleRate) || options.outputSampleRate <= 0 || !Number.isInteger(options.outputSampleRate)) {
+      throw new RangeError('outputSampleRate must be a finite positive integer');
     }
-    if (!Number.isFinite(options.channels) || options.channels <= 0 || options.channels % 1 !== 0) {
-      throw new Error('Resampler channels must be a positive integer');
+    if (!Number.isFinite(options.channels) || options.channels <= 0 || !Number.isInteger(options.channels)) {
+      throw new RangeError('channels must be a finite positive integer');
     }
     this.channels = options.channels;
     this.baseRatio = options.inputSampleRate / options.outputSampleRate;
@@ -41,13 +41,13 @@ export class AudioResampler {
     this.maxRatio = options.maxRatio ?? 1.05;
     this.maxRatioDelta = options.maxRatioDelta ?? 0.01;
     if (!Number.isFinite(this.minRatio) || this.minRatio <= 0) {
-      throw new Error('Resampler minRatio must be a finite positive number');
+      throw new RangeError('minRatio must be a finite positive number');
     }
-    if (!Number.isFinite(this.maxRatio) || this.maxRatio <= 0 || this.maxRatio < this.minRatio) {
-      throw new Error('Resampler maxRatio must be a finite positive number >= minRatio');
+    if (!Number.isFinite(this.maxRatio) || this.maxRatio <= this.minRatio) {
+      throw new RangeError('maxRatio must be a finite number greater than minRatio');
     }
     if (!Number.isFinite(this.maxRatioDelta) || this.maxRatioDelta < 0) {
-      throw new Error('Resampler maxRatioDelta must be a finite non-negative number');
+      throw new RangeError('maxRatioDelta must be a finite non-negative number');
     }
     this.ratio = this.baseRatio;
   }
