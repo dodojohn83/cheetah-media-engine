@@ -922,6 +922,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   play(): void {
     this.guardDestroyed();
+    // Ignore play requests while the player is still bootstrapping or has already
+    // failed/stopped; idle is allowed for the no-media / mock-runtime control path.
+    if (this._state === 'loading' || this._state === 'preroll' || this._state === 'failed' || this._state === 'stopping') {
+      return;
+    }
     if (this.session) {
       this.session.play();
       return;
@@ -932,6 +937,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   pause(): void {
     this.guardDestroyed();
+    // Ignore pause requests unless the player is actually playing or rebuffering;
+    // pausing before/during load or after failure is a no-op.
+    if (this._state !== 'playing' && this._state !== 'rebuffering') {
+      return;
+    }
     if (this.session) {
       this.session.pause();
       return;
@@ -958,6 +968,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async setPlaybackRate(rate: number): Promise<void> {
     this.guardDestroyed();
+    if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
+      throw new CheetahMediaError(6002, 'sdk', 'Set playback rate requires an active stream', { recoverable: true });
+    }
     try {
       if (this.session) {
         await this.session.setPlaybackRate(rate);

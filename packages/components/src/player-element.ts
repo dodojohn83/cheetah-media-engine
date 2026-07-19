@@ -826,9 +826,9 @@ export class CheetahPlayerElement extends HTMLElement {
   private _togglePlay(): void {
     if (!this._player) return;
     const state = this._player.state;
-    // Ignore play/pause toggles while the player is still bootstrapping; the
-    // runtime may not be ready and key presses during this window should not crash.
-    if (state === 'loading' || state === 'preroll' || state === 'idle') return;
+    // Ignore play/pause toggles while the player is still bootstrapping or has
+    // already failed/stopped; the runtime is not in a state where a toggle makes sense.
+    if (state === 'loading' || state === 'preroll' || state === 'idle' || state === 'failed' || state === 'stopping') return;
     if (state === 'playing') {
       this._player.pause();
     } else {
