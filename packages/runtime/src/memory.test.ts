@@ -15,4 +15,14 @@ describe('MemoryArenaView', () => {
       }),
     ).toThrow(RangeError);
   });
+
+  it('rejects non-finite, negative, or out-of-bounds offsets and lengths', () => {
+    const view = new MemoryArenaView(new WebAssembly.Memory({ initial: 1 }));
+    const base = { region: 0, capacity: 1, generation: 0, flags: 0 };
+    expect(() => view.getUint8Array({ ...base, offset: NaN, length: 1 })).toThrow(RangeError);
+    expect(() => view.getUint8Array({ ...base, offset: -1, length: 1 })).toThrow(RangeError);
+    expect(() => view.getUint8Array({ ...base, offset: 0, length: -1 })).toThrow(RangeError);
+    expect(() => view.getUint8Array({ ...base, offset: 0, length: 70000 })).toThrow('Descriptor region out of bounds');
+    expect(() => view.getUint8Array({ ...base, offset: BigInt(-1), length: 1 })).toThrow(RangeError);
+  });
 });
