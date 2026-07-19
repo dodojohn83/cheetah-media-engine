@@ -52,6 +52,7 @@ export const TransportErrorCode = {
   WebRtcSignalingFailed: 7013,
   WebRtcConnectionFailed: 7014,
   WebRtcDataChannelFailed: 7015,
+  InvalidConfig: 7016,
 } as const;
 
 export function makeError(
@@ -93,6 +94,23 @@ export function validateUrl(url: string): TransportError | undefined {
       `Unsupported transport scheme: ${parsed.protocol}`,
       false,
     );
+  }
+  return undefined;
+}
+
+export function validateTransportConfig(config: TransportConfig): TransportError | undefined {
+  const timeoutMs = config.timeoutMs ?? 30000;
+  const maxBytes = config.maxBytes ?? Number.MAX_SAFE_INTEGER;
+  const maxRetries = config.maxRetries ?? 0;
+
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return makeError(TransportErrorCode.InvalidConfig, 'timeoutMs must be a finite positive number', false);
+  }
+  if ((maxBytes !== Infinity && !Number.isFinite(maxBytes)) || maxBytes <= 0) {
+    return makeError(TransportErrorCode.InvalidConfig, 'maxBytes must be Infinity or a finite positive number', false);
+  }
+  if (!Number.isFinite(maxRetries) || maxRetries < 0 || maxRetries % 1 !== 0) {
+    return makeError(TransportErrorCode.InvalidConfig, 'maxRetries must be a finite non-negative integer', false);
   }
   return undefined;
 }
