@@ -40,8 +40,16 @@ export class IntercomPacketizer {
   private onPacket: ((packet: IntercomPacket) => void) | undefined;
 
   constructor(options: IntercomPacketizerOptions = {}) {
-    this.payloadType = options.payloadType ?? 0;
-    this.ssrc = options.ssrc ?? generateSsrc();
+    const payloadType = options.payloadType ?? 0;
+    const ssrc = options.ssrc ?? generateSsrc();
+    if (!Number.isFinite(payloadType) || payloadType < 0 || payloadType > 127 || payloadType % 1 !== 0) {
+      throw new Error('payloadType must be an integer between 0 and 127');
+    }
+    if (!Number.isFinite(ssrc) || ssrc < 0) {
+      throw new Error('ssrc must be a finite non-negative number');
+    }
+    this.payloadType = payloadType;
+    this.ssrc = ssrc;
     this.onPacket = options.onPacket;
   }
 
@@ -51,6 +59,9 @@ export class IntercomPacketizer {
 
   /** Feed one encoded audio frame and emit an `IntercomPacket`. */
   push(audioPacket: AudioPacket): void {
+    if (!audioPacket || !audioPacket.payload || !(audioPacket.payload instanceof Uint8Array)) {
+      throw new Error('push requires an AudioPacket with a Uint8Array payload');
+    }
     const header = new Uint8Array(RTP_HEADER_SIZE);
     header[0] = 0x80; // V=2, P=0, X=0, CC=0
     header[1] = this.payloadType & 0x7f;
