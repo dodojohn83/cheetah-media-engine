@@ -246,6 +246,15 @@ describe('web sdk', () => {
     expect(() => createPlayer({ latency: { maxPlaybackRate: 3 } })).toThrow(CheetahMediaError);
   });
 
+  it('validates config and rejects non-finite numeric values', () => {
+    expect(() => createPlayer({ latency: { softMs: NaN } })).toThrow(CheetahMediaError);
+    expect(() => createPlayer({ latency: { hardMs: Infinity } })).toThrow(CheetahMediaError);
+    expect(() => createPlayer({ latency: { maxPlaybackRate: NaN } })).toThrow(CheetahMediaError);
+    expect(() => createPlayer({ memory: { maxWasmMemoryMB: NaN } })).toThrow(CheetahMediaError);
+    expect(() => createPlayer({ diagnostics: { statsIntervalMs: NaN } })).toThrow(CheetahMediaError);
+    expect(() => createPlayer({ audio: { volume: NaN } })).toThrow(CheetahMediaError);
+  });
+
   it('redacts sensitive config in diagnostics', () => {
     const player = createPlayerWithRuntime(
       {
