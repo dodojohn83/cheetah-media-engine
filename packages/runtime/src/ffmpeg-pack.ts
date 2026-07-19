@@ -250,6 +250,9 @@ export class FfmpegPackImpl implements FfmpegPack {
   constructor(module: FfmpegPackModule, options: FfmpegPackOptions = {}) {
     this.module = module;
     this.maxMemoryMB = options.maxMemoryMB ?? 128;
+    if (!Number.isInteger(this.maxMemoryMB) || this.maxMemoryMB < 1) {
+      throw new FfmpegPackError('not-initialized', 'maxMemoryMB must be a finite positive integer');
+    }
     const version = module._cheetah_pack_abi_version();
     this.abiMajor = (version >> 16) & 0xffff;
     this.abiMinor = version & 0xffff;
