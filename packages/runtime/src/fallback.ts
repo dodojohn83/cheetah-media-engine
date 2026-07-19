@@ -91,8 +91,8 @@ export class FallbackController {
     if (!options || typeof options !== 'object') {
       throw new Error('FallbackOptions is required');
     }
-    if (!options.plan || !Array.isArray(options.plan.candidates) || options.plan.candidates.length === 0) {
-      throw new Error('FallbackOptions.plan must have a non-empty candidates array');
+    if (!options.plan || !Array.isArray(options.plan.candidates)) {
+      throw new Error('FallbackOptions.plan.candidates must be an array');
     }
     if (typeof options.factory !== 'function') {
       throw new Error('FallbackOptions.factory must be a function');
@@ -187,8 +187,8 @@ export class FallbackController {
    * per-epoch tried set so the new candidates can be attempted.
    */
   setPlan(plan: PlaybackPlan): void {
-    if (!plan || !Array.isArray(plan.candidates) || plan.candidates.length === 0) {
-      throw new Error('PlaybackPlan must have a non-empty candidates array');
+    if (!plan || !Array.isArray(plan.candidates)) {
+      throw new Error('PlaybackPlan.candidates must be an array');
     }
     this.plan = plan;
     this.tried.clear();
