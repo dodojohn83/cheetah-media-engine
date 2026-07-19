@@ -507,12 +507,30 @@ export class CheetahPlayerElement extends HTMLElement {
     }
   }
 
+  private _pendingResizeFrame: ReturnType<typeof requestAnimationFrame> | undefined;
+  private _pendingResizeEntry: ResizeObserverEntry | undefined;
+
   private _onResize(entries: ResizeObserverEntry[]): void {
     const entry = entries[0];
     if (!entry) return;
-    const { width, height } = entry.contentRect;
-    this.style.setProperty('--surface-width', `${width}px`);
-    this.style.setProperty('--surface-height', `${height}px`);
+    this._pendingResizeEntry = entry;
+    if (this._pendingResizeFrame) return;
+    this._pendingResizeFrame = requestAnimationFrame(() => {
+      this._pendingResizeFrame = undefined;
+      const pending = this._pendingResizeEntry;
+      this._pendingResizeEntry = undefined;
+      if (!pending) return;
+      const { width, height } = pending.contentRect;
+      const widthProp = `${width}px`;
+      const heightProp = `${height}px`;
+      // Avoid re-triggering the ResizeObserver by only updating when changed.
+      if (this.style.getPropertyValue('--surface-width') !== widthProp) {
+        this.style.setProperty('--surface-width', widthProp);
+      }
+      if (this.style.getPropertyValue('--surface-height') !== heightProp) {
+        this.style.setProperty('--surface-height', heightProp);
+      }
+    });
   }
 
   private _buildConfig(): import('@cheetah-media/web').PlayerConfig {
@@ -807,7 +825,11 @@ export class CheetahPlayerElement extends HTMLElement {
 
   private _togglePlay(): void {
     if (!this._player) return;
-    if (this._player.state === 'playing') {
+    const state = this._player.state;
+    // Ignore play/pause toggles while the player is still bootstrapping or has
+    // already failed/stopped; idle/preroll are allowed so the user can start/restart playback.
+    if (state === 'loading' || state === 'failed' || state === 'stopping') return;
+    if (state === 'playing') {
       this._player.pause();
     } else {
       this._player.play();

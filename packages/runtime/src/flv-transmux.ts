@@ -49,10 +49,6 @@ function writeU16(out: number[], v: number): void {
   out.push((v >>> 8) & 0xff, v & 0xff);
 }
 
-function writeU24(out: number[], v: number): void {
-  out.push((v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff);
-}
-
 function writeU32(out: number[], v: number): void {
   out.push((v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff);
 }
@@ -234,10 +230,8 @@ interface AudioState {
  * Incremental FLV → fMP4 transmuxer (H.264 + AAC).
  */
 export class FlvFmp4TransmuxerJs {
-  private buffer = new Uint8Array(0);
+  private buffer: Uint8Array = new Uint8Array(0);
   private headerParsed = false;
-  private hasAudio = false;
-  private hasVideo = false;
   private expectPrevTagSize = true;
   private video: VideoState | undefined;
   private audio: AudioState | undefined;
@@ -287,9 +281,6 @@ export class FlvFmp4TransmuxerJs {
         this.errored = true;
         throw new Error('Invalid FLV signature');
       }
-      const flags = this.buffer[4]!;
-      this.hasAudio = (flags & 0x04) !== 0;
-      this.hasVideo = (flags & 0x01) !== 0;
       const dataOffset = u32be(this.buffer, 5);
       offset = Math.max(9, dataOffset);
       // Optional PreviousTagSize0

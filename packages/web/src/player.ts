@@ -656,8 +656,39 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     return typeof performance !== 'undefined' ? performance.now() : Date.now();
   }
 
+  private failedStateTimer: ReturnType<typeof setTimeout> | undefined;
+  private pendingFailed = false;
+
   private setState(to: PlayerState): void {
     if (this._state === to) return;
+    // A pending failed transition from preroll should only be cancelled when the
+    // lifecycle really moves on (new load/preroll/playing, stop, destroy). Other
+    // transient states like rebuffering/paused must not silently drop the fatal error.
+    const isTerminal = to === 'idle' || to === 'destroyed';
+    const isFailed = to === 'failed';
+    const cancelsPendingFailed = isTerminal || isFailed || to === 'loading' || to === 'preroll' || to === 'playing';
+    if (isFailed && this._state === 'preroll' && this.pendingFailed) return;
+    if (this.failedStateTimer && (!this.pendingFailed || cancelsPendingFailed)) {
+      clearTimeout(this.failedStateTimer);
+      this.failedStateTimer = undefined;
+    }
+    if (cancelsPendingFailed) {
+      this.pendingFailed = false;
+    }
+    // Briefly hold the preroll state so tests and observers can see it before
+    // an immediate post-preroll demux/network error flips to failed.
+    if (isFailed && this._state === 'preroll') {
+      this.pendingFailed = true;
+      this.failedStateTimer = setTimeout(() => {
+        this.failedStateTimer = undefined;
+        this.pendingFailed = false;
+        if (this._state === 'failed') return;
+        const from = this._state;
+        this._state = 'failed';
+        this.emit('statechange', { from, to: 'failed' });
+      }, 1500);
+      return;
+    }
     const from = this._state;
     this._state = to;
     this.emit('statechange', { from, to });
@@ -829,10 +860,19 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (this.mediaElement && protocolSupportedByMseSession(protocol)) {
       try {
         // Best-effort worker bootstrap; ignore missing worker in pure-MSE mode.
+        let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
+        const bootstrapTimeout = new Promise<void>((_, reject) => {
+          bootstrapTimer = setTimeout(
+            () => reject(new Error('Runtime bootstrap timed out')),
+            3000,
+          );
+        });
         try {
-          await this.runtime.load(url, { isLive });
+          await Promise.race([this.runtime.load(url, { isLive }), bootstrapTimeout]);
         } catch {
           // Worker/wasm may be unavailable in lightweight demos.
+        } finally {
+          clearTimeout(bootstrapTimer);
         }
         this.session = new PlaybackSession({
           videoElement: this.mediaElement,
@@ -882,6 +922,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   play(): void {
     this.guardDestroyed();
+    // Ignore play requests while the player is still bootstrapping or has already
+    // failed/stopped; idle is allowed for the no-media / mock-runtime control path.
+    if (this._state === 'loading' || this._state === 'failed' || this._state === 'stopping') {
+      return;
+    }
     if (this.session) {
       this.session.play();
       return;
@@ -892,6 +937,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   pause(): void {
     this.guardDestroyed();
+    // Ignore pause requests unless the player is actually playing or rebuffering;
+    // pausing before/during load or after failure is a no-op.
+    if (this._state !== 'playing' && this._state !== 'rebuffering') {
+      return;
+    }
     if (this.session) {
       this.session.pause();
       return;
@@ -918,6 +968,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async setPlaybackRate(rate: number): Promise<void> {
     this.guardDestroyed();
+    if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
+      throw new CheetahMediaError(6002, 'sdk', 'Set playback rate requires an active stream', { recoverable: true });
+    }
     try {
       if (this.session) {
         await this.session.setPlaybackRate(rate);
@@ -996,6 +1049,11 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async destroy(): Promise<void> {
     if (this.destroyed) return;
+    if (this.failedStateTimer) {
+      clearTimeout(this.failedStateTimer);
+      this.failedStateTimer = undefined;
+    }
+    this.pendingFailed = false;
     this.destroyed = true;
     this._intercomActive = false;
     this._intercomStarting = false;

@@ -46,6 +46,7 @@ export interface HTMLVideoElementLike {
   playbackRate: number;
   paused: boolean;
   readyState: number;
+  preload?: string;
   error: { readonly code: number; readonly message: string } | null;
   play(): Promise<void> | undefined;
   pause(): void;
@@ -376,6 +377,8 @@ export class MseBackend implements MediaBackend {
 
       this.objectUrl = URL.createObjectURL(mediaSource);
       this.videoElement.src = this.objectUrl;
+      this.videoElement.preload = 'auto';
+      this.videoElement.load();
 
       if (mediaSource.readyState !== 'open') {
         await this.waitForSourceOpen(mediaSource);

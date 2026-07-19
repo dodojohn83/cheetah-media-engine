@@ -252,6 +252,7 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
       if (destroyed) return;
       epoch += 1;
       rejectAll(new Error('Stream stopped'));
+      if (!worker) return;
       await post('stop', undefined, 10000);
     },
 

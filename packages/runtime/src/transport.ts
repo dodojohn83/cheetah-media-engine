@@ -84,6 +84,7 @@ export class FetchTransport implements Transport {
   ): Promise<void> {
     const maxRetries = this.config.maxRetries ?? 0;
     const timeoutMs = this.config.timeoutMs ?? 30000;
+    const connectTimeoutMs = Math.min(timeoutMs, 5000);
     const maxBytes = this.config.maxBytes ?? Number.MAX_SAFE_INTEGER;
     const method = this.config.method ?? 'GET';
     const headers = this.sanitizeHeaders(this.config.headers ?? {});
@@ -92,16 +93,16 @@ export class FetchTransport implements Transport {
       this.timedOut = false;
       this.controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const startIdleTimer = () => {
+      const startIdleTimer = (duration = timeoutMs) => {
         if (timer !== undefined) {
           clearTimeout(timer);
         }
         timer = setTimeout(() => {
           this.timedOut = true;
           this.controller?.abort();
-        }, timeoutMs);
+        }, duration);
       };
-      startIdleTimer();
+      startIdleTimer(connectTimeoutMs);
 
       try {
         const init: RequestInit = {

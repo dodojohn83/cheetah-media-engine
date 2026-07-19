@@ -24,21 +24,14 @@ function buildChunks(values: number[][]): ReadableStream<Uint8Array> {
 
 describe('FetchTransport', () => {
   let originalFetch: typeof fetch;
-  let originalIsSecureContext: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    originalIsSecureContext = Object.getOwnPropertyDescriptor(globalThis, 'isSecureContext');
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    if (originalIsSecureContext) {
-      Object.defineProperty(globalThis, 'isSecureContext', originalIsSecureContext);
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (globalThis as any).isSecureContext;
-    }
+    vi.unstubAllGlobals();
   });
 
   it('delivers chunks for a 200 response', async () => {
@@ -114,8 +107,8 @@ describe('FetchTransport', () => {
     expect(err.code).toBe(TransportErrorCode.InvalidUrl);
   });
 
-  it('rejects plain HTTP from secure context', async () => {
-    Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+  it('rejects plain HTTP from an https page', async () => {
+    vi.stubGlobal('location', { protocol: 'https:', href: 'https://example.com/' });
     const transport = new FetchTransport({ url: 'http://example.com/stream' });
     const err = await new Promise<{ code: number }>((resolve, reject) => {
       transport.start(
@@ -256,21 +249,14 @@ describe('FetchTransport', () => {
 
 describe('WebSocketTransport', () => {
   let originalWebSocket: typeof WebSocket;
-  let originalIsSecureContext: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     originalWebSocket = globalThis.WebSocket as typeof WebSocket;
-    originalIsSecureContext = Object.getOwnPropertyDescriptor(globalThis, 'isSecureContext');
   });
 
   afterEach(() => {
     globalThis.WebSocket = originalWebSocket;
-    if (originalIsSecureContext) {
-      Object.defineProperty(globalThis, 'isSecureContext', originalIsSecureContext);
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (globalThis as any).isSecureContext;
-    }
+    vi.unstubAllGlobals();
   });
 
   function createMockSocket(messages: unknown[], closeCode = 1000, closeReason = 'done'): typeof WebSocket {
@@ -367,8 +353,8 @@ describe('WebSocketTransport', () => {
     expect(err.code).toBe(TransportErrorCode.WebSocketClosed);
   });
 
-  it('rejects plain ws: from secure context', async () => {
-    Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+  it('rejects plain ws: from an https page', async () => {
+    vi.stubGlobal('location', { protocol: 'https:', href: 'https://example.com/' });
     const transport = new WebSocketTransport({ url: 'ws://example.com/stream' });
     const err = await new Promise<{ code: number }>((resolve, reject) => {
       transport.start(

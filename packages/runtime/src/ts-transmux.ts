@@ -134,7 +134,7 @@ interface Sample {
  * Incremental MPEG-TS → fMP4 for H.264 (+ optional AAC ADTS in stream type 0x0f).
  */
 export class TsFmp4TransmuxerJs {
-  private buffer = new Uint8Array(0);
+  private buffer: Uint8Array = new Uint8Array(0);
   private pmtPids = new Set<number>();
   private videoPid: number | undefined;
   private audioPid: number | undefined;

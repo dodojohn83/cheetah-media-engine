@@ -100,7 +100,18 @@ function isPresetAction(action: string): action is PtzPresetAction {
  *   A5 0F <channel> <preset-cmd> 00 <point> 00 <checksum>
  */
 export function createGb28181PtzCmd(command: PtzCommand): string {
-  const { action, speeds = {}, channel = 1, presetPoint } = command;
+  if (!command || typeof command !== 'object') {
+    throw new Error('command must be an object');
+  }
+  if (typeof command.action !== 'string') {
+    throw new Error('command.action must be a string');
+  }
+  const { action, channel = 1, presetPoint } = command;
+  const rawSpeeds = command.speeds as unknown;
+  if (rawSpeeds !== undefined && (rawSpeeds === null || typeof rawSpeeds !== 'object')) {
+    throw new Error('command.speeds must be an object');
+  }
+  const speeds: PtzSpeeds = (command.speeds as PtzSpeeds | undefined) ?? {};
 
   if (!Number.isFinite(channel) || channel < 0 || channel > 255) {
     throw new Error(`Invalid PTZ channel ${channel}`);

@@ -486,7 +486,10 @@ mod tests {
         }
         let init = init.expect("init segment");
         assert_eq!(&init[4..8], b"ftyp");
-        assert!(media_count >= 1, "expected media segments, got {media_count}");
+        assert!(
+            media_count >= 1,
+            "expected media segments, got {media_count}"
+        );
 
         let mut demux = IsobmffDemuxer::new();
         demux.push(&init);
@@ -508,7 +511,10 @@ mod tests {
                 Err(_) => break,
             }
         }
-        assert!(packets >= 1, "expected demuxed packets from transmuxed fMP4");
+        assert!(
+            packets >= 1,
+            "expected demuxed packets from transmuxed fMP4"
+        );
     }
 
     #[test]
@@ -518,5 +524,4 @@ mod tests {
         tm.finish().unwrap();
         assert!(tm.poll().is_none());
     }
-
 }

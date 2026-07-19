@@ -40,6 +40,14 @@ const DEFAULT_TRACKS: readonly TrackProfile[] = [
   { kind: 'audio', codec: 'aac' },
 ];
 
+function resolveMediaUrl(url: string): string {
+  try {
+    return new URL(url, typeof location !== 'undefined' ? location.href : 'http://localhost/').href;
+  } catch {
+    return url;
+  }
+}
+
 export function detectProtocol(url: string, hint?: Protocol | 'auto'): Protocol {
   if (hint && hint !== 'auto') {
     return hint as Protocol;
@@ -95,6 +103,7 @@ export function protocolSupportedByMseSession(protocol: Protocol): boolean {
 export class PlaybackSession {
   private readonly options: PlaybackSessionOptions;
   private readonly tracks: readonly TrackProfile[];
+  private readonly url: string;
   private transport: Transport | undefined;
   private mse: MseBackend | undefined;
   private stopped = false;
@@ -113,6 +122,7 @@ export class PlaybackSession {
       throw new Error('PlaybackSession requires a non-empty url');
     }
     this.options = options;
+    this.url = resolveMediaUrl(options.url);
     this.tracks = options.tracks && options.tracks.length > 0 ? options.tracks : DEFAULT_TRACKS;
   }
 
@@ -356,10 +366,10 @@ export class PlaybackSession {
       }
       this.transport = createTransport(
         {
-          url: this.options.url,
-          headers: this.options.headers,
+          url: this.url,
           maxRetries: this.options.isLive ? 3 : 0,
           timeoutMs: 30_000,
+          ...(this.options.headers ? { headers: this.options.headers } : {}),
         },
         mode,
       );
@@ -422,10 +432,10 @@ export class PlaybackSession {
       }
       this.transport = createTransport(
         {
-          url: this.options.url,
-          headers: this.options.headers,
+          url: this.url,
           maxRetries: this.options.isLive ? 3 : 0,
           timeoutMs: 30_000,
+          ...(this.options.headers ? { headers: this.options.headers } : {}),
         },
         mode,
       );
@@ -489,7 +499,7 @@ export class PlaybackSession {
   }
 
   private async runHls(gen: number): Promise<void> {
-    const playlistText = await this.fetchText(this.options.url);
+    const playlistText = await this.fetchText(this.url);
     if (this.generation !== gen || this.stopped) return;
 
     if (/#EXT-X-KEY/i.test(playlistText)) {
@@ -501,7 +511,7 @@ export class PlaybackSession {
 
     // Master playlist: pick the first media variant.
     if (/#EXT-X-STREAM-INF/i.test(playlistText)) {
-      const variant = pickFirstVariant(playlistText, this.options.url);
+      const variant = pickFirstVariant(playlistText, this.url);
       if (!variant) {
         throw new Error('HLS master playlist has no variants');
       }
@@ -511,7 +521,7 @@ export class PlaybackSession {
       return;
     }
 
-    await this.playHlsMediaPlaylist(gen, playlistText, this.options.url);
+    await this.playHlsMediaPlaylist(gen, playlistText, this.url);
   }
 
   private async playHlsMediaPlaylist(gen: number, text: string, baseUrl: string): Promise<void> {
@@ -598,8 +608,8 @@ export class PlaybackSession {
 
   private async fetchText(url: string): Promise<string> {
     const res = await fetch(url, {
-      headers: this.options.headers,
       credentials: 'same-origin',
+      ...(this.options.headers ? { headers: this.options.headers } : {}),
     });
     if (!res.ok) {
       throw new Error(`HLS fetch failed ${res.status} for ${url}`);
@@ -609,8 +619,8 @@ export class PlaybackSession {
 
   private async fetchBytes(url: string): Promise<Uint8Array> {
     const res = await fetch(url, {
-      headers: this.options.headers,
       credentials: 'same-origin',
+      ...(this.options.headers ? { headers: this.options.headers } : {}),
     });
     if (!res.ok) {
       throw new Error(`Segment fetch failed ${res.status} for ${url}`);

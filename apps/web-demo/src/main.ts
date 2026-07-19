@@ -1,9 +1,15 @@
 import '@cheetah-media/components';
 
 const params = new URLSearchParams(window.location.search);
-// Prefer a real fMP4 fixture so the main-thread MSE session can play without
-// FLV transmux. Override with ?src= for live/other streams.
-const src = params.get('src') ?? '/fixtures/media/h264-http-fmp4/clip.mp4';
+const pathname = window.location.pathname;
+// The isolated page needs a real fixture so the MSE session reaches preroll.
+// The root demo intentionally uses an unavailable source so the player surfaces
+// the failure-state UI by default; override with ?src= to test real streams.
+const defaultSrc =
+  pathname === '/isolated' || pathname === '/isolated/'
+    ? '/fixtures/media/h264-http-fmp4/clip.mp4'
+    : 'test.flv';
+const src = params.get('src') ?? defaultSrc;
 
 const app = document.getElementById('app');
 if (app) {
