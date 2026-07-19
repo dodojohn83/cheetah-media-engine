@@ -9,6 +9,8 @@
 
 import { validateUrl, type TransportError, TransportErrorCode, makeError } from '../transport-common';
 
+const INVALID_CONFIG_CODE = 7016;
+
 export interface DownloadProgress {
   readonly bytesWritten: number;
   readonly startedAt: number;
@@ -65,6 +67,11 @@ export class StreamDownloader {
       this.report(options, urlError);
       throw urlError;
     }
+    const configError = validateDownloadOptions(options);
+    if (configError) {
+      this.report(options, configError);
+      throw configError;
+    }
     if (this.state === 'running') {
       const err = makeError(TransportErrorCode.Canceled, 'Download already running', false);
       this.report(options, err);
@@ -116,6 +123,11 @@ export class StreamDownloader {
       const err = makeError(TransportErrorCode.Canceled, 'Download is not paused', false);
       this.report(options, err);
       throw err;
+    }
+    const configError = validateDownloadOptions(options);
+    if (configError) {
+      this.report(options, configError);
+      throw configError;
     }
 
     this.state = 'running';
@@ -274,6 +286,20 @@ export class StreamDownloader {
     const lower = message.toLowerCase();
     return lower.includes('aborted') || lower.includes('abort');
   }
+}
+
+function validateDownloadOptions(options: DownloadOptions): TransportError | undefined {
+  if (!options.sink || typeof options.sink.write !== 'function' || typeof options.sink.close !== 'function') {
+    return makeError(INVALID_CONFIG_CODE, 'sink must have write and close methods', false);
+  }
+  const timeoutMs = options.timeoutMs ?? 30000;
+  if ((timeoutMs !== Infinity && !Number.isFinite(timeoutMs)) || timeoutMs <= 0) {
+    return makeError(INVALID_CONFIG_CODE, 'timeoutMs must be Infinity or a finite positive number', false);
+  }
+  if (options.transform !== undefined && typeof options.transform !== 'function') {
+    return makeError(INVALID_CONFIG_CODE, 'transform must be a function', false);
+  }
+  return undefined;
 }
 
 export class BlobSink implements DownloadSink {
