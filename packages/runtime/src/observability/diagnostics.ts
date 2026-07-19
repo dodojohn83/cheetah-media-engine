@@ -87,12 +87,31 @@ export function buildDiagnostics(
   } = {},
   options: DiagnosticsOptions = {},
 ): DiagnosticsBundle {
+  if (typeof playerId !== 'string' || playerId.length === 0) {
+    throw new Error('playerId must be a non-empty string');
+  }
+  if (typeof state !== 'string' || state.length === 0) {
+    throw new Error('state must be a non-empty string');
+  }
+  if (!Number.isFinite(epoch) || epoch < 0 || !Number.isInteger(epoch)) {
+    throw new Error('epoch must be a finite non-negative integer');
+  }
   const maxEventCount = options.maxEventCount ?? 500;
   const maxSizeBytes = options.maxSizeBytes ?? 256 * 1024;
+  const maxTraceDepth = options.maxTraceDepth;
+  if (maxEventCount !== undefined && (!Number.isFinite(maxEventCount) || maxEventCount < 0 || !Number.isInteger(maxEventCount))) {
+    throw new Error('maxEventCount must be a finite non-negative integer');
+  }
+  if (maxSizeBytes !== undefined && (!Number.isFinite(maxSizeBytes) || maxSizeBytes < 0 || !Number.isInteger(maxSizeBytes))) {
+    throw new Error('maxSizeBytes must be a finite non-negative integer');
+  }
+  if (maxTraceDepth !== undefined && (!Number.isFinite(maxTraceDepth) || maxTraceDepth < 0 || !Number.isInteger(maxTraceDepth))) {
+    throw new Error('maxTraceDepth must be a finite non-negative integer');
+  }
 
   const recentEvents = extras.events ? extras.events.slice(-maxEventCount) : [];
-  const trace = options.maxTraceDepth !== undefined && extras.trace
-    ? truncateTrace(extras.trace, options.maxTraceDepth)
+  const trace = maxTraceDepth !== undefined && extras.trace
+    ? truncateTrace(extras.trace, maxTraceDepth)
     : extras.trace;
 
   const bundle: DiagnosticsBundle = {
