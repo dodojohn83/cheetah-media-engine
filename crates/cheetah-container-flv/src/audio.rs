@@ -155,11 +155,7 @@ pub fn parse_aac_config(track: &mut TrackInfo, payload: &[u8]) -> Result<(), Flv
     let asc = AudioSpecificConfig::parse(payload).map_err(|_| FlvError::MalformedTag)?;
     track.codec = CodecId::Aac;
     track.set_codec_config(CodecConfig::AacAudioSpecificConfig(asc.build()));
-    let channels = if asc.channel_count >= 2 {
-        ChannelLayout::Stereo
-    } else {
-        ChannelLayout::Mono
-    };
+    let channels = ChannelLayout::from_channel_count(u32::from(asc.channel_count));
     // HE-AAC / HE-AAC v2 (object types 5 and 29) output 2048 samples per frame.
     let sample_count = if matches!(asc.audio_object_type, 5 | 29) {
         2048

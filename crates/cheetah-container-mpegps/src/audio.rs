@@ -157,11 +157,7 @@ impl AudioAssembler {
         };
         let config_bytes = asc.build();
 
-        let channel_layout = match header.channel_count {
-            1 => ChannelLayout::Mono,
-            2 => ChannelLayout::Stereo,
-            n => ChannelLayout::Unknown(u64::from(n)),
-        };
+        let channel_layout = ChannelLayout::from_channel_count(u32::from(header.channel_count));
         let audio_format = AudioFormat {
             sample_format: SampleFormat::S16,
             sample_rate: header.sampling_frequency,
