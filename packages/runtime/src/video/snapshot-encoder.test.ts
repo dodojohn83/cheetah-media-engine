@@ -126,6 +126,14 @@ describe('computeTargetSize', () => {
   it('ignores non-positive limits', () => {
     expect(computeTargetSize(1920, 1080, 0, 0)).toEqual({ width: 1920, height: 1080 });
   });
+
+  it('ignores non-finite limits', () => {
+    expect(computeTargetSize(1920, 1080, NaN, Infinity)).toEqual({ width: 1920, height: 1080 });
+  });
+
+  it('rejects non-finite source dimensions', () => {
+    expect(() => computeTargetSize(NaN, 1080)).toThrow('finite and positive');
+  });
 });
 
 describe('formatToMime', () => {
@@ -187,6 +195,12 @@ describe('encodeSnapshot', () => {
     expect(calls).toBeDefined();
     expect(calls!.toBlobCalls[0]?.type).toBe('image/png');
     expect(calls!.toBlobCalls[0]?.quality).toBeUndefined();
+  });
+
+  it('rejects non-finite quality', async () => {
+    const drawn: { source?: unknown; type?: string | undefined; quality?: number | undefined }[] = [];
+    const canvas = makeMockCanvas(10, 10, drawn);
+    await expect(encodeSnapshot(canvas, { format: 'jpeg', quality: NaN })).rejects.toBeInstanceOf(RendererError);
   });
 
   it('scales ImageData down using an intermediate canvas', async () => {
