@@ -53,4 +53,15 @@ describe('IntercomPacketizer', () => {
     packetizer.reset();
     expect(packetizer.currentSequence).toBe(0);
   });
+
+  it('rejects invalid constructor options', () => {
+    expect(() => new IntercomPacketizer({ payloadType: 128 })).toThrow();
+    expect(() => new IntercomPacketizer({ payloadType: NaN })).toThrow();
+    expect(() => new IntercomPacketizer({ ssrc: -1 })).toThrow();
+  });
+
+  it('rejects malformed audio packets', () => {
+    const packetizer = new IntercomPacketizer();
+    expect(() => packetizer.push({ kind: 'mulaw' } as unknown as AudioPacket)).toThrow();
+  });
 });
