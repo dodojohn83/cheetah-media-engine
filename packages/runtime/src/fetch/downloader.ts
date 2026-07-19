@@ -166,13 +166,17 @@ export class StreamDownloader {
     this.controller = new AbortController();
     const signal = this.controller.signal;
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutMs = options.timeoutMs ?? 30000;
-    if (timeoutMs > 0 && timeoutMs !== Infinity) {
-      timer = setTimeout(() => {
-        this.controller?.abort();
-      }, timeoutMs);
-    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const startTimer = () => {
+      if (timeoutMs > 0 && timeoutMs !== Infinity) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          this.controller?.abort();
+        }, timeoutMs);
+      }
+    };
+    startTimer();
 
     const headers = new Headers(options.headers ?? {});
     if (isResume && this.bytesReceived > 0) {
@@ -190,6 +194,7 @@ export class StreamDownloader {
     }
     try {
       const response = await fetch(options.url, init);
+      startTimer();
 
       if (!response.ok) {
         throw makeError(
@@ -225,6 +230,7 @@ export class StreamDownloader {
             this.bytesWritten += chunk.length;
           }
           options.onProgress?.(this.progress);
+          startTimer();
         }
       } finally {
         reader.releaseLock();

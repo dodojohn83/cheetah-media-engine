@@ -264,6 +264,43 @@ describe('StreamDownloader', () => {
     expect(dl.progress.state).toBe('error');
   });
 
+  it('does not time out while data keeps arriving', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            let count = 0;
+            const timer = setInterval(() => {
+              if (init?.signal?.aborted) {
+                clearInterval(timer);
+                try {
+                  controller.error(new Error('aborted'));
+                } catch {
+                  // ignore
+                }
+                return;
+              }
+              count += 1;
+              controller.enqueue(new Uint8Array([count]));
+              if (count >= 3) {
+                clearInterval(timer);
+                controller.close();
+              }
+            }, 5);
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }),
+    );
+    const dl = new StreamDownloader();
+    const result = await dl.start({
+      ...makeOptions('https://example.com/slow-active'),
+      timeoutMs: 10,
+    });
+    expect(result.bytesWritten).toBe(3);
+  });
+
   it('stop aborts a running download', async () => {
     const dl = new StreamDownloader();
     const start = dl.start({
