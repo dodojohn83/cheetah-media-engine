@@ -67,11 +67,8 @@ export class WebTransportTransport implements Transport {
   private inFlight = new Set<Promise<void>>();
 
   constructor(config: TransportConfig) {
-    if (!config || typeof config !== 'object' || typeof config.url !== 'string' || config.url.length === 0) {
-      throw new Error('WebTransportTransport config requires a non-empty url string');
-    }
     this.config = config;
-    this.maxBytes = config.maxBytes ?? Number.MAX_SAFE_INTEGER;
+    this.maxBytes = config?.maxBytes ?? Number.MAX_SAFE_INTEGER;
   }
 
   start(

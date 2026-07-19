@@ -50,9 +50,6 @@ export class FetchTransport implements Transport {
   private timedOut = false;
 
   constructor(config: TransportConfig) {
-    if (!config || typeof config !== 'object' || typeof config.url !== 'string' || config.url.length === 0) {
-      throw new Error('FetchTransport config requires a non-empty url string');
-    }
     this.config = config;
   }
 
@@ -231,12 +228,9 @@ export class WebSocketTransport implements Transport {
   private onEnd?: () => void;
 
   constructor(config: WebSocketConfig) {
-    if (!config || typeof config !== 'object' || typeof config.url !== 'string' || config.url.length === 0) {
-      throw new Error('WebSocketTransport config requires a non-empty url string');
-    }
     this.config = config;
-    this.maxBytes = config.maxBytes ?? Number.MAX_SAFE_INTEGER;
-    this.timeoutMs = config.timeoutMs ?? 30000;
+    this.maxBytes = config?.maxBytes ?? Number.MAX_SAFE_INTEGER;
+    this.timeoutMs = config?.timeoutMs ?? 30000;
   }
 
   start(onChunk: (chunk: Chunk) => void, onError: (error: TransportError) => void, onEnd: () => void): void {
