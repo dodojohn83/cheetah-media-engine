@@ -222,7 +222,6 @@ export class WebRtcTransport implements Transport {
     channel: RTCDataChannel,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.channelOpenWaiter = { resolve, reject };
       let settled = false;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const done = (fn: () => void) => {
@@ -233,11 +232,22 @@ export class WebRtcTransport implements Transport {
         fn();
       };
 
+      this.channelOpenWaiter = {
+        resolve: () => done(() => resolve()),
+        reject: (err: Error) => done(() => reject(err)),
+      };
+
       if (this.timeoutMs > 0 && this.timeoutMs !== Infinity) {
         timeout = setTimeout(() => {
           this.timedOut = true;
-          pc.close();
-          done(() => reject(new WebRtcError(TransportErrorCode.Timeout, 'WebRTC channel open timed out')));
+          try {
+            pc.close();
+          } catch {
+            // close() can throw if already closed; ignore.
+          }
+          this.channelOpenWaiter?.reject(
+            new WebRtcError(TransportErrorCode.Timeout, 'WebRTC channel open timed out'),
+          );
         }, this.timeoutMs);
       }
 
