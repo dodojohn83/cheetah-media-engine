@@ -64,6 +64,70 @@ export interface PlanCandidate {
   readonly isLive: boolean;
 }
 
+const VALID_PROTOCOLS: readonly Protocol[] = [
+  'http-flv', 'ws-flv', 'http-fmp4', 'ws-fmp4', 'http-annexb', 'ws-annexb',
+  'http-mpegps', 'ws-mpegps', 'webtransport', 'webrtc', 'hls', 'll-hls',
+];
+const VALID_BACKENDS: readonly Backend[] = ['webcodecs', 'mse', 'wasm-threads-simd', 'wasm-simd', 'wasm-baseline'];
+const VALID_LATENCY_TARGETS: readonly LatencyTarget[] = ['realtime', 'low', 'normal'];
+
+function validatePlanRequest(request: PlanRequest): void {
+  if (!request || typeof request !== 'object') {
+    throw new Error('PlanRequest is required');
+  }
+  if (!VALID_PROTOCOLS.includes(request.protocol)) {
+    throw new Error(`Unknown protocol: ${String(request.protocol)}`);
+  }
+  if (!Array.isArray(request.tracks) || request.tracks.length === 0) {
+    throw new Error('PlanRequest.tracks must be a non-empty array');
+  }
+  for (const track of request.tracks) {
+    if (!track || typeof track !== 'object') {
+      throw new Error('Each track must be an object');
+    }
+    if (track.kind !== 'video' && track.kind !== 'audio') {
+      throw new Error(`Unknown track kind: ${String(track.kind)}`);
+    }
+    if (typeof track.codec !== 'string' || track.codec.length === 0) {
+      throw new Error('Track codec must be a non-empty string');
+    }
+  }
+  if (!VALID_LATENCY_TARGETS.includes(request.latencyTarget)) {
+    throw new Error(`Unknown latencyTarget: ${String(request.latencyTarget)}`);
+  }
+  if (request.isLive !== undefined && typeof request.isLive !== 'boolean') {
+    throw new Error('isLive must be a boolean');
+  }
+  if (request.isolation !== undefined && typeof request.isolation !== 'boolean') {
+    throw new Error('isolation must be a boolean');
+  }
+  if (request.disabled !== undefined) {
+    if (!Array.isArray(request.disabled)) {
+      throw new Error('disabled must be an array');
+    }
+    for (const backend of request.disabled) {
+      if (!VALID_BACKENDS.includes(backend)) {
+        throw new Error(`Unknown backend in disabled: ${String(backend)}`);
+      }
+    }
+  }
+  if (request.budget !== undefined) {
+    if (!request.budget || typeof request.budget !== 'object') {
+      throw new Error('budget must be an object');
+    }
+    if (request.budget.maxWasmMemoryMB !== undefined) {
+      if (!Number.isFinite(request.budget.maxWasmMemoryMB)) {
+        throw new Error('budget.maxWasmMemoryMB must be a finite number');
+      }
+    }
+    if (request.budget.maxThreads !== undefined) {
+      if (!Number.isFinite(request.budget.maxThreads) || request.budget.maxThreads < 0 || request.budget.maxThreads % 1 !== 0) {
+        throw new Error('budget.maxThreads must be a finite non-negative integer');
+      }
+    }
+  }
+}
+
 export interface PlaybackPlan {
   readonly candidates: readonly PlanCandidate[];
   readonly primary: PlanCandidate;
@@ -324,6 +388,7 @@ function latencyPenalty(transport: TransportMode, latency: LatencyTarget, backen
  * independently while keeping the result valid.
  */
 export function plan(request: PlanRequest, caps: CapabilityReport): PlaybackPlan {
+  validatePlanRequest(request);
   const unsupported: { backend: Backend; reason: string }[] = [];
   const reasonChain: string[] = [];
 

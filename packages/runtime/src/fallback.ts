@@ -88,6 +88,18 @@ export class FallbackController {
   private stopped = false;
 
   constructor(options: FallbackOptions) {
+    if (!options || typeof options !== 'object') {
+      throw new Error('FallbackOptions is required');
+    }
+    if (!options.plan || !Array.isArray(options.plan.candidates)) {
+      throw new Error('FallbackOptions.plan.candidates must be an array');
+    }
+    if (typeof options.factory !== 'function') {
+      throw new Error('FallbackOptions.factory must be a function');
+    }
+    if (options.onEvent !== undefined && typeof options.onEvent !== 'function') {
+      throw new Error('FallbackOptions.onEvent must be a function');
+    }
     this.plan = options.plan;
     this.factory = options.factory;
     this.onEvent = options.onEvent;
@@ -175,6 +187,9 @@ export class FallbackController {
    * per-epoch tried set so the new candidates can be attempted.
    */
   setPlan(plan: PlaybackPlan): void {
+    if (!plan || !Array.isArray(plan.candidates)) {
+      throw new Error('PlaybackPlan.candidates must be an array');
+    }
     this.plan = plan;
     this.tried.clear();
     this.attemptReasons.clear();
