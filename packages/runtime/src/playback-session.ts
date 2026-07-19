@@ -357,9 +357,9 @@ export class PlaybackSession {
       this.transport = createTransport(
         {
           url: this.options.url,
-          headers: this.options.headers,
           maxRetries: this.options.isLive ? 3 : 0,
           timeoutMs: 30_000,
+          ...(this.options.headers ? { headers: this.options.headers } : {}),
         },
         mode,
       );
@@ -423,9 +423,9 @@ export class PlaybackSession {
       this.transport = createTransport(
         {
           url: this.options.url,
-          headers: this.options.headers,
           maxRetries: this.options.isLive ? 3 : 0,
           timeoutMs: 30_000,
+          ...(this.options.headers ? { headers: this.options.headers } : {}),
         },
         mode,
       );
@@ -598,8 +598,8 @@ export class PlaybackSession {
 
   private async fetchText(url: string): Promise<string> {
     const res = await fetch(url, {
-      headers: this.options.headers,
       credentials: 'same-origin',
+      ...(this.options.headers ? { headers: this.options.headers } : {}),
     });
     if (!res.ok) {
       throw new Error(`HLS fetch failed ${res.status} for ${url}`);
@@ -609,8 +609,8 @@ export class PlaybackSession {
 
   private async fetchBytes(url: string): Promise<Uint8Array> {
     const res = await fetch(url, {
-      headers: this.options.headers,
       credentials: 'same-origin',
+      ...(this.options.headers ? { headers: this.options.headers } : {}),
     });
     if (!res.ok) {
       throw new Error(`Segment fetch failed ${res.status} for ${url}`);

@@ -88,4 +88,23 @@ describe('createGb28181PtzCmd', () => {
       createGb28181PtzCmd({ action: 'constructor' as unknown as PtzCommand['action'] }),
     ).toThrow('Unsupported');
   });
+
+  it('rejects a non-object command', () => {
+    expect(() => createGb28181PtzCmd(null as unknown as PtzCommand)).toThrow('command');
+    expect(() => createGb28181PtzCmd(undefined as unknown as PtzCommand)).toThrow('command');
+  });
+
+  it('rejects a non-string action', () => {
+    expect(() => createGb28181PtzCmd({ action: 123 } as unknown as PtzCommand)).toThrow('action');
+    expect(() => createGb28181PtzCmd({ action: '' } as unknown as PtzCommand)).toThrow('action');
+  });
+
+  it('rejects non-object speeds', () => {
+    expect(() =>
+      createGb28181PtzCmd({ action: 'up', speeds: null } as unknown as PtzCommand),
+    ).toThrow('speeds');
+    expect(() =>
+      createGb28181PtzCmd({ action: 'up', speeds: 'fast' } as unknown as PtzCommand),
+    ).toThrow('speeds');
+  });
 });

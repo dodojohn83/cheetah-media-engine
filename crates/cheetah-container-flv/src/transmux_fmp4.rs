@@ -143,7 +143,11 @@ impl FlvToFmp4Transmuxer {
         let changed = self
             .configured
             .get(&id)
-            .map(|prev| prev.codec_config != cfg.codec_config || prev.width != cfg.width || prev.height != cfg.height)
+            .map(|prev| {
+                prev.codec_config != cfg.codec_config
+                    || prev.width != cfg.width
+                    || prev.height != cfg.height
+            })
             .unwrap_or(true);
         if changed {
             self.muxer.configure(cfg.clone());
@@ -160,13 +164,11 @@ impl FlvToFmp4Transmuxer {
             return Ok(());
         }
         let is_key = packet.flags.is_keyframe;
-        self.muxer
-            .push_packet(packet)
-            .map_err(|e| {
-                let err = TransmuxError::Mux(mp4_error_code(&e));
-                self.error = Some(err);
-                err
-            })?;
+        self.muxer.push_packet(packet).map_err(|e| {
+            let err = TransmuxError::Mux(mp4_error_code(&e));
+            self.error = Some(err);
+            err
+        })?;
         self.samples_since_flush = self.samples_since_flush.saturating_add(1);
 
         // Flush on keyframe boundaries once we have a full GOP, or when the
@@ -332,7 +334,10 @@ mod tests {
                 Err(_) => break,
             }
         }
-        assert!(packets >= 1, "expected demuxed packets from transmuxed fMP4");
+        assert!(
+            packets >= 1,
+            "expected demuxed packets from transmuxed fMP4"
+        );
     }
 
     #[test]

@@ -110,7 +110,7 @@ export function splitFmp4(data: Uint8Array): Fmp4Split {
  * drain complete boxes via `takeCompleteBoxes`.
  */
 export class Fmp4BoxAccumulator {
-  private buffer = new Uint8Array(0);
+  private buffer: Uint8Array = new Uint8Array(0);
   private readonly maxBytes: number;
 
   constructor(maxBytes = 64 * 1024 * 1024) {
