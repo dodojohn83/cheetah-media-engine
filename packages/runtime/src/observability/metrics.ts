@@ -66,6 +66,15 @@ const DEFAULT_HISTOGRAM_BUCKETS = [
   0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000,
 ];
 
+function validateHistogramBuckets(buckets: readonly number[]): void {
+  if (!Array.isArray(buckets) || buckets.length === 0) {
+    throw new RangeError('histogramBuckets must be a non-empty array');
+  }
+  if (!buckets.every((b) => Number.isFinite(b) && b >= 0)) {
+    throw new RangeError('histogramBuckets must contain finite non-negative numbers');
+  }
+}
+
 interface BaseMetric {
   readonly definition: MetricDefinition;
   reset(): void;
@@ -179,7 +188,7 @@ class Histogram implements BaseMetric {
   }
 
   private percentile(p: number): number {
-    if (this.total === 0) return 0;
+    if (this.total === 0 || this.buckets.length === 0) return 0;
     const target = p * this.total;
     const hasOverflow = this.overflowCount > 0;
     const bounds = hasOverflow ? [...this.buckets, this.max] : [...this.buckets];
@@ -208,7 +217,9 @@ export class MetricRegistry {
   private readonly buckets: readonly number[];
 
   constructor(options: { readonly histogramBuckets?: readonly number[] } = {}) {
-    this.buckets = options.histogramBuckets ?? DEFAULT_HISTOGRAM_BUCKETS;
+    const buckets = options.histogramBuckets ?? DEFAULT_HISTOGRAM_BUCKETS;
+    validateHistogramBuckets(buckets);
+    this.buckets = buckets;
   }
 
   counter(name: string, category: MetricCategory, unit?: string): Counter {
