@@ -282,6 +282,12 @@ export class WebCodecsBackend implements MediaBackend {
     this.callbacks = options.callbacks;
     this.maxPending = options.maxPendingDecodes ?? 32;
     this.maxVideoQueue = options.maxVideoQueue ?? options.maxPendingDecodes ?? 32;
+    if (!Number.isInteger(this.maxPending) || this.maxPending < 1) {
+      throw new Error('maxPendingDecodes must be a finite positive integer');
+    }
+    if (!Number.isInteger(this.maxVideoQueue) || this.maxVideoQueue < 1) {
+      throw new Error('maxVideoQueue must be a finite positive integer');
+    }
   }
 
   private totalPending(): number {
