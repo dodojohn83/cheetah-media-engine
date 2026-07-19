@@ -142,6 +142,19 @@ class MediaStreamRecorderSession implements RecordingSession {
       throw new RendererError('unsupported', 'MediaRecorder is not available in this environment');
     }
 
+    if (this.options.fps !== undefined && (!Number.isFinite(this.options.fps) || this.options.fps <= 0)) {
+      throw new RendererError('invalid-option', 'fps must be a finite positive number');
+    }
+    if (this.options.segmentDurationMs !== undefined && (!Number.isFinite(this.options.segmentDurationMs) || this.options.segmentDurationMs < 0)) {
+      throw new RendererError('invalid-option', 'segmentDurationMs must be a finite non-negative number');
+    }
+    if (this.options.maxDurationMs !== undefined && (!Number.isFinite(this.options.maxDurationMs) || this.options.maxDurationMs < 0)) {
+      throw new RendererError('invalid-option', 'maxDurationMs must be a finite non-negative number');
+    }
+    if (this.options.maxSizeBytes !== undefined && (!Number.isFinite(this.options.maxSizeBytes) || this.options.maxSizeBytes < 0)) {
+      throw new RendererError('invalid-option', 'maxSizeBytes must be a finite non-negative number');
+    }
+
     let stream: MediaStream;
     if (typeof MediaStream !== 'undefined' && this.source instanceof MediaStream) {
       stream = this.source;

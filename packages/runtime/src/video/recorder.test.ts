@@ -187,4 +187,13 @@ describe('startRecording', () => {
     expect(result.bytesWritten).toBe(2);
     expect(chunks.length).toBe(1);
   });
+
+  it('rejects non-finite or non-positive fps', async () => {
+    const { stream } = makeTarget();
+    const CanvasCtor = (globalThis as unknown as { HTMLCanvasElement: typeof MockHTMLCanvasElement }).HTMLCanvasElement;
+    const canvas = new CanvasCtor();
+    await expect(
+      startRecording(canvas as unknown as HTMLCanvasElement, { ...makeOptions(stream), fps: NaN }),
+    ).rejects.toBeInstanceOf(RendererError);
+  });
 });
