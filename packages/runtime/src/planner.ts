@@ -163,6 +163,7 @@ function wasmMemoryOk(caps: CapabilityReport, budget: PlanRequest['budget']): bo
   if (memoryLimitPages === 0) return true; // unknown/uncached
   const maxWasmMemoryMB = budget?.maxWasmMemoryMB;
   if (maxWasmMemoryMB !== undefined) {
+    if (!Number.isFinite(maxWasmMemoryMB) || maxWasmMemoryMB <= 0) return false;
     const maxPages = Math.floor((maxWasmMemoryMB * 1024 * 1024) / 65536);
     return memoryLimitPages >= maxPages;
   }
