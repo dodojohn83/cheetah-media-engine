@@ -263,8 +263,9 @@ describe('WebSocketTransport', () => {
           for (const message of messages) {
             this.dispatchEvent(new MessageEvent('message', { data: message }));
           }
-          // Yield so async Blob.arrayBuffer() microtasks can run before close.
-          await Promise.resolve();
+          // Yield to the next macrotask so async Blob.arrayBuffer() promises can
+          // resolve before we dispatch the close event.
+          await new Promise((resolve) => setTimeout(resolve, 0));
           this.dispatchEvent(new CloseEvent('close', { code: closeCode, reason: closeReason }));
         }, 0);
       }
@@ -395,6 +396,38 @@ describe('WebSocketTransport', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]?.code).toBe(TransportErrorCode.Canceled);
     expect(endCount).toBe(1);
+  });
+
+  it('times out when the connection opens but no data is received', async () => {
+    class HangingSocket extends EventTarget {
+      public url: string;
+      public binaryType: BinaryType = 'arraybuffer';
+      public readyState: number = 0;
+      constructor(url: string | URL) {
+        super();
+        this.url = String(url);
+        setTimeout(() => {
+          this.readyState = 1;
+          this.dispatchEvent(new Event('open'));
+        }, 0);
+      }
+      public close(): void {
+        this.readyState = 3;
+        this.dispatchEvent(new CloseEvent('close', { code: 1006, reason: 'abnormal' }));
+      }
+    }
+    globalThis.WebSocket = HangingSocket as unknown as typeof WebSocket;
+
+    const transport = new WebSocketTransport({ url: 'wss://example.com/stream', timeoutMs: 50 });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+
+    expect(err.code).toBe(TransportErrorCode.Timeout);
   });
 });
 
