@@ -342,4 +342,10 @@ describe('StreamDownloader', () => {
     await dl.start(makeOptions('https://example.com/video.mp4', sink));
     expect(close).toHaveBeenCalledTimes(1);
   });
+
+  it('rejects invalid download options', async () => {
+    const dl = new StreamDownloader();
+    await expect(dl.start({ url: 'https://example.com/video.mp4', sink: undefined as unknown as { write: () => void; close: () => void } })).rejects.toMatchObject({ code: 7016 });
+    await expect(dl.start({ ...makeOptions('https://example.com/video.mp4', { write: () => undefined, close: () => undefined }), timeoutMs: NaN })).rejects.toMatchObject({ code: 7016 });
+  });
 });
