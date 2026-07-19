@@ -23,14 +23,30 @@ export interface TraceContext {
   readonly root: TraceSpan;
 }
 
-let traceCounter = 0;
+let traceCounter = 0n;
 
 function makeId(): string {
-  traceCounter += 1;
-  return `t-${traceCounter}`;
+  traceCounter += 1n;
+  return `t-${traceCounter.toString()}`;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && Number.isInteger(value);
 }
 
 export function startTrace(playerId: string, name: string, epoch = 0, sequence = 0): TraceContext {
+  if (typeof playerId !== 'string' || playerId.length === 0) {
+    throw new Error('playerId must be a non-empty string');
+  }
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new Error('name must be a non-empty string');
+  }
+  if (!isNonNegativeInteger(epoch)) {
+    throw new Error('epoch must be a finite non-negative integer');
+  }
+  if (!isNonNegativeInteger(sequence)) {
+    throw new Error('sequence must be a finite non-negative integer');
+  }
   const traceId = makeId();
   const root: TraceSpan = {
     id: makeId(),
@@ -49,6 +65,15 @@ export function endTrace(context: TraceContext): TraceContext {
 }
 
 export function childSpan(parent: TraceSpan, name: string, sequence = 0): TraceSpan {
+  if (!parent || typeof parent !== 'object') {
+    throw new Error('parent must be a TraceSpan');
+  }
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new Error('name must be a non-empty string');
+  }
+  if (!isNonNegativeInteger(sequence)) {
+    throw new Error('sequence must be a finite non-negative integer');
+  }
   return {
     id: makeId(),
     name,
