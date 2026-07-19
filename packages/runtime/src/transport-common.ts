@@ -82,9 +82,16 @@ export function validateUrl(url: string): TransportError | undefined {
     (globalThis as unknown as { location?: { protocol?: string } }).location?.protocol
       ? (globalThis as unknown as { location: { protocol: string } }).location.protocol
       : undefined;
+  const isSecureContext =
+    typeof globalThis !== 'undefined' &&
+    (globalThis as unknown as { isSecureContext?: boolean }).isSecureContext === true;
+  const isPlainHttpContext = currentProtocol === 'http:';
+  // Block plain-text transports when the surrounding context is secure, unless
+  // we are on an explicit http:// page (e.g. http://localhost tests).
   if (
     (parsed.protocol === 'http:' || parsed.protocol === 'ws:') &&
-    currentProtocol === 'https:'
+    !isPlainHttpContext &&
+    (isSecureContext || currentProtocol === 'https:')
   ) {
     return makeError(
       TransportErrorCode.InsecureContent,

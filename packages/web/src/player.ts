@@ -924,7 +924,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     this.guardDestroyed();
     // Ignore play requests while the player is still bootstrapping or has already
     // failed/stopped; idle is allowed for the no-media / mock-runtime control path.
-    if (this._state === 'loading' || this._state === 'preroll' || this._state === 'failed' || this._state === 'stopping') {
+    if (this._state === 'loading' || this._state === 'failed' || this._state === 'stopping') {
       return;
     }
     if (this.session) {
