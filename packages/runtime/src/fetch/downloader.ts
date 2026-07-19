@@ -52,6 +52,7 @@ export class StreamDownloader {
   private startedAt = 0;
   private completedAt = 0;
   private currentSink: DownloadSink | undefined;
+  private timedOut = false;
 
   get progress(): DownloadProgress {
     return {
@@ -176,6 +177,7 @@ export class StreamDownloader {
 
   private async run(options: DownloadOptions, isResume: boolean): Promise<void> {
     this.controller = new AbortController();
+    this.timedOut = false;
     const signal = this.controller.signal;
 
     const timeoutMs = options.timeoutMs ?? 30000;
@@ -184,6 +186,7 @@ export class StreamDownloader {
       if (timeoutMs > 0 && timeoutMs !== Infinity) {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
+          this.timedOut = true;
           this.controller?.abort();
         }, timeoutMs);
       }
@@ -272,6 +275,9 @@ export class StreamDownloader {
   private toError(err: unknown): TransportError {
     if (err && typeof err === 'object' && 'code' in err && 'stage' in err) {
       return err as TransportError;
+    }
+    if (this.timedOut) {
+      return makeError(TransportErrorCode.Timeout, 'Download timed out', true);
     }
     const message = err instanceof Error ? err.message : String(err);
     if (this.isAbortError(err, message)) {
