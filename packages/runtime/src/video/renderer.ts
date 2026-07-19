@@ -45,6 +45,11 @@ export class VideoRenderer implements Renderer {
         await this.tryConfigure(kind, config);
         return;
       } catch (err) {
+        // A partially configured backend (e.g. lost WebGPU/WebGL context) may
+        // hold GPU resources; release it before trying the next fallback.
+        this.backend?.close();
+        this.backend = undefined;
+        this.kind = undefined;
         if (this.options.failIfUnsupported) {
           throw err instanceof RendererError ? err : new RendererError('configure-failed', String(err));
         }
