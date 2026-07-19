@@ -33,12 +33,44 @@ export interface YuvMatrix {
 }
 
 export function getYuvMatrix(matrix?: string): YuvMatrix {
-  const m = matrix?.toLowerCase() ?? '';
+  const m = typeof matrix === 'string' ? matrix.toLowerCase() : '';
   if (m === 'bt.601' || m === 'bt601' || m === 'smpte170m') {
     return { kr: 0.299, kg: 0.587, kb: 0.114 };
   }
   // Default to BT.709.
   return { kr: 0.2126, kg: 0.7152, kb: 0.0722 };
+}
+
+function validateYuvMatrix(matrix: YuvMatrix): void {
+  if (!matrix || typeof matrix !== 'object') {
+    throw new Error('matrix must be an object');
+  }
+  if (!Number.isFinite(matrix.kr) || !Number.isFinite(matrix.kg) || !Number.isFinite(matrix.kb)) {
+    throw new Error('matrix.kr, matrix.kg and matrix.kb must be finite numbers');
+  }
+  if (matrix.kg === 0) {
+    throw new Error('matrix.kg must not be zero');
+  }
+}
+
+function validateColorRange(range: ColorRange): void {
+  if (!range || typeof range !== 'object') {
+    throw new Error('range must be an object');
+  }
+  if (
+    !Number.isFinite(range.yMin) ||
+    !Number.isFinite(range.yMax) ||
+    !Number.isFinite(range.cZero) ||
+    !Number.isFinite(range.cMax)
+  ) {
+    throw new Error('range.yMin, range.yMax, range.cZero and range.cMax must be finite numbers');
+  }
+  if (range.yMax <= range.yMin) {
+    throw new Error('range.yMax must be greater than range.yMin');
+  }
+  if (range.cMax <= range.yMin) {
+    throw new Error('range.cMax must be greater than range.yMin');
+  }
 }
 
 /**
@@ -51,6 +83,8 @@ export function getYuvMatrix(matrix?: string): YuvMatrix {
  * BT.601/709 primaries so the output is linear 0..1 RGB.
  */
 export function buildYuvToRgbCoeffs(matrix: YuvMatrix, range: ColorRange): { coeffs: number[]; offset: number[] } {
+  validateYuvMatrix(matrix);
+  validateColorRange(range);
   const { kr, kg, kb } = matrix;
   // Y is normalized to [0,1] from its raw range; Cb/Cr are centered at cZero and
   // scaled to [-0.5,0.5] over the full chroma excursion [yMin, cMax].
