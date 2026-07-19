@@ -18,13 +18,22 @@ export interface VideoRendererOptions {
   readonly failIfUnsupported?: boolean | undefined;
 }
 
+const VALID_RENDERER_KINDS: readonly RendererKind[] = ['webgpu', 'webgl2', 'canvas2d'];
+
 export class VideoRenderer implements Renderer {
   readonly identity = 'video-renderer';
   private backend: Renderer | undefined = undefined;
   private kind: RendererKind | undefined = undefined;
   private closed = false;
 
-  constructor(private readonly options: VideoRendererOptions = {}) {}
+  constructor(private readonly options: VideoRendererOptions = {}) {
+    if (options.preferred !== undefined && !VALID_RENDERER_KINDS.includes(options.preferred)) {
+      throw new RendererError('invalid-config', `Unknown renderer preferred: ${options.preferred}`);
+    }
+    if (options.failIfUnsupported !== undefined && typeof options.failIfUnsupported !== 'boolean') {
+      throw new RendererError('invalid-config', 'failIfUnsupported must be a boolean');
+    }
+  }
 
   async configure(config: RendererConfig): Promise<void> {
     if (this.closed) throw new RendererError('closed', 'VideoRenderer is closed');
