@@ -167,11 +167,29 @@ export class MicrophoneCapture {
   private startPromise: Promise<void> | undefined;
 
   constructor(options: MicrophoneCaptureOptions = {}, callbacks: MicrophoneCaptureCallbacks = {}) {
+    const sampleRate = options.sampleRate ?? DEFAULT_SAMPLE_RATE;
+    const frameDurationMs = options.frameDurationMs ?? DEFAULT_FRAME_DURATION_MS;
+    const maxBufferedFrames = options.maxBufferedFrames ?? DEFAULT_MAX_BUFFERED_FRAMES;
+    const encoder = options.encoder ?? 'mulaw';
+
+    if (encoder !== 'alaw' && encoder !== 'mulaw') {
+      throw new CaptureError('bad-option', 'encoder must be alaw or mulaw');
+    }
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+      throw new CaptureError('bad-option', 'sampleRate must be a finite positive number');
+    }
+    if (!Number.isFinite(frameDurationMs) || frameDurationMs <= 0) {
+      throw new CaptureError('bad-option', 'frameDurationMs must be a finite positive number');
+    }
+    if (!Number.isFinite(maxBufferedFrames) || maxBufferedFrames < 0 || maxBufferedFrames % 1 !== 0) {
+      throw new CaptureError('bad-option', 'maxBufferedFrames must be a finite non-negative integer');
+    }
+
     this.options = {
-      encoder: options.encoder ?? 'mulaw',
-      sampleRate: options.sampleRate ?? DEFAULT_SAMPLE_RATE,
-      frameDurationMs: options.frameDurationMs ?? DEFAULT_FRAME_DURATION_MS,
-      maxBufferedFrames: options.maxBufferedFrames ?? DEFAULT_MAX_BUFFERED_FRAMES,
+      encoder,
+      sampleRate,
+      frameDurationMs,
+      maxBufferedFrames,
       workletSourceUrl: options.workletSourceUrl,
       workletNodeCtor: options.workletNodeCtor,
       audioContext: options.audioContext,
@@ -181,6 +199,9 @@ export class MicrophoneCapture {
     this.targetFrameSize = Math.round(
       (this.options.sampleRate * this.options.frameDurationMs) / 1000,
     );
+    if (this.targetFrameSize <= 0) {
+      throw new CaptureError('bad-option', 'sampleRate * frameDurationMs must produce a positive frame size');
+    }
   }
 
   private getState(): CaptureState {
