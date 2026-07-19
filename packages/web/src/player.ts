@@ -669,7 +669,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (to === 'failed' && this._state === 'preroll') {
       this.failedStateTimer = setTimeout(() => {
         this.failedStateTimer = undefined;
-        this.setState('failed');
+        const from = this._state;
+        this._state = 'failed';
+        this.emit('statechange', { from, to: 'failed' });
       }, 1500);
       return;
     }
@@ -1020,6 +1022,10 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async destroy(): Promise<void> {
     if (this.destroyed) return;
+    if (this.failedStateTimer) {
+      clearTimeout(this.failedStateTimer);
+      this.failedStateTimer = undefined;
+    }
     this.destroyed = true;
     this._intercomActive = false;
     this._intercomStarting = false;
