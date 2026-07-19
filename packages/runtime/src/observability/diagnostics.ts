@@ -41,6 +41,12 @@ const SIZE_SAFETY_MARGIN = 1024;
 export function sanitizeUrl(url: string): string {
   try {
     const parsed = new URL(url);
+    // Only http/https URLs are safe to retain at origin+path level. Other
+    // schemes (data:, blob:, javascript:, file:) may embed sensitive payloads
+    // directly in their path/query and must not be echoed back.
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return '<redacted>';
+    }
     let result = `${parsed.protocol}//${parsed.host}`;
     if (parsed.pathname) {
       // Keep the origin and path only; strip query, fragment and any username/password.
@@ -121,6 +127,11 @@ function redactConfig(config: unknown): unknown {
       lower.includes('auth')
     ) {
       result[key] = '<redacted>';
+    } else if (typeof value === 'string' && (lower.endsWith('url') || lower.endsWith('uri'))) {
+      // Always run explicit URL/URI fields through sanitizeUrl, even if the
+      // scheme is not http(s). This prevents data:, blob:, file: and other
+      // scheme payloads from leaking in diagnostic bundles.
+      result[key] = sanitizeUrl(value);
     } else if (typeof value === 'string' && looksLikeUrl(value)) {
       result[key] = sanitizeUrl(value);
     } else if (typeof value === 'object' && value !== null) {
