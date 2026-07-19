@@ -229,8 +229,8 @@ export class WebSocketTransport implements Transport {
 
   constructor(config: WebSocketConfig) {
     this.config = config;
-    this.maxBytes = config.maxBytes ?? Number.MAX_SAFE_INTEGER;
-    this.timeoutMs = config.timeoutMs ?? 30000;
+    this.maxBytes = config?.maxBytes ?? Number.MAX_SAFE_INTEGER;
+    this.timeoutMs = config?.timeoutMs ?? 30000;
   }
 
   start(onChunk: (chunk: Chunk) => void, onError: (error: TransportError) => void, onEnd: () => void): void {

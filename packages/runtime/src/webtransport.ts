@@ -68,7 +68,7 @@ export class WebTransportTransport implements Transport {
 
   constructor(config: TransportConfig) {
     this.config = config;
-    this.maxBytes = config.maxBytes ?? Number.MAX_SAFE_INTEGER;
+    this.maxBytes = config?.maxBytes ?? Number.MAX_SAFE_INTEGER;
   }
 
   start(
@@ -87,15 +87,15 @@ export class WebTransportTransport implements Transport {
     this.onError = onError;
     this.onEnd = onEnd;
 
-    const urlError = validateWebTransportUrl(this.config.url);
-    if (urlError) {
-      this.finish(urlError);
-      return;
-    }
-
     const configError = validateTransportConfig(this.config);
     if (configError) {
       this.finish(configError);
+      return;
+    }
+
+    const urlError = validateWebTransportUrl(this.config.url);
+    if (urlError) {
+      this.finish(urlError);
       return;
     }
     this.timeoutMs = this.config.timeoutMs ?? 30000;
