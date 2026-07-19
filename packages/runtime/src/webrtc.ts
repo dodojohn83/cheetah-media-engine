@@ -17,6 +17,7 @@ import {
   type TransportConfig,
   type TransportError,
   validateUrl,
+  validateTransportConfig,
 } from './transport-common';
 
 interface RTCSessionDescriptionInit {
@@ -76,6 +77,8 @@ export class WebRtcTransport implements Transport {
   private ended = false;
   private bytesRead = 0;
   private maxBytes: number;
+  private timeoutMs = 30000;
+  private timedOut = false;
   private onError?: (error: TransportError) => void;
   private onEnd?: () => void;
   private closeController: AbortController | undefined;
@@ -108,6 +111,14 @@ export class WebRtcTransport implements Transport {
       this.finish(urlError);
       return;
     }
+
+    const configError = validateTransportConfig(this.config);
+    if (configError) {
+      this.finish(configError);
+      return;
+    }
+    this.timeoutMs = this.config.timeoutMs ?? 30000;
+    this.timedOut = false;
 
     const Ctor = getRTCPeerConnectionConstructor();
     if (!Ctor) {
@@ -211,14 +222,34 @@ export class WebRtcTransport implements Transport {
     channel: RTCDataChannel,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.channelOpenWaiter = { resolve, reject };
       let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       const done = (fn: () => void) => {
         if (settled) return;
         settled = true;
+        if (timeout) clearTimeout(timeout);
         this.channelOpenWaiter = undefined;
         fn();
       };
+
+      this.channelOpenWaiter = {
+        resolve: () => done(() => resolve()),
+        reject: (err: Error) => done(() => reject(err)),
+      };
+
+      if (this.timeoutMs > 0 && this.timeoutMs !== Infinity) {
+        timeout = setTimeout(() => {
+          this.timedOut = true;
+          try {
+            pc.close();
+          } catch {
+            // close() can throw if already closed; ignore.
+          }
+          this.channelOpenWaiter?.reject(
+            new WebRtcError(TransportErrorCode.Timeout, 'WebRTC channel open timed out'),
+          );
+        }, this.timeoutMs);
+      }
 
       channel.onopen = () => {
         done(() => resolve());
@@ -309,26 +340,38 @@ export class WebRtcTransport implements Transport {
       'Content-Type': 'application/sdp',
     };
 
-    const response = await fetch(this.config.url, {
-      method,
-      headers,
-      body: offer.sdp,
-      signal: this.closeController?.signal ?? null,
-    });
-
-    if (!response.ok) {
-      throw new WebRtcError(
-        TransportErrorCode.WebRtcSignalingFailed,
-        `Signaling server returned ${response.status} ${response.statusText}`,
-      );
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    if (this.timeoutMs > 0 && this.timeoutMs !== Infinity) {
+      timeout = setTimeout(() => {
+        this.timedOut = true;
+        this.closeController?.abort();
+      }, this.timeoutMs);
     }
 
-    const sdp = await response.text();
-    if (!sdp) {
-      throw new WebRtcError(TransportErrorCode.WebRtcSignalingFailed, 'Signaling server returned empty SDP');
-    }
+    try {
+      const response = await fetch(this.config.url, {
+        method,
+        headers,
+        body: offer.sdp,
+        signal: this.closeController?.signal ?? null,
+      });
 
-    return { type: 'answer', sdp };
+      if (!response.ok) {
+        throw new WebRtcError(
+          TransportErrorCode.WebRtcSignalingFailed,
+          `Signaling server returned ${response.status} ${response.statusText}`,
+        );
+      }
+
+      const sdp = await response.text();
+      if (!sdp) {
+        throw new WebRtcError(TransportErrorCode.WebRtcSignalingFailed, 'Signaling server returned empty SDP');
+      }
+
+      return { type: 'answer', sdp };
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   private deliver(bytes: Uint8Array, onChunk: (chunk: Chunk) => void): boolean {
@@ -343,6 +386,9 @@ export class WebRtcTransport implements Transport {
   }
 
   private toError(err: unknown): TransportError {
+    if (this.timedOut) {
+      return makeError(TransportErrorCode.Timeout, 'WebRTC operation timed out', true);
+    }
     if (this.stopped) {
       return makeError(TransportErrorCode.Canceled, 'Transport stopped', false);
     }
