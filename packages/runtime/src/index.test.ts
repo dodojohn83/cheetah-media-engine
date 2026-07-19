@@ -61,6 +61,20 @@ describe('messages', () => {
     expect(decodeEnvelope(encodeEnvelope(frameStep))).toEqual(frameStep);
     expect(decodeEnvelope(encodeEnvelope(pauseDisplay))).toEqual(pauseDisplay);
   });
+
+  it('rejects malformed envelope fields', () => {
+    const base = {
+      protocolVersion: 1,
+      instance: 1,
+      epoch: 1,
+      sequence: 1,
+      type: 'load',
+    };
+    expect(() => decodeEnvelope(JSON.stringify({ ...base, instance: NaN }))).toThrow();
+    expect(() => decodeEnvelope(JSON.stringify({ ...base, epoch: -1 }))).toThrow();
+    expect(() => decodeEnvelope(JSON.stringify({ ...base, sequence: Infinity }))).toThrow();
+    expect(() => decodeEnvelope(JSON.stringify({ ...base, type: 'unknown' }))).toThrow();
+  });
 });
 
 describe('createRuntime worker integration', () => {
