@@ -327,6 +327,22 @@ describe('plan()', () => {
     expect(result.primary.audioBackend).toBe('webcodecs');
     expect(result.candidates.every((c) => c.videoBackend !== 'mse' && c.audioBackend !== 'mse')).toBe(true);
   });
+
+  it('rejects WASM routes for a non-positive maxWasmMemoryMB budget', () => {
+    const request: PlanRequest = {
+      protocol: 'http-flv',
+      tracks: [{ kind: 'video', codec: 'h264', width: 640, height: 360 }],
+      latencyTarget: 'normal',
+      isolation: true,
+      disabled: ['webcodecs', 'mse'],
+      budget: { maxWasmMemoryMB: -1 },
+    };
+    const caps = makeCaps();
+    const result = plan(request, caps);
+
+    expect(result.candidates.every((c) => c.videoBackend !== 'wasm-threads-simd' && c.videoBackend !== 'wasm-simd' && c.videoBackend !== 'wasm-baseline')).toBe(true);
+    expect(result.unsupported.some((u) => u.backend === 'wasm-threads-simd' && u.reason.includes('WASM memory budget'))).toBe(true);
+  });
 });
 
 describe('explain()', () => {
