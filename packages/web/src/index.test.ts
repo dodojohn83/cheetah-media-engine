@@ -253,6 +253,7 @@ describe('web sdk', () => {
     expect(() => createPlayer({ memory: { maxWasmMemoryMB: NaN } })).toThrow(CheetahMediaError);
     expect(() => createPlayer({ diagnostics: { statsIntervalMs: NaN } })).toThrow(CheetahMediaError);
     expect(() => createPlayer({ audio: { volume: NaN } })).toThrow(CheetahMediaError);
+    expect(() => createPlayer({ render: { maxResolution: { width: NaN, height: 1080 } } })).toThrow(CheetahMediaError);
   });
 
   it('redacts sensitive config in diagnostics', () => {
