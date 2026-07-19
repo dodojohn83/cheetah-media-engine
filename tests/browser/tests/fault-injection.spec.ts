@@ -15,7 +15,19 @@ async function createPlayer(page: Page, attrs: Record<string, string>): Promise<
   }, attrs);
 }
 
+async function routeExampleComTo404(page: Page): Promise<void> {
+  // External network is an uncontrolled dependency; force a deterministic
+  // 404 so the player surfaces a failed state instead of timing out.
+  await page.unrouteAll();
+  await page.route('http://example.com/test.flv', (route) => route.abort('internetdisconnected'));
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.unrouteAll();
+});
+
 test('player surfaces failed state when worker URL is missing', async ({ page }) => {
+  await routeExampleComTo404(page);
   await createPlayer(page, {
     src: 'http://example.com/test.flv',
     'worker-url': '/nonexistent-worker.js',
@@ -26,6 +38,7 @@ test('player surfaces failed state when worker URL is missing', async ({ page })
 });
 
 test('player surfaces failed state when wasm module is missing', async ({ page }) => {
+  await routeExampleComTo404(page);
   await createPlayer(page, {
     src: 'http://example.com/test.flv',
     'worker-url': '/worker.js',
@@ -36,6 +49,7 @@ test('player surfaces failed state when wasm module is missing', async ({ page }
 });
 
 test('player surfaces failed state when wasm module has wrong MIME type', async ({ page }) => {
+  await routeExampleComTo404(page);
   await createPlayer(page, {
     src: 'http://example.com/test.flv',
     'worker-url': '/worker.js',
@@ -56,6 +70,16 @@ test('player surfaces failed state for invalid source URL', async ({ page }) => 
 });
 
 test('player reaches preroll with valid source and runtime URLs', async ({ page }) => {
+  // Keep the MSE path busy long enough to observe preroll without depending on
+  // the real example.com response.
+  await page.unrouteAll();
+  await page.route('http://example.com/test.flv', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'video/x-flv',
+      body: Buffer.from([0x46, 0x4c, 0x56, 0x01, 0x01, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x09]),
+    }),
+  );
   await createPlayer(page, {
     src: 'http://example.com/test.flv',
     'worker-url': '/worker.js',

@@ -670,7 +670,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       this.failedStateTimer = setTimeout(() => {
         this.failedStateTimer = undefined;
         this.setState('failed');
-      }, 500);
+      }, 1500);
       return;
     }
     const from = this._state;
