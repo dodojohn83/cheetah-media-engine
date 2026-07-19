@@ -216,7 +216,11 @@ impl IsobmffDemuxer {
             if let Some(last) = packets.last()
                 && let Some(dts) = last.time.dts
             {
-                self.last_dts.insert(tf.track_id, dts.ticks() as u64);
+                // DTS is signed internally; clamp negative values to 0 before
+                // storing in last_dts so a negative pre-roll timestamp does
+                // not wrap to u64::MAX and trigger a false discontinuity.
+                self.last_dts
+                    .insert(tf.track_id, u64::try_from(dts.ticks()).unwrap_or(0));
             }
 
             let mut first = true;
