@@ -508,6 +508,30 @@ function validateConfig(config: FullPlayerConfig): void {
   if (!Number.isFinite(config.audio.volume) || config.audio.volume < 0 || config.audio.volume > 1) {
     throw new CheetahMediaError(6001, 'config', 'volume must be a finite number between 0 and 1');
   }
+  if (typeof config.audio.enabled !== 'boolean') {
+    throw new CheetahMediaError(6001, 'config', 'audio.enabled must be a boolean');
+  }
+  if (typeof config.audio.preferNativeDecoder !== 'boolean') {
+    throw new CheetahMediaError(6001, 'config', 'audio.preferNativeDecoder must be a boolean');
+  }
+  if (config.recording.mimeType !== undefined && typeof config.recording.mimeType !== 'string') {
+    throw new CheetahMediaError(6001, 'config', 'recording.mimeType must be a string');
+  }
+  if (config.recording.filename !== undefined && typeof config.recording.filename !== 'string') {
+    throw new CheetahMediaError(6001, 'config', 'recording.filename must be a string');
+  }
+  if (config.runtime.assetBaseUrl !== undefined && typeof config.runtime.assetBaseUrl !== 'string') {
+    throw new CheetahMediaError(6001, 'config', 'runtime.assetBaseUrl must be a string');
+  }
+  if (config.runtime.workerUrl !== undefined && typeof config.runtime.workerUrl !== 'string') {
+    throw new CheetahMediaError(6001, 'config', 'runtime.workerUrl must be a string');
+  }
+  if (config.runtime.wasmUrl !== undefined && typeof config.runtime.wasmUrl !== 'string') {
+    throw new CheetahMediaError(6001, 'config', 'runtime.wasmUrl must be a string');
+  }
+  if (typeof config.diagnostics.includeEventHistory !== 'boolean') {
+    throw new CheetahMediaError(6001, 'config', 'diagnostics.includeEventHistory must be a boolean');
+  }
   if (config.render.maxResolution !== undefined) {
     if (!Number.isFinite(config.render.maxResolution.width) || config.render.maxResolution.width <= 0 || !Number.isFinite(config.render.maxResolution.height) || config.render.maxResolution.height <= 0) {
       throw new CheetahMediaError(6001, 'config', 'maxResolution width and height must be finite positive numbers');
