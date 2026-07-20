@@ -1378,6 +1378,43 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     }
   }
 
+  private validateCompositeRecordingOptions(options: unknown): void {
+    if (!options || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Composite recording options must be an object', { recoverable: true });
+    }
+    const opts = options as Record<string, unknown>;
+    const watermarkList =
+      opts.watermarks !== undefined && opts.watermarks !== null
+        ? opts.watermarks
+        : opts.watermark !== undefined && opts.watermark !== null
+          ? [opts.watermark]
+          : undefined;
+    if (watermarkList !== undefined && !Array.isArray(watermarkList)) {
+      throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermarks must be an array', { recoverable: true });
+    }
+    if (Array.isArray(watermarkList)) {
+      for (const wm of watermarkList) {
+        if (!wm || typeof wm !== 'object') {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark must be an object', { recoverable: true });
+        }
+        const mark = wm as Record<string, unknown>;
+        const type = mark.type;
+        if (type !== 'text' && type !== 'image' && type !== 'html') {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark type must be text, image or html', { recoverable: true });
+        }
+        if (typeof mark.x !== 'number' || !Number.isFinite(mark.x) || typeof mark.y !== 'number' || !Number.isFinite(mark.y)) {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark x and y must be finite numbers', { recoverable: true });
+        }
+        if (type === 'text' && typeof mark.text !== 'string') {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording text watermark must have a string text field', { recoverable: true });
+        }
+        if (type === 'image' && (!mark.image || typeof mark.image !== 'object')) {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording image watermark must have an image object', { recoverable: true });
+        }
+      }
+    }
+  }
+
   private snapshotFromMediaElement(options: { maxWidth?: number; maxHeight?: number }): ImageData {
     const video = this.mediaElement as HTMLVideoElement;
     const srcW =
@@ -1584,6 +1621,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async startCompositeRecording(options: CompositeRecordingOptionsType): Promise<void> {
     this.guardDestroyed();
+    this.validateCompositeRecordingOptions(options);
     if (this._compositeRecorder) {
       throw new CheetahMediaError(6002, 'sdk', 'Composite recording already active', { recoverable: true });
     }
