@@ -1399,8 +1399,8 @@ export class CheetahPlayerImpl implements CheetahPlayer {
         }
         const mark = wm as Record<string, unknown>;
         const type = mark.type;
-        if (type !== 'text' && type !== 'image' && type !== 'html') {
-          throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark type must be text, image or html', { recoverable: true });
+        if (type !== 'text' && type !== 'image') {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark type must be text or image', { recoverable: true });
         }
         if (typeof mark.x !== 'number' || !Number.isFinite(mark.x) || typeof mark.y !== 'number' || !Number.isFinite(mark.y)) {
           throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark x and y must be finite numbers', { recoverable: true });
