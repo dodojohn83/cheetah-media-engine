@@ -1310,13 +1310,13 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   private validateSnapshotOptions(options: { maxWidth?: number; maxHeight?: number }): void {
     if (options.maxWidth !== undefined) {
-      if (!Number.isFinite(options.maxWidth) || options.maxWidth <= 0 || options.maxWidth % 1 !== 0) {
-        throw new CheetahMediaError(6002, 'sdk', 'maxWidth must be a positive integer', { recoverable: true });
+      if (!Number.isFinite(options.maxWidth) || options.maxWidth < 0 || options.maxWidth % 1 !== 0) {
+        throw new CheetahMediaError(6002, 'sdk', 'maxWidth must be a non-negative integer', { recoverable: true });
       }
     }
     if (options.maxHeight !== undefined) {
-      if (!Number.isFinite(options.maxHeight) || options.maxHeight <= 0 || options.maxHeight % 1 !== 0) {
-        throw new CheetahMediaError(6002, 'sdk', 'maxHeight must be a positive integer', { recoverable: true });
+      if (!Number.isFinite(options.maxHeight) || options.maxHeight < 0 || options.maxHeight % 1 !== 0) {
+        throw new CheetahMediaError(6002, 'sdk', 'maxHeight must be a non-negative integer', { recoverable: true });
       }
     }
   }
