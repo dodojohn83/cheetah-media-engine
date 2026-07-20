@@ -225,6 +225,16 @@ export class CompositeRecorder {
     this.bytesWritten = 0;
     this.startTime = 0;
 
+    if (!options || typeof options !== 'object') {
+      throw new RendererError('invalid-option', 'Composite recording options must be an object');
+    }
+    if (options.mimeType !== undefined && typeof options.mimeType !== 'string') {
+      throw new RendererError('invalid-option', 'mimeType must be a string');
+    }
+    if (options.filename !== undefined && typeof options.filename !== 'string') {
+      throw new RendererError('invalid-option', 'filename must be a string');
+    }
+
     if (options.fps !== undefined && (!Number.isFinite(options.fps) || options.fps <= 0)) {
       throw new RendererError('invalid-option', 'fps must be a finite positive number');
     }
