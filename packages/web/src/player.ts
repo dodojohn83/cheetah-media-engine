@@ -612,6 +612,15 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   attachMediaElement(element: HTMLVideoElementLike | null): void {
     this.guardDestroyed();
+    if (element !== null && element !== undefined) {
+      if (typeof element !== 'object') {
+        throw new CheetahMediaError(6002, 'sdk', 'Media element must be an object or null', { recoverable: true });
+      }
+      const el = element as unknown as Record<string, unknown>;
+      if (typeof el.addEventListener !== 'function' || typeof el.removeEventListener !== 'function') {
+        throw new CheetahMediaError(6002, 'sdk', 'Media element must expose addEventListener and removeEventListener', { recoverable: true });
+      }
+    }
     this.mediaElement = element;
   }
 
@@ -1825,6 +1834,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     type: T,
     listener: EventListener<T>,
   ): void {
+    if (typeof type !== 'string') {
+      throw new CheetahMediaError(6002, 'sdk', 'Event type must be a string', { recoverable: true });
+    }
+    if (typeof listener !== 'function') {
+      throw new CheetahMediaError(6002, 'sdk', 'Event listener must be a function', { recoverable: true });
+    }
     let set = this.listeners.get(type);
     if (!set) {
       set = new Set();
