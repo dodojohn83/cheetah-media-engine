@@ -1383,15 +1383,15 @@ export class CheetahPlayerImpl implements CheetahPlayer {
       throw new CheetahMediaError(6002, 'sdk', 'Composite recording options must be an object', { recoverable: true });
     }
     const opts = options as Record<string, unknown>;
+    if (opts.watermarks !== undefined && opts.watermarks !== null && !Array.isArray(opts.watermarks)) {
+      throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermarks must be an array', { recoverable: true });
+    }
     const watermarkList =
-      opts.watermarks !== undefined && opts.watermarks !== null
+      Array.isArray(opts.watermarks) && opts.watermarks.length > 0
         ? opts.watermarks
         : opts.watermark !== undefined && opts.watermark !== null
           ? [opts.watermark]
           : undefined;
-    if (watermarkList !== undefined && !Array.isArray(watermarkList)) {
-      throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermarks must be an array', { recoverable: true });
-    }
     if (Array.isArray(watermarkList)) {
       for (const wm of watermarkList) {
         if (!wm || typeof wm !== 'object') {
