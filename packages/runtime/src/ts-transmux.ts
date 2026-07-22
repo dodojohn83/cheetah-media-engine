@@ -646,8 +646,10 @@ export class TsFmp4TransmuxerJs {
       writeU32(tfhdBody, t.trackId);
       const tfhd = fullBox('tfhd', 0, 0x020000, tfhdBody);
       const tfdtBody: number[] = [];
-      writeU32(tfdtBody, t.samples[0]?.dts ?? 0);
-      const tfdt = fullBox('tfdt', 0, 0, tfdtBody);
+      const baseTime = t.samples[0]?.dts ?? 0;
+      writeU32(tfdtBody, Math.floor(baseTime / 0x100000000));
+      writeU32(tfdtBody, baseTime % 0x100000000);
+      const tfdt = fullBox('tfdt', 1, 0, tfdtBody);
       const trunBody: number[] = [];
       writeU32(trunBody, t.samples.length);
       writeU32(trunBody, running);
