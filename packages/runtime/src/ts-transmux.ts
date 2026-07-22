@@ -377,9 +377,15 @@ export class TsFmp4TransmuxerJs {
         }
       }
       const raw = es.subarray(offset + headerSize, offset + frameLength);
-      const dts = firstPts ?? this.lastAudioDts + 1024;
-      firstPts = undefined;
-      const duration = Math.max(1, Math.round((1024 * 90000) / this.sampleRate));
+      let dts: number;
+      if (firstPts === undefined) {
+        dts = this.lastAudioDts + 1024;
+      } else {
+        // PES PTS is a 90 kHz value; the audio track timescale is sampleRate.
+        dts = Math.round((firstPts * this.sampleRate) / 90000);
+        firstPts = undefined;
+      }
+      const duration = 1024;
       this.lastAudioDts = dts;
       this.audioSamples.push({
         trackId: 2,
