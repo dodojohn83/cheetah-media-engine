@@ -386,7 +386,7 @@ export class FlvFmp4TransmuxerJs {
         sampleRate,
         channels,
         trackId: 2,
-        lastDts: dts,
+        lastDts: Math.round((dts * sampleRate) / 1000),
       };
       if (!this.tracks.some((t) => t.kind === 'audio')) {
         this.tracks.push({
@@ -399,12 +399,14 @@ export class FlvFmp4TransmuxerJs {
       return;
     }
     if (!this.audio) return;
-    const duration = Math.max(1, Math.round((1024 * 1000) / this.audio.sampleRate));
-    this.audio.lastDts = dts;
+    // FLV timestamps are milliseconds; the audio track timescale is sampleRate.
+    const dtsInTicks = Math.round((dts * this.audio.sampleRate) / 1000);
+    const duration = 1024;
+    this.audio.lastDts = dtsInTicks;
     this.audioSamples.push({
       trackId: 2,
       data: payload.slice(),
-      dts,
+      dts: dtsInTicks,
       cts: 0,
       duration,
       key: true,
@@ -730,8 +732,10 @@ export class FlvFmp4TransmuxerJs {
       const tfhd = fullBox('tfhd', 0, 0x020000, tfhdBody);
 
       const tfdtBody: number[] = [];
-      writeU32(tfdtBody, t.samples[0]?.dts ?? 0);
-      const tfdt = fullBox('tfdt', 0, 0, tfdtBody);
+      const baseTime = t.samples[0]?.dts ?? 0;
+      writeU32(tfdtBody, Math.floor(baseTime / 0x100000000));
+      writeU32(tfdtBody, baseTime % 0x100000000);
+      const tfdt = fullBox('tfdt', 1, 0, tfdtBody);
 
       // trun
       const trunBody: number[] = [];
