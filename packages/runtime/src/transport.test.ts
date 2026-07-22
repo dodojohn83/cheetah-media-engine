@@ -56,6 +56,39 @@ describe('FetchTransport', () => {
     expect(chunks[1]).toEqual(new Uint8Array([0x03, 0x04]));
   });
 
+  it('passes custom headers including Authorization to fetch', async () => {
+    let capturedInit: RequestInit | undefined;
+    globalThis.fetch = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+      capturedInit = init;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        body: buildChunks([[0x01]]),
+      } as unknown as Response);
+    });
+
+    const transport = new FetchTransport({
+      url: 'https://example.com/stream',
+      headers: {
+        Authorization: 'Bearer token',
+        'X-Custom': 'value',
+      },
+    });
+    await new Promise<void>((resolve, reject) => {
+      transport.start(
+        () => resolve(),
+        (err) => reject(new Error(err.message)),
+        () => resolve(),
+      );
+    });
+
+    expect(capturedInit).toBeDefined();
+    expect(capturedInit!.headers).toEqual({
+      Authorization: 'Bearer token',
+      'X-Custom': 'value',
+    });
+  });
+
   it('rejects HTTP 404', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
