@@ -280,4 +280,10 @@ describe('CompositeRecorder', () => {
     const recorder = new CompositeRecorder();
     await expect(recorder.start(makeOptions(source, undefined, { fps: NaN }))).rejects.toBeInstanceOf(RendererError);
   });
+
+  it('throws when the source reports zero dimensions', async () => {
+    const source = { videoWidth: 0, videoHeight: 0 } as unknown as HTMLVideoElement;
+    const recorder = new CompositeRecorder();
+    await expect(recorder.start(makeOptions(source))).rejects.toBeInstanceOf(RendererError);
+  });
 });

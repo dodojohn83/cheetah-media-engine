@@ -103,28 +103,46 @@ function createCanvas(width: number, height: number): HTMLCanvasElement {
 
 function getSourceSize(source: CanvasImageSource | ImageData): { width: number; height: number } {
   if (typeof HTMLVideoElement !== 'undefined' && source instanceof HTMLVideoElement) {
-    return { width: source.videoWidth || 1, height: source.videoHeight || 1 };
-  }
-  if (typeof HTMLCanvasElement !== 'undefined' && source instanceof HTMLCanvasElement) {
-    return { width: source.width || 1, height: source.height || 1 };
-  }
-  if (typeof OffscreenCanvas !== 'undefined' && source instanceof OffscreenCanvas) {
-    return { width: source.width || 1, height: source.height || 1 };
-  }
-  if (typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap) {
-    return { width: source.width || 1, height: source.height || 1 };
-  }
-  if (typeof HTMLImageElement !== 'undefined' && source instanceof HTMLImageElement) {
-    return { width: source.width || 1, height: source.height || 1 };
-  }
-  if (typeof ImageData !== 'undefined' && source instanceof ImageData) {
-    return { width: source.width, height: source.height };
-  }
-  if (source && typeof source === 'object') {
+    const width = source.videoWidth;
+    const height = source.videoHeight;
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+  } else if (typeof HTMLCanvasElement !== 'undefined' && source instanceof HTMLCanvasElement) {
+    const width = source.width;
+    const height = source.height;
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+  } else if (typeof OffscreenCanvas !== 'undefined' && source instanceof OffscreenCanvas) {
+    const width = source.width;
+    const height = source.height;
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+  } else if (typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap) {
+    const width = source.width;
+    const height = source.height;
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+  } else if (typeof HTMLImageElement !== 'undefined' && source instanceof HTMLImageElement) {
+    const width = source.width;
+    const height = source.height;
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+  } else if (typeof ImageData !== 'undefined' && source instanceof ImageData) {
+    const width = source.width;
+    const height = source.height;
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+  } else if (source && typeof source === 'object') {
     const maybe = source as { width?: unknown; height?: unknown; videoWidth?: unknown; videoHeight?: unknown };
     const width = Number(maybe.videoWidth ?? maybe.width ?? 0);
     const height = Number(maybe.videoHeight ?? maybe.height ?? 0);
-    if (width > 0 && height > 0) {
+    if (width > 0 && height > 0 && Number.isFinite(width) && Number.isFinite(height)) {
       return { width, height };
     }
   }
