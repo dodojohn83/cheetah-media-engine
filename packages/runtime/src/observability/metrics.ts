@@ -7,6 +7,18 @@
  * without blocking the render queue.
  */
 
+const VALID_CATEGORIES: readonly MetricCategory[] = [
+  'source',
+  'demux',
+  'timeline',
+  'decode',
+  'render',
+  'audio',
+  'record',
+  'memory',
+  'fallback',
+];
+
 export type MetricCategory =
   | 'source'
   | 'demux'
@@ -87,6 +99,7 @@ class Counter implements BaseMetric {
   constructor(readonly definition: MetricDefinition) {}
 
   inc(delta = 1): void {
+    if (!Number.isFinite(delta) || delta < 0) return;
     this.value += delta;
   }
 
@@ -105,6 +118,7 @@ class Gauge implements BaseMetric {
   constructor(readonly definition: MetricDefinition) {}
 
   set(value: number): void {
+    if (!Number.isFinite(value)) return;
     this.value = value;
   }
 
@@ -258,6 +272,12 @@ export class MetricRegistry {
     type: MetricType,
     unit?: string,
   ): BaseMetric {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('Metric name must be a non-empty string');
+    }
+    if (!VALID_CATEGORIES.includes(category)) {
+      throw new Error(`Invalid metric category: ${category}`);
+    }
     const existing = this.metrics.get(name);
     if (existing) {
       if (existing.definition.type !== type || existing.definition.category !== category) {
