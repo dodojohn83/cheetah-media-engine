@@ -7,7 +7,7 @@
  * to a `ReadableStream` and use `pipeTo`.
  */
 
-import { validateUrl, type TransportError, TransportErrorCode, makeError } from '../transport-common';
+import { validateUrl, validateHeaders, type TransportError, TransportErrorCode, makeError } from '../transport-common';
 
 const INVALID_CONFIG_CODE = 7016;
 
@@ -309,6 +309,12 @@ function validateDownloadOptions(options: DownloadOptions): TransportError | und
   }
   if (options.transform !== undefined && typeof options.transform !== 'function') {
     return makeError(INVALID_CONFIG_CODE, 'transform must be a function', false);
+  }
+  if (options.headers !== undefined) {
+    const headersError = validateHeaders(options.headers);
+    if (headersError) {
+      return makeError(INVALID_CONFIG_CODE, headersError, false);
+    }
   }
   return undefined;
 }

@@ -215,11 +215,14 @@ function validatePositiveFiniteNumber(value: number, name: string): void {
 }
 
 function validateMseOptions(options: MseBackendOptions): void {
-  if (!options.videoElement) {
+  if (typeof options.videoElement !== 'object' || options.videoElement === null) {
     throw new MseError('invalid-config', 'videoElement is required');
   }
   if (!Array.isArray(options.tracks) || options.tracks.length === 0) {
     throw new MseError('invalid-config', 'tracks must be a non-empty array');
+  }
+  if (options.isLive !== undefined && typeof options.isLive !== 'boolean') {
+    throw new MseError('invalid-config', 'isLive must be a boolean');
   }
   const o = {
     maxBufferAheadMs: options.maxBufferAheadMs ?? 5000,

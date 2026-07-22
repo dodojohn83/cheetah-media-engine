@@ -246,6 +246,16 @@ describe('MseBackend', () => {
     await expect(backend.configure()).rejects.toThrow('MIME type not supported');
   });
 
+  it('rejects construction when videoElement is not an object', () => {
+    expect(
+      () => new MseBackend(ctx, makeOptions({ videoElement: 42 as unknown as HTMLVideoElementLike })),
+    ).toThrow('videoElement is required');
+  });
+
+  it('rejects construction when isLive is not a boolean', () => {
+    expect(() => new MseBackend(ctx, makeOptions({ isLive: 'true' as unknown as boolean }))).toThrow('isLive must be a boolean');
+  });
+
   it('appends segments to the SourceBuffer', async () => {
     const backend = new MseBackend(ctx, makeOptions());
     await backend.configure();
