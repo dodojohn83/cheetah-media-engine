@@ -612,6 +612,15 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   attachMediaElement(element: HTMLVideoElementLike | null): void {
     this.guardDestroyed();
+    if (element !== null && element !== undefined) {
+      if (typeof element !== 'object') {
+        throw new CheetahMediaError(6002, 'sdk', 'Media element must be an object or null', { recoverable: true });
+      }
+      const el = element as unknown as Record<string, unknown>;
+      if (typeof el.addEventListener !== 'function' || typeof el.removeEventListener !== 'function') {
+        throw new CheetahMediaError(6002, 'sdk', 'Media element must expose addEventListener and removeEventListener', { recoverable: true });
+      }
+    }
     this.mediaElement = element;
   }
 
@@ -844,6 +853,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async load(url: string, options: { isLive?: boolean } = {}): Promise<void> {
     this.guardDestroyed();
+    if (typeof url !== 'string' || url.length === 0) {
+      throw new CheetahMediaError(7001, 'load', 'URL must be a non-empty string', { recoverable: false });
+    }
+    if (options.isLive !== undefined && typeof options.isLive !== 'boolean') {
+      throw new CheetahMediaError(6002, 'sdk', 'isLive must be a boolean', { recoverable: true });
+    }
     this.setState('loading');
     await this.teardownSession();
     const isLive = options.isLive ?? false;
@@ -952,6 +967,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async seek(timeMs: number): Promise<void> {
     this.guardDestroyed();
+    if (!Number.isFinite(timeMs) || timeMs < 0) {
+      throw new CheetahMediaError(6002, 'sdk', 'seek timeMs must be a finite non-negative number', { recoverable: true });
+    }
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Seek requires an active stream', { recoverable: true });
     }
@@ -968,6 +986,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async setPlaybackRate(rate: number): Promise<void> {
     this.guardDestroyed();
+    if (!Number.isFinite(rate) || rate < 0.1 || rate > 16) {
+      throw new CheetahMediaError(6002, 'sdk', 'playback rate must be between 0.1 and 16', { recoverable: true });
+    }
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Set playback rate requires an active stream', { recoverable: true });
     }
@@ -984,6 +1005,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async frameStep(direction: 'forward' | 'backward', keyframeOnly = false): Promise<void> {
     this.guardDestroyed();
+    if (direction !== 'forward' && direction !== 'backward') {
+      throw new CheetahMediaError(6002, 'sdk', 'frameStep direction must be forward or backward', { recoverable: true });
+    }
+    if (typeof keyframeOnly !== 'boolean') {
+      throw new CheetahMediaError(6002, 'sdk', 'frameStep keyframeOnly must be a boolean', { recoverable: true });
+    }
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Frame step requires an active stream', { recoverable: true });
     }
@@ -1000,6 +1027,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async pauseDisplay(keepConnection = true): Promise<void> {
     this.guardDestroyed();
+    if (typeof keepConnection !== 'boolean') {
+      throw new CheetahMediaError(6002, 'sdk', 'pauseDisplay keepConnection must be a boolean', { recoverable: true });
+    }
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Pause display requires an active stream', { recoverable: true });
     }
@@ -1083,6 +1113,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (this._state !== 'playing' && this._state !== 'paused' && this._state !== 'preroll') {
       throw new CheetahMediaError(6002, 'sdk', 'Snapshot requires an active stream', { recoverable: true });
     }
+    this.validateSnapshotOptions(options);
     // Prefer capturing from the attached video element (real MSE path).
     if (this.mediaElement && typeof document !== 'undefined') {
       try {
@@ -1110,6 +1141,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async startRecording(options: { mimeType?: string; filename?: string } = {}): Promise<void> {
     this.guardDestroyed();
+    this.validateRecordingOptions(options);
     if (this._state !== 'playing' && this._state !== 'paused') {
       throw new CheetahMediaError(6002, 'sdk', 'Recording requires an active stream', { recoverable: true });
     }
@@ -1276,6 +1308,113 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     }
   }
 
+  private validateSnapshotOptions(options: { maxWidth?: number; maxHeight?: number }): void {
+    if (options.maxWidth !== undefined) {
+      if (!Number.isFinite(options.maxWidth) || options.maxWidth < 0 || options.maxWidth % 1 !== 0) {
+        throw new CheetahMediaError(6002, 'sdk', 'maxWidth must be a non-negative integer', { recoverable: true });
+      }
+    }
+    if (options.maxHeight !== undefined) {
+      if (!Number.isFinite(options.maxHeight) || options.maxHeight < 0 || options.maxHeight % 1 !== 0) {
+        throw new CheetahMediaError(6002, 'sdk', 'maxHeight must be a non-negative integer', { recoverable: true });
+      }
+    }
+  }
+
+  private validateSwitchVariant(variant: { bandwidth?: number; index?: number }): void {
+    if (!variant || typeof variant !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Variant must be an object', { recoverable: true });
+    }
+    const hasBandwidth = variant.bandwidth !== undefined;
+    const hasIndex = variant.index !== undefined;
+    if (!hasBandwidth && !hasIndex) {
+      throw new CheetahMediaError(6002, 'sdk', 'Variant bandwidth or index required', { recoverable: true });
+    }
+    const isValidInteger = (value: unknown): value is number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 && value % 1 === 0;
+    if (hasBandwidth && !isValidInteger(variant.bandwidth)) {
+      throw new CheetahMediaError(6002, 'sdk', 'Variant bandwidth must be a non-negative integer', { recoverable: true });
+    }
+    if (hasIndex && !isValidInteger(variant.index)) {
+      throw new CheetahMediaError(6002, 'sdk', 'Variant index must be a non-negative integer', { recoverable: true });
+    }
+  }
+
+  private validateIntercomOptions(options: IntercomOptions): void {
+    if (!options || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom options must be an object', { recoverable: true });
+    }
+    if (options.codec !== undefined && options.codec !== 'g711a' && options.codec !== 'g711u' && options.codec !== 'opus') {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom codec must be g711a, g711u or opus', { recoverable: true });
+    }
+    if (typeof options.sendPacket !== 'function') {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom sendPacket must be a function', { recoverable: true });
+    }
+    if (options.onError !== undefined && typeof options.onError !== 'function') {
+      throw new CheetahMediaError(6002, 'sdk', 'Intercom onError must be a function', { recoverable: true });
+    }
+    if (options.payloadType !== undefined) {
+      if (
+        typeof options.payloadType !== 'number' ||
+        !Number.isFinite(options.payloadType) ||
+        options.payloadType < 0 ||
+        options.payloadType > 127 ||
+        options.payloadType % 1 !== 0
+      ) {
+        throw new CheetahMediaError(6002, 'sdk', 'Intercom payloadType must be an integer between 0 and 127', { recoverable: true });
+      }
+    }
+  }
+
+  private validateRecordingOptions(options: { mimeType?: string; filename?: string }): void {
+    if (!options || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Recording options must be an object', { recoverable: true });
+    }
+    if (options.mimeType !== undefined && typeof options.mimeType !== 'string') {
+      throw new CheetahMediaError(6002, 'sdk', 'Recording mimeType must be a string', { recoverable: true });
+    }
+    if (options.filename !== undefined && typeof options.filename !== 'string') {
+      throw new CheetahMediaError(6002, 'sdk', 'Recording filename must be a string', { recoverable: true });
+    }
+  }
+
+  private validateCompositeRecordingOptions(options: unknown): void {
+    if (!options || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Composite recording options must be an object', { recoverable: true });
+    }
+    const opts = options as Record<string, unknown>;
+    if (opts.watermarks !== undefined && opts.watermarks !== null && !Array.isArray(opts.watermarks)) {
+      throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermarks must be an array', { recoverable: true });
+    }
+    const watermarkList =
+      Array.isArray(opts.watermarks) && opts.watermarks.length > 0
+        ? opts.watermarks
+        : opts.watermark !== undefined && opts.watermark !== null
+          ? [opts.watermark]
+          : undefined;
+    if (Array.isArray(watermarkList)) {
+      for (const wm of watermarkList) {
+        if (!wm || typeof wm !== 'object') {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark must be an object', { recoverable: true });
+        }
+        const mark = wm as Record<string, unknown>;
+        const type = mark.type;
+        if (type !== 'text' && type !== 'image') {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark type must be text or image', { recoverable: true });
+        }
+        if (typeof mark.x !== 'number' || !Number.isFinite(mark.x) || typeof mark.y !== 'number' || !Number.isFinite(mark.y)) {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording watermark x and y must be finite numbers', { recoverable: true });
+        }
+        if (type === 'text' && typeof mark.text !== 'string') {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording text watermark must have a string text field', { recoverable: true });
+        }
+        if (type === 'image' && (!mark.image || typeof mark.image !== 'object')) {
+          throw new CheetahMediaError(6002, 'sdk', 'Composite recording image watermark must have an image object', { recoverable: true });
+        }
+      }
+    }
+  }
+
   private snapshotFromMediaElement(options: { maxWidth?: number; maxHeight?: number }): ImageData {
     const video = this.mediaElement as HTMLVideoElement;
     const srcW =
@@ -1312,6 +1451,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async startIntercom(options: IntercomOptions): Promise<void> {
     this.guardDestroyed();
+    this.validateIntercomOptions(options);
     if (this._intercomActive || this._intercomStarting) {
       throw new CheetahMediaError(6002, 'sdk', 'Intercom already active', { recoverable: true });
     }
@@ -1481,6 +1621,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async startCompositeRecording(options: CompositeRecordingOptionsType): Promise<void> {
     this.guardDestroyed();
+    this.validateCompositeRecordingOptions(options);
     if (this._compositeRecorder) {
       throw new CheetahMediaError(6002, 'sdk', 'Composite recording already active', { recoverable: true });
     }
@@ -1561,6 +1702,16 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   setVrRenderer(renderer: VrRenderer): void {
     this.guardDestroyed();
+    if (renderer !== undefined && renderer !== null) {
+      if (
+        typeof renderer !== 'object' ||
+        typeof renderer.initialize !== 'function' ||
+        typeof renderer.render !== 'function' ||
+        typeof renderer.destroy !== 'function'
+      ) {
+        throw new CheetahMediaError(6002, 'sdk', 'VR renderer must expose initialize, render and destroy methods', { recoverable: true });
+      }
+    }
     try {
       this._vrRenderer.destroy();
     } catch {
@@ -1571,6 +1722,16 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   setAiProcessor(processor: AiFrameProcessor): void {
     this.guardDestroyed();
+    if (processor !== undefined && processor !== null) {
+      if (
+        typeof processor !== 'object' ||
+        typeof processor.initialize !== 'function' ||
+        typeof processor.process !== 'function' ||
+        typeof processor.destroy !== 'function'
+      ) {
+        throw new CheetahMediaError(6002, 'sdk', 'AI processor must expose initialize, process and destroy methods', { recoverable: true });
+      }
+    }
     try {
       this._aiProcessor.destroy();
     } catch {
@@ -1662,9 +1823,7 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async switchVariant(variant: { bandwidth?: number; index?: number }): Promise<void> {
     this.guardDestroyed();
-    if (variant.bandwidth === undefined && variant.index === undefined) {
-      throw new CheetahMediaError(6002, 'sdk', 'Variant bandwidth or index required', { recoverable: true });
-    }
+    this.validateSwitchVariant(variant);
     try {
       await this.runtime.request('switch-variant', variant, 10000);
     } catch (cause) {
@@ -1713,6 +1872,12 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     type: T,
     listener: EventListener<T>,
   ): void {
+    if (typeof type !== 'string') {
+      throw new CheetahMediaError(6002, 'sdk', 'Event type must be a string', { recoverable: true });
+    }
+    if (typeof listener !== 'function') {
+      throw new CheetahMediaError(6002, 'sdk', 'Event listener must be a function', { recoverable: true });
+    }
     let set = this.listeners.get(type);
     if (!set) {
       set = new Set();

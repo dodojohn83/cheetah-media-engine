@@ -123,7 +123,8 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   set volume(value: number) {
-    this.setAttribute('volume', String(Math.min(1, Math.max(0, value))));
+    const clamped = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+    this.setAttribute('volume', String(clamped));
   }
 
   get workerUrl(): string | undefined {
@@ -152,8 +153,11 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   set statsIntervalMs(value: number | undefined) {
-    if (value === undefined) this.removeAttribute('stats-interval');
-    else this.setAttribute('stats-interval', String(value));
+    if (value === undefined || !Number.isFinite(value) || value < 16) {
+      this.removeAttribute('stats-interval');
+    } else {
+      this.setAttribute('stats-interval', String(value));
+    }
   }
 
   get maxEventHistory(): number | undefined {
@@ -164,8 +168,11 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   set maxEventHistory(value: number | undefined) {
-    if (value === undefined) this.removeAttribute('max-event-history');
-    else this.setAttribute('max-event-history', String(value));
+    if (value === undefined || !Number.isFinite(value) || value < 0) {
+      this.removeAttribute('max-event-history');
+    } else {
+      this.setAttribute('max-event-history', String(value));
+    }
   }
 
   get watermarks(): Watermark[] {

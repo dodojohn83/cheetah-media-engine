@@ -168,6 +168,26 @@ async function awaitImage(image: CanvasImageSource): Promise<void> {
   }
 }
 
+function validateCompositeWatermark(watermark: unknown): void {
+  if (!watermark || typeof watermark !== 'object') {
+    throw new RendererError('invalid-option', 'Watermark must be an object');
+  }
+  const mark = watermark as Record<string, unknown>;
+  const type = mark.type;
+  if (type !== 'text' && type !== 'image') {
+    throw new RendererError('invalid-option', 'Watermark type must be text or image');
+  }
+  if (typeof mark.x !== 'number' || !Number.isFinite(mark.x) || typeof mark.y !== 'number' || !Number.isFinite(mark.y)) {
+    throw new RendererError('invalid-option', 'Watermark x and y must be finite numbers');
+  }
+  if (type === 'text' && typeof mark.text !== 'string') {
+    throw new RendererError('invalid-option', 'Text watermark must have a string text field');
+  }
+  if (type === 'image' && (!mark.image || typeof mark.image !== 'object')) {
+    throw new RendererError('invalid-option', 'Image watermark must have an image object');
+  }
+}
+
 export class CompositeRecorder {
   private state: CompositeRecordingState = 'inactive';
   private canvas: HTMLCanvasElement | undefined;
@@ -205,6 +225,16 @@ export class CompositeRecorder {
     this.bytesWritten = 0;
     this.startTime = 0;
 
+    if (!options || typeof options !== 'object') {
+      throw new RendererError('invalid-option', 'Composite recording options must be an object');
+    }
+    if (options.mimeType !== undefined && typeof options.mimeType !== 'string') {
+      throw new RendererError('invalid-option', 'mimeType must be a string');
+    }
+    if (options.filename !== undefined && typeof options.filename !== 'string') {
+      throw new RendererError('invalid-option', 'filename must be a string');
+    }
+
     if (options.fps !== undefined && (!Number.isFinite(options.fps) || options.fps <= 0)) {
       throw new RendererError('invalid-option', 'fps must be a finite positive number');
     }
@@ -233,6 +263,7 @@ export class CompositeRecorder {
 
     const marks = options.watermarks && options.watermarks.length > 0 ? options.watermarks : options.watermark ? [options.watermark] : [];
     for (const watermark of marks) {
+      validateCompositeWatermark(watermark);
       if (watermark.type === 'image') {
         await awaitImage(watermark.image);
         if (!isImageComplete(watermark.image)) {

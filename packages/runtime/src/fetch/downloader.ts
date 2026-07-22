@@ -125,6 +125,11 @@ export class StreamDownloader {
       this.report(options, err);
       throw err;
     }
+    const urlError = validateUrl(options.url);
+    if (urlError) {
+      this.report(options, urlError);
+      throw urlError;
+    }
     const configError = validateDownloadOptions(options);
     if (configError) {
       this.report(options, configError);
