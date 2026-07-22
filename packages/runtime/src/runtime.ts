@@ -43,6 +43,27 @@ interface PendingCommand {
   timer?: ReturnType<typeof setTimeout>;
 }
 
+function validateScriptUrl(url: string, label: 'workerUrl' | 'wasmUrl'): void {
+  const base =
+    typeof globalThis !== 'undefined' &&
+    (globalThis as unknown as { location?: { href?: string } }).location?.href
+      ? (globalThis as unknown as { location: { href: string } }).location.href
+      : 'http://localhost/';
+  let parsed: URL;
+  try {
+    parsed = new URL(url, base);
+  } catch {
+    throw new Error(`${label} is not a valid URL: ${url}`);
+  }
+  if (
+    parsed.protocol !== 'http:' &&
+    parsed.protocol !== 'https:' &&
+    parsed.protocol !== 'blob:'
+  ) {
+    throw new Error(`${label} must use http:, https:, or blob: scheme`);
+  }
+}
+
 /**
  * Create a runtime that runs the media engine inside a Web Worker.
  *
@@ -54,8 +75,14 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
   if (workerUrl !== undefined && (typeof workerUrl !== 'string' || workerUrl.length === 0)) {
     throw new Error('workerUrl must be a non-empty string');
   }
+  if (workerUrl !== undefined) {
+    validateScriptUrl(workerUrl, 'workerUrl');
+  }
   if (_wasmUrl !== undefined && (typeof _wasmUrl !== 'string' || _wasmUrl.length === 0)) {
     throw new Error('wasmUrl must be a non-empty string');
+  }
+  if (_wasmUrl !== undefined) {
+    validateScriptUrl(_wasmUrl, 'wasmUrl');
   }
   if (!Number.isInteger(maxPendingCommands) || maxPendingCommands < 1) {
     throw new Error('maxPendingCommands must be a finite positive integer');
