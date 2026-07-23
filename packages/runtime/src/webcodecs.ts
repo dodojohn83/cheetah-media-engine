@@ -240,6 +240,125 @@ function guessKeyFrame(data: Uint8Array, codec: string): boolean {
   return false;
 }
 
+function validatePositiveFiniteInteger(value: number, name: string): void {
+  if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) {
+    throw new Error(`${name} must be a finite positive integer`);
+  }
+}
+
+function validateWebCodecsOptions(options: unknown): void {
+  if (!options || typeof options !== 'object') {
+    throw new Error('WebCodecsBackendOptions is required');
+  }
+  const o = options as Partial<WebCodecsBackendOptions>;
+  if (!Array.isArray(o.tracks) || o.tracks.length === 0) {
+    throw new Error('tracks must be a non-empty array');
+  }
+  for (let i = 0; i < o.tracks.length; i += 1) {
+    const track = o.tracks[i] as unknown;
+    if (!track || typeof track !== 'object') {
+      throw new Error(`track at index ${i} must be an object`);
+    }
+    const t = track as {
+      kind?: unknown;
+      codec?: unknown;
+      width?: unknown;
+      height?: unknown;
+      sampleRate?: unknown;
+      channels?: unknown;
+    };
+    if (t.kind !== 'video' && t.kind !== 'audio') {
+      throw new Error(`track at index ${i} must have kind 'video' or 'audio'`);
+    }
+    if (typeof t.codec !== 'string' || t.codec.length === 0) {
+      throw new Error(`track at index ${i} must have a non-empty codec string`);
+    }
+    if (t.kind === 'video') {
+      if (t.width !== undefined) {
+        validatePositiveFiniteInteger(t.width as number, `track ${i} width`);
+      }
+      if (t.height !== undefined) {
+        validatePositiveFiniteInteger(t.height as number, `track ${i} height`);
+      }
+    } else {
+      if (t.sampleRate !== undefined) {
+        validatePositiveFiniteInteger(t.sampleRate as number, `track ${i} sampleRate`);
+      }
+      if (t.channels !== undefined) {
+        validatePositiveFiniteInteger(t.channels as number, `track ${i} channels`);
+      }
+    }
+  }
+  if (o.callbacks !== undefined) {
+    if (typeof o.callbacks !== 'object' || o.callbacks === null) {
+      throw new Error('callbacks must be an object');
+    }
+    const c = o.callbacks;
+    if (c.onVideoFrame !== undefined && typeof c.onVideoFrame !== 'function') {
+      throw new Error('callbacks.onVideoFrame must be a function');
+    }
+    if (c.onAudioData !== undefined && typeof c.onAudioData !== 'function') {
+      throw new Error('callbacks.onAudioData must be a function');
+    }
+    if (c.onError !== undefined && typeof c.onError !== 'function') {
+      throw new Error('callbacks.onError must be a function');
+    }
+  }
+  if (o.maxPendingDecodes !== undefined) {
+    if (!Number.isFinite(o.maxPendingDecodes) || !Number.isInteger(o.maxPendingDecodes) || o.maxPendingDecodes < 1) {
+      throw new Error('maxPendingDecodes must be a finite positive integer');
+    }
+  }
+  if (o.maxVideoQueue !== undefined) {
+    if (!Number.isFinite(o.maxVideoQueue) || !Number.isInteger(o.maxVideoQueue) || o.maxVideoQueue < 1) {
+      throw new Error('maxVideoQueue must be a finite positive integer');
+    }
+  }
+}
+
+function isBufferSource(data: unknown): boolean {
+  return ArrayBuffer.isView(data) || data instanceof ArrayBuffer;
+}
+
+function validatePushVideoArgs(data: unknown, timestamp: unknown, opts?: unknown): void {
+  if (!isBufferSource(data)) {
+    throw new Error('pushVideo data must be a Uint8Array or ArrayBuffer');
+  }
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
+    throw new Error('pushVideo timestamp must be a finite number');
+  }
+  if (opts !== undefined) {
+    if (typeof opts !== 'object' || opts === null) {
+      throw new Error('pushVideo opts must be an object');
+    }
+    const o = opts as { isKeyFrame?: unknown; duration?: unknown };
+    if (o.isKeyFrame !== undefined && typeof o.isKeyFrame !== 'boolean') {
+      throw new Error('pushVideo isKeyFrame must be a boolean');
+    }
+    if (o.duration !== undefined && (typeof o.duration !== 'number' || !Number.isFinite(o.duration) || o.duration < 0)) {
+      throw new Error('pushVideo duration must be a finite non-negative number');
+    }
+  }
+}
+
+function validatePushAudioArgs(data: unknown, timestamp: unknown, opts?: unknown): void {
+  if (!isBufferSource(data)) {
+    throw new Error('pushAudio data must be a Uint8Array or ArrayBuffer');
+  }
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
+    throw new Error('pushAudio timestamp must be a finite number');
+  }
+  if (opts !== undefined) {
+    if (typeof opts !== 'object' || opts === null) {
+      throw new Error('pushAudio opts must be an object');
+    }
+    const o = opts as { duration?: unknown };
+    if (o.duration !== undefined && (typeof o.duration !== 'number' || !Number.isFinite(o.duration) || o.duration < 0)) {
+      throw new Error('pushAudio duration must be a finite non-negative number');
+    }
+  }
+}
+
 export class WebCodecsBackend implements MediaBackend {
   readonly identity: Backend = 'webcodecs';
 
@@ -278,8 +397,9 @@ export class WebCodecsBackend implements MediaBackend {
   };
 
   constructor(_ctx: BackendContext, options: WebCodecsBackendOptions) {
+    validateWebCodecsOptions(options);
     this.tracks = options.tracks;
-    this.callbacks = options.callbacks;
+    this.callbacks = options.callbacks ?? {};
     this.maxPending = options.maxPendingDecodes ?? 32;
     this.maxVideoQueue = options.maxVideoQueue ?? options.maxPendingDecodes ?? 32;
     if (!Number.isInteger(this.maxPending) || this.maxPending < 1) {
@@ -379,6 +499,8 @@ export class WebCodecsBackend implements MediaBackend {
   pushVideo(data: Uint8Array, timestamp: number, opts?: { isKeyFrame?: boolean; duration?: number }): void {
     if (this.stopped || this.closing || this.errored || !this.videoDecoder || !this.videoConfig) return;
 
+    validatePushVideoArgs(data, timestamp, opts);
+
     const isKeyFrame = opts?.isKeyFrame ?? guessKeyFrame(data, this.videoConfig.codec);
 
     // When a frame step is pending, decode exactly one matching chunk and
@@ -452,6 +574,8 @@ export class WebCodecsBackend implements MediaBackend {
 
   pushAudio(data: Uint8Array, timestamp: number, opts?: { duration?: number }): void {
     if (this.stopped || this.closing || this.errored || !this.audioDecoder || !this.audioConfig) return;
+
+    validatePushAudioArgs(data, timestamp, opts);
 
     // Drop audio while the display is paused to keep it in sync with the
     // frozen video picture.
