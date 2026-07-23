@@ -33,6 +33,8 @@ export interface PlaybackSessionOptions {
   readonly softLatencyMs?: number;
   readonly hardLatencyMs?: number;
   readonly maxPlaybackRate?: number;
+  /** Network request timeout for playlist/segment fetches and transports (ms). */
+  readonly timeoutMs?: number;
   readonly onEvent?: (event: PlaybackSessionEvent) => void;
 }
 
@@ -114,6 +116,7 @@ export class PlaybackSession {
   private wantPlay = false;
   private generation = 0;
   private statsTimer: ReturnType<typeof setInterval> | undefined;
+  private stopController: AbortController | undefined;
 
   constructor(options: PlaybackSessionOptions) {
     if (!options || typeof options !== 'object') {
@@ -136,6 +139,14 @@ export class PlaybackSession {
     }
     if (options.onEvent !== undefined && typeof options.onEvent !== 'function') {
       throw new Error('PlaybackSession onEvent must be a function');
+    }
+    if (options.timeoutMs !== undefined) {
+      if (
+        (options.timeoutMs !== Infinity && !Number.isFinite(options.timeoutMs)) ||
+        options.timeoutMs <= 0
+      ) {
+        throw new Error('PlaybackSession timeoutMs must be Infinity or a finite positive number');
+      }
     }
     this.options = options;
     this.url = resolveMediaUrl(options.url);
@@ -175,6 +186,7 @@ export class PlaybackSession {
 
     this.started = true;
     this.generation += 1;
+    this.stopController = new AbortController();
     const gen = this.generation;
     this.emit({ type: 'state', state: 'loading' });
 
@@ -226,7 +238,15 @@ export class PlaybackSession {
     this.startStats(gen);
 
     if (protocol === 'hls' || protocol === 'll-hls') {
-      await this.runHls(gen);
+      try {
+        await this.runHls(gen);
+      } catch (err) {
+        if (this.stopped) return;
+        const message = err instanceof Error ? err.message : String(err);
+        this.emit({ type: 'error', code: 6100, stage: 'hls', message, recoverable: false });
+        this.emit({ type: 'state', state: 'failed' });
+        throw err instanceof Error ? err : new Error(message);
+      }
     } else if (protocol === 'http-flv' || protocol === 'ws-flv') {
       await this.runFlvStream(gen);
     } else {
@@ -289,6 +309,7 @@ export class PlaybackSession {
     this.stopped = true;
     this.generation += 1;
     this.stopStats();
+    this.stopController?.abort();
     this.transport?.stop();
     this.transport = undefined;
     if (this.mse) {
@@ -384,7 +405,7 @@ export class PlaybackSession {
         {
           url: this.url,
           maxRetries: this.options.isLive ? 3 : 0,
-          timeoutMs: 30_000,
+          timeoutMs: this.options.timeoutMs ?? 30_000,
           ...(this.options.headers ? { headers: this.options.headers } : {}),
         },
         mode,
@@ -450,7 +471,7 @@ export class PlaybackSession {
         {
           url: this.url,
           maxRetries: this.options.isLive ? 3 : 0,
-          timeoutMs: 30_000,
+          timeoutMs: this.options.timeoutMs ?? 30_000,
           ...(this.options.headers ? { headers: this.options.headers } : {}),
         },
         mode,
@@ -622,8 +643,35 @@ export class PlaybackSession {
     }
   }
 
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const timeoutMs = this.options.timeoutMs ?? 30_000;
+    const controller = new AbortController();
+    const timer =
+      timeoutMs > 0 && timeoutMs !== Infinity
+        ? setTimeout(() => controller.abort(), timeoutMs)
+        : undefined;
+
+    let onStop: (() => void) | undefined;
+    if (this.stopController) {
+      onStop = () => controller.abort();
+      this.stopController.signal.addEventListener('abort', onStop, { once: true });
+    }
+
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (onStop && this.stopController) {
+        this.stopController.signal.removeEventListener('abort', onStop);
+      }
+    }
+  }
+
   private async fetchText(url: string): Promise<string> {
-    const res = await fetch(url, {
+    const res = await this.fetchWithTimeout(url, {
       credentials: 'same-origin',
       ...(this.options.headers ? { headers: this.options.headers } : {}),
     });
@@ -634,7 +682,7 @@ export class PlaybackSession {
   }
 
   private async fetchBytes(url: string): Promise<Uint8Array> {
-    const res = await fetch(url, {
+    const res = await this.fetchWithTimeout(url, {
       credentials: 'same-origin',
       ...(this.options.headers ? { headers: this.options.headers } : {}),
     });
