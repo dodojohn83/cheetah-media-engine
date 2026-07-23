@@ -70,6 +70,16 @@ export class RendererSurface {
     if (!config.canvas) {
       throw new RendererError('invalid-config', 'RendererSurface requires a canvas');
     }
+    const canvasWidth = config.canvas.width;
+    const canvasHeight = config.canvas.height;
+    if (
+      !Number.isFinite(canvasWidth) ||
+      !Number.isFinite(canvasHeight) ||
+      canvasWidth <= 0 ||
+      canvasHeight <= 0
+    ) {
+      throw new RendererError('invalid-config', 'Canvas width and height must be finite positive numbers');
+    }
     if (config.dpr !== undefined) {
       if (!Number.isFinite(config.dpr) || config.dpr <= 0) {
         throw new RendererError('invalid-config', 'dpr must be a finite positive number');

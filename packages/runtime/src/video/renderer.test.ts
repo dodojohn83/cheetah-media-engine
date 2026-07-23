@@ -102,6 +102,12 @@ describe('RendererSurface', () => {
     const rect = RendererSurface.resolveVisibleRect(frame);
     expect(rect).toEqual({ x: 0, y: 0, width: 100, height: 80 });
   });
+
+  it('rejects non-finite or non-positive canvas dimensions', () => {
+    const badCanvas = { width: 0, height: -10, getContext: vi.fn(() => null) } as unknown as HTMLCanvasElement;
+    const surface = new RendererSurface(badCanvas);
+    expect(() => surface.configure({ canvas: badCanvas })).toThrow(RendererError);
+  });
 });
 
 describe('Canvas2DRenderer', () => {
