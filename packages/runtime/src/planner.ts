@@ -484,10 +484,34 @@ export function plan(request: PlanRequest, caps: CapabilityReport): PlaybackPlan
   };
 }
 
+function isPlaybackPlan(value: unknown): value is PlaybackPlan {
+  if (!value || typeof value !== 'object') return false;
+  const plan = value as Record<string, unknown>;
+  const primary = plan.primary;
+  const candidates = plan.candidates;
+  const unsupported = plan.unsupported;
+  if (!primary || typeof primary !== 'object' || typeof (primary as { reason?: unknown }).reason !== 'string') {
+    return false;
+  }
+  if (!Array.isArray(candidates)) return false;
+  if (!candidates.every((c) => typeof c === 'object' && c !== null && typeof (c as { reason?: unknown }).reason === 'string')) {
+    return false;
+  }
+  if (!Array.isArray(unsupported)) return false;
+  return unsupported.every((u) => {
+    if (!u || typeof u !== 'object') return false;
+    const item = u as { backend?: unknown; reason?: unknown };
+    return typeof item.backend === 'string' && typeof item.reason === 'string';
+  });
+}
+
 /**
  * Explain why a candidate was chosen or excluded.
  */
 export function explain(plan: PlaybackPlan): string {
+  if (!isPlaybackPlan(plan)) {
+    throw new Error('explain plan must be a valid PlaybackPlan');
+  }
   const lines: string[] = [];
   lines.push(`primary: ${plan.primary.reason}`);
   for (const c of plan.candidates.slice(1)) {
