@@ -283,7 +283,7 @@ export class TsFmp4TransmuxerJs {
     const payloadStart = 9 + headerDataLength;
     if (payloadStart > data.length) return;
     const ptsDtsFlags = (data[7]! >> 6) & 0x03;
-    let pts = 0;
+    let pts: number | undefined;
     if (ptsDtsFlags >= 2 && headerDataLength >= 5) {
       pts = this.readTs(data, 9);
     }
@@ -302,16 +302,18 @@ export class TsFmp4TransmuxerJs {
     const b2 = data[offset + 2]!;
     const b3 = data[offset + 3]!;
     const b4 = data[offset + 4]!;
-    return (
-      ((b0 & 0x0e) << 29) |
-      (b1 << 22) |
-      ((b2 & 0xfe) << 14) |
-      (b3 << 7) |
-      ((b4 & 0xfe) >> 1)
-    ) >>> 0;
+    // 33-bit PTS/DTS. Use multiplication (not bitwise shifts) to avoid losing the
+    // top bit; the raw result is at most 2^33 - 1.
+    const pts =
+      ((b0 & 0x0e) * 0x20000000) +
+      (b1 * 0x400000) +
+      ((b2 & 0xfe) * 0x4000) +
+      (b3 * 0x80) +
+      ((b4 & 0xfe) / 2);
+    return pts;
   }
 
-  private onVideoAu(es: Uint8Array, pts90k: number): void {
+  private onVideoAu(es: Uint8Array, pts90k?: number): void {
     const { sps, pps, key } = extractSpsPps(es);
     if (sps.length && pps.length && !this.avcc) {
       this.avcc = buildAvcC(sps, pps);
@@ -322,7 +324,7 @@ export class TsFmp4TransmuxerJs {
     if (!this.avcc) return;
     const avccPayload = annexbToAvcc(es);
     // Strip parameter set NALs from sample when present (keep VCL only) — optional; include all for simplicity.
-    const dts = pts90k || this.lastVideoDts + 3000;
+    const dts = pts90k ?? this.lastVideoDts + 3000;
     const duration = Math.max(1, dts - this.lastVideoDts || 3000);
     this.lastVideoDts = dts;
     this.videoSamples.push({
@@ -336,9 +338,10 @@ export class TsFmp4TransmuxerJs {
     if (key && this.videoSamples.length > 1) this.flush(false);
   }
 
-  private onAudioAu(es: Uint8Array, pts90k: number): void {
+  private onAudioAu(es: Uint8Array, pts90k?: number): void {
     // Split ADTS frames
     let offset = 0;
+    let firstPts = pts90k;
     while (offset + 7 <= es.length) {
       if (es[offset] !== 0xff || (es[offset + 1]! & 0xf0) !== 0xf0) {
         offset += 1;
@@ -348,7 +351,11 @@ export class TsFmp4TransmuxerJs {
       const headerSize = protectionAbsent ? 7 : 9;
       const frameLength =
         ((es[offset + 3]! & 0x03) << 11) | (es[offset + 4]! << 3) | ((es[offset + 5]! & 0xe0) >> 5);
-      if (frameLength < headerSize || offset + frameLength > es.length) break;
+      if (frameLength <= headerSize) {
+        offset += 1;
+        continue;
+      }
+      if (offset + frameLength > es.length) break;
       const profile = ((es[offset + 2]! >> 6) & 0x03) + 1;
       const sfIndex = (es[offset + 2]! >> 2) & 0x0f;
       const channelConfig = ((es[offset + 2]! & 0x01) << 2) | ((es[offset + 3]! >> 6) & 0x03);
@@ -370,8 +377,15 @@ export class TsFmp4TransmuxerJs {
         }
       }
       const raw = es.subarray(offset + headerSize, offset + frameLength);
-      const dts = pts90k || this.lastAudioDts + 1024;
-      const duration = Math.max(1, Math.round((1024 * 90000) / this.sampleRate));
+      let dts: number;
+      if (firstPts === undefined) {
+        dts = this.lastAudioDts + 1024;
+      } else {
+        // PES PTS is a 90 kHz value; the audio track timescale is sampleRate.
+        dts = Math.round((firstPts * this.sampleRate) / 90000);
+        firstPts = undefined;
+      }
+      const duration = 1024;
       this.lastAudioDts = dts;
       this.audioSamples.push({
         trackId: 2,
@@ -638,8 +652,10 @@ export class TsFmp4TransmuxerJs {
       writeU32(tfhdBody, t.trackId);
       const tfhd = fullBox('tfhd', 0, 0x020000, tfhdBody);
       const tfdtBody: number[] = [];
-      writeU32(tfdtBody, t.samples[0]?.dts ?? 0);
-      const tfdt = fullBox('tfdt', 0, 0, tfdtBody);
+      const baseTime = t.samples[0]?.dts ?? 0;
+      writeU32(tfdtBody, Math.floor(baseTime / 0x100000000));
+      writeU32(tfdtBody, baseTime % 0x100000000);
+      const tfdt = fullBox('tfdt', 1, 0, tfdtBody);
       const trunBody: number[] = [];
       writeU32(trunBody, t.samples.length);
       writeU32(trunBody, running);
