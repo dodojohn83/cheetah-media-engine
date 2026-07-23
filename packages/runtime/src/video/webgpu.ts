@@ -149,7 +149,6 @@ export class WebGpuRenderer implements Renderer {
   async render(frame: RenderFrame): Promise<void> {
     if (this.lost || !this.device) throw new RendererError('device-lost', 'WebGPU device is lost');
     const start = performance.now();
-    this.metrics.framesSubmitted += 1;
     try {
       const canvas = this.surface.getCanvas();
       const w = canvas.width;
@@ -172,6 +171,7 @@ export class WebGpuRenderer implements Renderer {
       this.fallbackCanvas.width = w;
       this.fallbackCanvas.height = h;
       await this.fallbackRenderer.render(frame);
+      this.metrics.framesSubmitted += 1;
       this.copyExternalToTexture(this.fallbackCanvas, { width: w, height: h });
 
       this.present();

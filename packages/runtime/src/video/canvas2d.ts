@@ -45,11 +45,10 @@ export class Canvas2DRenderer implements Renderer {
     if (!this.configured || !this.ctx) {
       throw new RendererError('not-configured', 'Canvas2DRenderer not configured');
     }
-    this.metrics.framesSubmitted += 1;
-
     const start = performance.now();
     const ctx = this.ctx;
     const visibleRect = RendererSurface.resolveVisibleRect(frame);
+    this.metrics.framesSubmitted += 1;
     const viewport = this.surface.computeViewport(visibleRect.width, visibleRect.height);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);

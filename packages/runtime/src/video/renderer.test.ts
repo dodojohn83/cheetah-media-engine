@@ -3,7 +3,7 @@ import { RendererSurface } from './surface';
 import { Canvas2DRenderer } from './canvas2d';
 import { createRenderer, VideoRenderer } from './renderer';
 import { buildYuvToRgbCoeffs, getColorRange, getYuvMatrix } from './color';
-import type { RenderFrame, VisibleRect } from './types';
+import type { RenderFrame, VisibleRect, RendererConfig } from './types';
 import { RendererError } from './types';
 
 function makeMockFrame(overrides?: Partial<RenderFrame>): RenderFrame {
@@ -105,8 +105,29 @@ describe('RendererSurface', () => {
 
   it('rejects non-finite or non-positive canvas dimensions', () => {
     const badCanvas = { width: 0, height: -10, getContext: vi.fn(() => null) } as unknown as HTMLCanvasElement;
-    const surface = new RendererSurface(badCanvas);
-    expect(() => surface.configure({ canvas: badCanvas })).toThrow(RendererError);
+    expect(() => new RendererSurface(badCanvas)).toThrow(RendererError);
+  });
+
+  it('rejects non-canvas in constructor', () => {
+    expect(() => new RendererSurface('not canvas' as unknown as HTMLCanvasElement)).toThrow(
+      'canvas must be a canvas-like element',
+    );
+  });
+
+  it('rejects invalid frames in resolveVisibleRect', () => {
+    expect(() => RendererSurface.resolveVisibleRect(null as unknown as RenderFrame)).toThrow(
+      'frame must be an object',
+    );
+    expect(() =>
+      RendererSurface.resolveVisibleRect({ codedWidth: NaN, codedHeight: 48 } as unknown as RenderFrame),
+    ).toThrow('codedWidth');
+    expect(() =>
+      RendererSurface.resolveVisibleRect({
+        codedWidth: 64,
+        codedHeight: 48,
+        visibleRect: { x: 0, y: 0, width: -1, height: 48 },
+      } as unknown as RenderFrame),
+    ).toThrow('visibleRect');
   });
 });
 
@@ -177,6 +198,16 @@ describe('VideoRenderer factory', () => {
     const renderer = new VideoRenderer();
     const frame = makeMockFrame();
     await expect(renderer.render(frame)).rejects.toThrow(RendererError);
+  });
+
+  it('rejects invalid configure arguments', async () => {
+    const renderer = new VideoRenderer();
+    await expect(renderer.configure(undefined as unknown as RendererConfig)).rejects.toThrow(
+      'renderer config must be an object',
+    );
+    await expect(renderer.configure({ canvas: null } as unknown as RendererConfig)).rejects.toThrow(
+      'canvas must be a canvas-like element',
+    );
   });
 });
 

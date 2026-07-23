@@ -173,11 +173,11 @@ export class WebGL2Renderer implements Renderer {
     if (!gl) throw new RendererError('not-configured', 'WebGL2Renderer not configured');
     if (gl.isContextLost()) throw new RendererError('context-lost', 'WebGL2 context lost');
 
-    this.metrics.framesSubmitted += 1;
     const start = performance.now();
+    const visibleRect = RendererSurface.resolveVisibleRect(frame);
+    this.metrics.framesSubmitted += 1;
     try {
       const format = (frame.format ?? '').toLowerCase();
-      const visibleRect = RendererSurface.resolveVisibleRect(frame);
       const viewport = this.surface.computeViewport(visibleRect.width, visibleRect.height);
 
       gl.viewport(0, 0, this.surface.getCanvas().width, this.surface.getCanvas().height);
