@@ -66,6 +66,10 @@ describe('fmp4 helpers', () => {
   it('rejects non-Uint8Array inputs', () => {
     expect(() => splitFmp4('not bytes' as unknown as Uint8Array)).toThrow('splitFmp4 data must be a Uint8Array');
     expect(() => peekBox(null as unknown as Uint8Array)).toThrow('peekBox data must be a Uint8Array');
+    expect(() => concatUint8('not array' as unknown as Uint8Array[])).toThrow('concatUint8 chunks must be an array');
+    expect(() => concatUint8([new Uint8Array(1), null as unknown as Uint8Array])).toThrow(
+      'concatUint8 chunks must contain only Uint8Array instances',
+    );
 
     const acc = new Fmp4BoxAccumulator();
     expect(() => acc.push(null as unknown as Uint8Array)).toThrow('chunk must be a Uint8Array');
