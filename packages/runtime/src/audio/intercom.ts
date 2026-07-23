@@ -45,8 +45,11 @@ export class IntercomPacketizer {
     if (!Number.isFinite(payloadType) || payloadType < 0 || payloadType > 127 || payloadType % 1 !== 0) {
       throw new Error('payloadType must be an integer between 0 and 127');
     }
-    if (!Number.isFinite(ssrc) || ssrc < 0) {
-      throw new Error('ssrc must be a finite non-negative number');
+    if (!Number.isFinite(ssrc) || ssrc < 0 || ssrc > 0xffffffff) {
+      throw new Error('ssrc must be a finite 32-bit unsigned integer');
+    }
+    if (options.onPacket !== undefined && typeof options.onPacket !== 'function') {
+      throw new Error('onPacket must be a function');
     }
     this.payloadType = payloadType;
     this.ssrc = ssrc;
