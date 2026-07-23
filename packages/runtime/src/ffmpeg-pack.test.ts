@@ -104,6 +104,19 @@ describe('FfmpegPackImpl', () => {
     await expect(pack.configureTrack(0, 'av1')).rejects.toThrow('av1');
   });
 
+  it('throws for invalid method arguments', async () => {
+    const module = makeFakeModule();
+    const pack = new FfmpegPackImpl(module);
+    await expect(pack.init(-1)).rejects.toThrow('variantFlags');
+    await expect(pack.configureTrack(-1, 'h264')).rejects.toThrow('trackIndex');
+    await expect(pack.configureTrack(0, '')).rejects.toThrow('codec');
+    await expect(pack.configureTrack(0, 'h264', 'not-bytes' as unknown as Uint8Array)).rejects.toThrow(
+      'config',
+    );
+    await expect(pack.receive(-1)).rejects.toThrow('trackIndex');
+    await expect(pack.flush(-1)).rejects.toThrow('trackIndex');
+  });
+
   it('sends a packet and frees all allocated buffers', async () => {
     const module = makeFakeModule();
     const pack = new FfmpegPackImpl(module);
