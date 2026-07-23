@@ -319,10 +319,18 @@ function validateDownloadOptions(options: DownloadOptions): TransportError | und
   return undefined;
 }
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  if (typeof Uint8Array !== 'undefined' && value instanceof Uint8Array) return true;
+  return Object.prototype.toString.call(value) === '[object Uint8Array]';
+}
+
 export class BlobSink implements DownloadSink {
   private chunks: Uint8Array[] = [];
 
   write(chunk: Uint8Array): void {
+    if (!isUint8Array(chunk)) {
+      throw new Error('BlobSink.write chunk must be a Uint8Array');
+    }
     this.chunks.push(chunk);
   }
 
