@@ -18,6 +18,13 @@ describe('diagnostics', () => {
     );
   });
 
+  it('rejects non-string URLs to prevent object toString leakage', () => {
+    expect(() => sanitizeUrl(null as unknown as string)).toThrow('must be a string');
+    expect(() => sanitizeUrl({ toString: () => 'https://example.com/' } as unknown as string)).toThrow(
+      'must be a string',
+    );
+  });
+
   it('redacts URL/URI config fields regardless of scheme', () => {
     const bundle = buildDiagnostics(
       'p',
