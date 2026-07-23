@@ -225,6 +225,10 @@ function hasWasmSupport(): boolean {
   }
 }
 
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
 export function computeFingerprint(): string {
   const parts: (string | number | boolean | undefined)[] = [];
   parts.push(typeof navigator !== 'undefined' ? navigator.userAgent : '');
@@ -292,7 +296,7 @@ export function detectCapabilities(): CapabilityReport {
     webRtc,
     wasm,
     fingerprint: computeFingerprint(),
-    timestamp: performance.now(),
+    timestamp: nowMs(),
     confidence: 'low',
     reasons,
   };
@@ -543,7 +547,7 @@ export class CapabilityCache {
   get(fingerprint: string): ProbedCapabilityReport | undefined {
     if (!this.entry) return undefined;
     if (this.entry.report.fingerprint !== fingerprint) return undefined;
-    if (performance.now() - this.entry.report.timestamp > this.ttlMs) return undefined;
+    if (nowMs() - this.entry.report.timestamp > this.ttlMs) return undefined;
     return this.entry.report;
   }
 
