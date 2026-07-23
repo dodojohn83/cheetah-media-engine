@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AudioPipeline, AudioPipelineError, type AudioContextLike, type AudioFrame } from './index';
+import {
+  AudioPipeline,
+  AudioPipelineError,
+  type AudioContextLike,
+  type AudioFrame,
+  type AudioPipelineOptions,
+} from './index';
 
 function setCurrentTime(ctx: AudioContextLike, t: number): void {
   (ctx as unknown as { currentTime: number }).currentTime = t;
@@ -175,5 +181,30 @@ describe('AudioPipeline', () => {
       data: [new Float32Array(10)],
     });
     expect(onError).toHaveBeenCalled();
+  });
+
+  it('throws for invalid audioContext and callbacks', () => {
+    expect(() => new AudioPipeline({ audioContext: 'not a context' as unknown as AudioContextLike })).toThrow(
+      'audioContext must be an AudioContext-like object',
+    );
+
+    const missingWorklet = {
+      sampleRate: 48000,
+      currentTime: 0,
+      state: 'suspended',
+      resume: vi.fn(),
+      suspend: vi.fn(),
+      close: vi.fn(),
+      destination: { maxChannelCount: 2 },
+    } as unknown as AudioContextLike;
+    expect(() => new AudioPipeline({ audioContext: missingWorklet })).toThrow(
+      'audioContext must be an AudioContext-like object',
+    );
+
+    const badCallbacks = {
+      audioContext: makeContext(),
+      callbacks: { onError: 'not fn' },
+    } as unknown as AudioPipelineOptions;
+    expect(() => new AudioPipeline(badCallbacks)).toThrow('onError must be a function');
   });
 });
