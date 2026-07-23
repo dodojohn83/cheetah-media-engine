@@ -69,16 +69,9 @@ function isUint8Array(value: unknown): value is Uint8Array {
 }
 
 /** Parse a single box header if a complete header is present. */
-function isNonNegativeInteger(value: number): boolean {
-  return Number.isFinite(value) && value >= 0 && Number.isInteger(value);
-}
-
 export function peekBox(data: Uint8Array, offset = 0): BoxHeader | undefined {
   if (!isUint8Array(data)) {
     throw new Error('peekBox data must be a Uint8Array');
-  }
-  if (!isNonNegativeInteger(offset)) {
-    throw new Error('peekBox offset must be a non-negative integer');
   }
   const sizeInfo = readBoxSize(data, offset);
   if (!sizeInfo) return undefined;
@@ -140,8 +133,8 @@ export class Fmp4BoxAccumulator {
   private readonly maxBytes: number;
 
   constructor(maxBytes = 64 * 1024 * 1024) {
-    if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
-      throw new Error('Fmp4BoxAccumulator maxBytes must be a finite positive number');
+    if (maxBytes !== Infinity && (!Number.isFinite(maxBytes) || maxBytes <= 0 || !Number.isInteger(maxBytes))) {
+      throw new Error('Fmp4BoxAccumulator maxBytes must be Infinity or a finite positive integer');
     }
     this.maxBytes = maxBytes;
   }
@@ -206,14 +199,7 @@ export class Fmp4SegmentBuilder {
     if (!isUint8Array(box)) {
       throw new Error('Fmp4SegmentBuilder.feed box must be a Uint8Array');
     }
-    if (box.length < 8) {
-      throw new Error('Fmp4SegmentBuilder.feed box must be at least 8 bytes');
-    }
-    const sizeInfo = readBoxSize(box, 0);
-    if (!sizeInfo || sizeInfo.size !== box.length) {
-      throw new Error('Fmp4SegmentBuilder.feed box size does not match declared box length');
-    }
-    const type = boxType(box, 0);
+    const type = box.length >= 8 ? boxType(box, 0) : '';
     const out: { data: Uint8Array; isInit: boolean }[] = [];
 
     if (type === 'ftyp' || type === 'moov') {
