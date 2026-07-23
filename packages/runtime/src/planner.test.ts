@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { plan, explain, type PlanRequest } from './planner';
+import { plan, explain, type PlanRequest, type PlaybackPlan } from './planner';
 import type { ProbedCapabilityReport } from './capabilities';
 
 function makeCaps(overrides: Partial<ProbedCapabilityReport> = {}): ProbedCapabilityReport {
@@ -358,5 +358,17 @@ describe('explain()', () => {
     const text = explain(result);
     expect(text).toContain('primary:');
     expect(text).toContain('webcodecs');
+  });
+
+  it('rejects invalid plan arguments', () => {
+    expect(() => explain(null as unknown as PlaybackPlan)).toThrow('explain plan must be a valid PlaybackPlan');
+    expect(() => explain({} as unknown as PlaybackPlan)).toThrow('explain plan must be a valid PlaybackPlan');
+    expect(() =>
+      explain({
+        primary: { reason: 123 },
+        candidates: [],
+        unsupported: [],
+      } as unknown as PlaybackPlan),
+    ).toThrow('explain plan must be a valid PlaybackPlan');
   });
 });
