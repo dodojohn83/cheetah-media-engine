@@ -87,7 +87,7 @@ export class FetchTransport implements Transport {
     const connectTimeoutMs = Math.min(timeoutMs, 5000);
     const maxBytes = this.config.maxBytes ?? Number.MAX_SAFE_INTEGER;
     const method = this.config.method ?? 'GET';
-    const headers = this.sanitizeHeaders(this.config.headers ?? {});
+    const headers = this.config.headers ?? {};
 
     while (this.retries <= maxRetries) {
       this.timedOut = false;
@@ -172,16 +172,6 @@ export class FetchTransport implements Transport {
 
     onError(makeError(TransportErrorCode.Network, 'Max retries exceeded', false));
     onEnd();
-  }
-
-  private sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const [key, value] of Object.entries(headers)) {
-      const lower = key.toLowerCase();
-      if (lower === 'authorization' || lower === 'cookie') continue;
-      out[key] = value;
-    }
-    return out;
   }
 
   private toError(err: unknown): TransportError {
