@@ -112,6 +112,50 @@ const DEFAULT_LARGE_DRIFT_MS = 120;
 const DEFAULT_SMALL_DRIFT_MS = 30;
 const DEFAULT_RING_CAPACITY_FRAMES = 8192;
 
+function isAudioContextLike(value: unknown): value is AudioContextLike {
+  if (!value || typeof value !== 'object') return false;
+  const c = value as Record<string, unknown>;
+  return (
+    typeof c.sampleRate === 'number' &&
+    Number.isFinite(c.sampleRate) &&
+    c.sampleRate > 0 &&
+    typeof c.currentTime === 'number' &&
+    Number.isFinite(c.currentTime) &&
+    c.currentTime >= 0 &&
+    (c.state === 'closed' || c.state === 'running' || c.state === 'suspended') &&
+    typeof c.resume === 'function' &&
+    typeof c.suspend === 'function' &&
+    typeof c.close === 'function' &&
+    typeof c.audioWorklet === 'object' &&
+    c.audioWorklet !== null &&
+    typeof (c.audioWorklet as { addModule?: unknown }).addModule === 'function' &&
+    typeof c.destination === 'object' &&
+    c.destination !== null &&
+    typeof (c.destination as { maxChannelCount?: unknown }).maxChannelCount === 'number' &&
+    Number.isFinite((c.destination as { maxChannelCount: number }).maxChannelCount) &&
+    (c.destination as { maxChannelCount: number }).maxChannelCount > 0
+  );
+}
+
+function validateAudioPipelineCallbacks(callbacks: unknown): void {
+  if (!callbacks || typeof callbacks !== 'object') {
+    throw new AudioPipelineError('bad-config', 'callbacks must be an object');
+  }
+  const c = callbacks as Partial<AudioPipelineCallbacks>;
+  if (c.onError !== undefined && typeof c.onError !== 'function') {
+    throw new AudioPipelineError('bad-config', 'callbacks.onError must be a function');
+  }
+  if (c.onUnderrun !== undefined && typeof c.onUnderrun !== 'function') {
+    throw new AudioPipelineError('bad-config', 'callbacks.onUnderrun must be a function');
+  }
+  if (c.onOverrun !== undefined && typeof c.onOverrun !== 'function') {
+    throw new AudioPipelineError('bad-config', 'callbacks.onOverrun must be a function');
+  }
+  if (c.onDrift !== undefined && typeof c.onDrift !== 'function') {
+    throw new AudioPipelineError('bad-config', 'callbacks.onDrift must be a function');
+  }
+}
+
 export class AudioPipeline {
   private audioContext: AudioContextLike;
   private callbacks: AudioPipelineCallbacks;
@@ -145,8 +189,21 @@ export class AudioPipeline {
   private lastDriftMs = 0;
 
   constructor(options: AudioPipelineOptions = {}) {
-    this.audioContext = options.audioContext ?? createDefaultAudioContext();
+    const audioContext = options.audioContext ?? createDefaultAudioContext();
+    if (!isAudioContextLike(audioContext)) {
+      throw new AudioPipelineError('bad-config', 'audioContext must be an AudioContext-like object');
+    }
+    this.audioContext = audioContext;
+    if (options.callbacks !== undefined) {
+      validateAudioPipelineCallbacks(options.callbacks);
+    }
     this.callbacks = options.callbacks ?? {};
+    if (options.workletSourceUrl !== undefined && typeof options.workletSourceUrl !== 'string') {
+      throw new AudioPipelineError('bad-config', 'workletSourceUrl must be a string');
+    }
+    if (options.workletNodeCtor !== undefined && typeof options.workletNodeCtor !== 'function') {
+      throw new AudioPipelineError('bad-config', 'workletNodeCtor must be a function');
+    }
     this.ringCapacity = options.ringCapacityFrames ?? DEFAULT_RING_CAPACITY_FRAMES;
     this.largeDriftMs = options.largeDriftMs ?? DEFAULT_LARGE_DRIFT_MS;
     this.smallDriftMs = options.smallDriftMs ?? DEFAULT_SMALL_DRIFT_MS;
