@@ -66,6 +66,12 @@ describe('StreamDownloader', () => {
     expect(sink.getBlob().size).toBe(5);
   });
 
+  it('rejects non-Uint8Array writes in BlobSink', () => {
+    const sink = new BlobSink();
+    expect(() => sink.write('not bytes' as unknown as Uint8Array)).toThrow('BlobSink.write chunk must be a Uint8Array');
+    expect(() => sink.write(null as unknown as Uint8Array)).toThrow('BlobSink.write chunk must be a Uint8Array');
+  });
+
   it('rejects invalid URLs', async () => {
     const dl = new StreamDownloader();
     await expect(dl.start(makeOptions('not-a-url'))).rejects.toMatchObject({ code: 7001 });
