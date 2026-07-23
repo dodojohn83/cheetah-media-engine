@@ -39,6 +39,9 @@ export interface DiagnosticsBundle {
 const SIZE_SAFETY_MARGIN = 1024;
 
 export function sanitizeUrl(url: string): string {
+  if (typeof url !== 'string') {
+    throw new Error('sanitizeUrl url must be a string');
+  }
   try {
     const parsed = new URL(url);
     // Only http/https URLs are safe to retain at origin+path level. Other
