@@ -55,8 +55,16 @@ export function concatUint8(chunks: readonly Uint8Array[]): Uint8Array {
   return out;
 }
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  if (typeof Uint8Array !== 'undefined' && value instanceof Uint8Array) return true;
+  return Object.prototype.toString.call(value) === '[object Uint8Array]';
+}
+
 /** Parse a single box header if a complete header is present. */
 export function peekBox(data: Uint8Array, offset = 0): BoxHeader | undefined {
+  if (!isUint8Array(data)) {
+    throw new Error('peekBox data must be a Uint8Array');
+  }
   const sizeInfo = readBoxSize(data, offset);
   if (!sizeInfo) return undefined;
   if (offset + 8 > data.length) return undefined;
@@ -72,6 +80,9 @@ export function peekBox(data: Uint8Array, offset = 0): BoxHeader | undefined {
  * Partial trailing bytes are dropped (caller should buffer them).
  */
 export function splitFmp4(data: Uint8Array): Fmp4Split {
+  if (!isUint8Array(data)) {
+    throw new Error('splitFmp4 data must be a Uint8Array');
+  }
   const initChunks: Uint8Array[] = [];
   const segments: Uint8Array[] = [];
   let current: Uint8Array[] = [];
@@ -122,6 +133,9 @@ export class Fmp4BoxAccumulator {
   }
 
   push(chunk: Uint8Array): void {
+    if (!isUint8Array(chunk)) {
+      throw new Error('Fmp4BoxAccumulator.push chunk must be a Uint8Array');
+    }
     if (chunk.length === 0) return;
     if (this.buffer.length + chunk.length > this.maxBytes) {
       throw new Error(`fMP4 buffer exceeded ${this.maxBytes} bytes`);
@@ -171,6 +185,9 @@ export class Fmp4SegmentBuilder {
    * The first emitted segment with `isInit: true` is the init segment.
    */
   feed(box: Uint8Array): { data: Uint8Array; isInit: boolean }[] {
+    if (!isUint8Array(box)) {
+      throw new Error('Fmp4SegmentBuilder.feed box must be a Uint8Array');
+    }
     const type = box.length >= 8 ? boxType(box, 0) : '';
     const out: { data: Uint8Array; isInit: boolean }[] = [];
 
