@@ -275,6 +275,18 @@ function validateFfmpegPacket(packet: unknown): asserts packet is FfmpegPacket {
   }
 }
 
+function validateNonNegativeInteger(value: unknown, name: string): asserts value is number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || !Number.isFinite(value)) {
+    throw new FfmpegPackError('not-initialized', `${name} must be a non-negative integer`);
+  }
+}
+
+function validateCodecName(codec: unknown): asserts codec is string {
+  if (typeof codec !== 'string' || codec.length === 0) {
+    throw new FfmpegPackError('unsupported', 'codec must be a non-empty string');
+  }
+}
+
 export interface FfmpegPack {
   readonly abiMajor: number;
   readonly abiMinor: number;
@@ -322,6 +334,7 @@ export class FfmpegPackImpl implements FfmpegPack {
 
   async init(variantFlags: number): Promise<void> {
     this.checkNotClosed();
+    validateNonNegativeInteger(variantFlags, 'variantFlags');
     if (this.initialized) return;
     const result = this.module._cheetah_pack_init(this.maxMemoryMB, variantFlags);
     if (result !== PackReturnCode.Ok) {
@@ -336,6 +349,11 @@ export class FfmpegPackImpl implements FfmpegPack {
     config?: Uint8Array | undefined,
   ): Promise<void> {
     this.checkNotClosed();
+    validateNonNegativeInteger(trackIndex, 'trackIndex');
+    validateCodecName(codec);
+    if (config !== undefined && !isUint8Array(config)) {
+      throw new FfmpegPackError('unsupported', 'config must be a Uint8Array');
+    }
     if (!this.initialized) await this.init(0);
     const codecId = getCodecId(codec);
     const cfg = config ?? new Uint8Array(0);
@@ -417,6 +435,7 @@ export class FfmpegPackImpl implements FfmpegPack {
 
   async receive(trackIndex: number): Promise<FrameDescriptor | undefined> {
     this.checkNotClosed();
+    validateNonNegativeInteger(trackIndex, 'trackIndex');
     if (!this.initialized) await this.init(0);
 
     const outPtr = this.module._malloc(FRAME_DESCRIPTOR_SIZE);
@@ -436,6 +455,7 @@ export class FfmpegPackImpl implements FfmpegPack {
 
   async flush(trackIndex: number): Promise<void> {
     this.checkNotClosed();
+    validateNonNegativeInteger(trackIndex, 'trackIndex');
     if (!this.initialized) return;
     const result = this.module._cheetah_pack_flush(trackIndex);
     if (result !== PackReturnCode.Ok) {
