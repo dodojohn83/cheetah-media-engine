@@ -62,4 +62,15 @@ describe('fmp4 helpers', () => {
     expect(flushed.length).toBe(1);
     expect(flushed[0]!.isInit).toBe(false);
   });
+
+  it('rejects non-Uint8Array inputs', () => {
+    expect(() => splitFmp4('not bytes' as unknown as Uint8Array)).toThrow('splitFmp4 data must be a Uint8Array');
+    expect(() => peekBox(null as unknown as Uint8Array)).toThrow('peekBox data must be a Uint8Array');
+
+    const acc = new Fmp4BoxAccumulator();
+    expect(() => acc.push(null as unknown as Uint8Array)).toThrow('chunk must be a Uint8Array');
+
+    const builder = new Fmp4SegmentBuilder();
+    expect(() => builder.feed(null as unknown as Uint8Array)).toThrow('box must be a Uint8Array');
+  });
 });
