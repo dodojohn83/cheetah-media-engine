@@ -69,4 +69,12 @@ describe('PlaybackSession constructor validation', () => {
   it('rejects non-function onEvent', () => {
     expect(() => new PlaybackSession({ videoElement: makeElement(), url: 'https://x/a.mp4', protocol: 'http-fmp4', onEvent: 'noop' } as any)).toThrow('onEvent');
   });
+
+  it('rejects invalid numeric latency and playback rate options', () => {
+    const base = { videoElement: makeElement(), url: 'https://x/a.mp4', protocol: 'http-fmp4' } as any;
+    expect(() => new PlaybackSession({ ...base, softLatencyMs: NaN })).toThrow('softLatencyMs');
+    expect(() => new PlaybackSession({ ...base, hardLatencyMs: -1 })).toThrow('hardLatencyMs');
+    expect(() => new PlaybackSession({ ...base, maxPlaybackRate: 0 })).toThrow('maxPlaybackRate');
+    expect(() => new PlaybackSession({ ...base, maxPlaybackRate: Infinity })).toThrow('maxPlaybackRate');
+  });
 });

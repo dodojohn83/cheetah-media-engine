@@ -148,6 +148,21 @@ export class PlaybackSession {
         throw new Error('PlaybackSession timeoutMs must be Infinity or a finite positive number');
       }
     }
+    if (options.softLatencyMs !== undefined) {
+      if (!Number.isFinite(options.softLatencyMs) || options.softLatencyMs <= 0) {
+        throw new Error('PlaybackSession softLatencyMs must be a finite positive number');
+      }
+    }
+    if (options.hardLatencyMs !== undefined) {
+      if (!Number.isFinite(options.hardLatencyMs) || options.hardLatencyMs <= 0) {
+        throw new Error('PlaybackSession hardLatencyMs must be a finite positive number');
+      }
+    }
+    if (options.maxPlaybackRate !== undefined) {
+      if (!Number.isFinite(options.maxPlaybackRate) || options.maxPlaybackRate <= 0) {
+        throw new Error('PlaybackSession maxPlaybackRate must be a finite positive number');
+      }
+    }
     this.options = options;
     this.url = resolveMediaUrl(options.url);
     this.tracks = options.tracks && options.tracks.length > 0 ? options.tracks : DEFAULT_TRACKS;
