@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { WebCodecsBackend, webcodecsBackendFactory, type CloseableVideoFrame, type CloseableAudioData } from './webcodecs';
+import {
+  WebCodecsBackend,
+  webcodecsBackendFactory,
+  type CloseableVideoFrame,
+  type CloseableAudioData,
+  type WebCodecsBackendOptions,
+} from './webcodecs';
 import type { BackendContext, MediaBackend } from './fallback';
 import type { TrackProfile } from './planner';
 
@@ -591,5 +597,73 @@ describe('WebCodecsBackend', () => {
     await backend.pauseDisplay(false);
     expect(backend.metrics.pendingDecodes).toBe(0);
     await backend.stop();
+  });
+
+  it('throws for invalid constructor options', () => {
+    expect(() => new WebCodecsBackend(ctx, undefined as unknown as WebCodecsBackendOptions)).toThrow(
+      'WebCodecsBackendOptions is required',
+    );
+    expect(() => new WebCodecsBackend(ctx, {} as unknown as WebCodecsBackendOptions)).toThrow(
+      'tracks must be a non-empty array',
+    );
+    expect(
+      () => new WebCodecsBackend(ctx, { tracks: [], callbacks: {} } as unknown as WebCodecsBackendOptions),
+    ).toThrow('tracks must be a non-empty array');
+    expect(
+      () =>
+        new WebCodecsBackend(
+          ctx,
+          { tracks: [{ kind: 'video' }], callbacks: {} } as unknown as WebCodecsBackendOptions,
+        ),
+    ).toThrow('codec');
+    expect(
+      () =>
+        new WebCodecsBackend(
+          ctx,
+          { tracks: [videoTrack], callbacks: { onError: 'not fn' } } as unknown as WebCodecsBackendOptions,
+        ),
+    ).toThrow('onError must be a function');
+    expect(
+      () =>
+        new WebCodecsBackend(
+          ctx,
+          { tracks: [videoTrack], callbacks: {}, maxPendingDecodes: 0 } as unknown as WebCodecsBackendOptions,
+        ),
+    ).toThrow('maxPendingDecodes');
+  });
+
+  it('throws when pushVideo receives invalid arguments', async () => {
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+
+    expect(() => backend.pushVideo('not bytes' as unknown as Uint8Array, 1000, { isKeyFrame: true })).toThrow(
+      'pushVideo data',
+    );
+    expect(() => backend.pushVideo(new Uint8Array([1]), NaN, { isKeyFrame: true })).toThrow(
+      'pushVideo timestamp',
+    );
+    expect(() =>
+      backend.pushVideo(new Uint8Array([1]), 1000, { isKeyFrame: 'yes' as unknown as boolean }),
+    ).toThrow('pushVideo isKeyFrame');
+    expect(() =>
+      backend.pushVideo(new Uint8Array([1]), 1000, { isKeyFrame: true, duration: -1 }),
+    ).toThrow('pushVideo duration');
+    expect(() =>
+      backend.pushVideo(new Uint8Array([1]), 1000, 'opts' as unknown as { isKeyFrame: boolean }),
+    ).toThrow('pushVideo opts');
+  });
+
+  it('throws when pushAudio receives invalid arguments', async () => {
+    const backend = new WebCodecsBackend(ctx, { tracks: [audioTrack], callbacks: {} });
+    await backend.configure();
+
+    expect(() => backend.pushAudio('not bytes' as unknown as Uint8Array, 1000)).toThrow('pushAudio data');
+    expect(() => backend.pushAudio(new Uint8Array([1]), NaN)).toThrow('pushAudio timestamp');
+    expect(() => backend.pushAudio(new Uint8Array([1]), 1000, { duration: -1 })).toThrow(
+      'pushAudio duration',
+    );
+    expect(() =>
+      backend.pushAudio(new Uint8Array([1]), 1000, 'opts' as unknown as { duration: number }),
+    ).toThrow('pushAudio opts');
   });
 });
