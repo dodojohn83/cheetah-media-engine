@@ -51,7 +51,28 @@ function resolveMediaUrl(url: string): string {
   }
 }
 
+const VALID_PROTOCOLS: readonly string[] = [
+  'http-flv',
+  'ws-flv',
+  'http-fmp4',
+  'ws-fmp4',
+  'http-annexb',
+  'ws-annexb',
+  'http-mpegps',
+  'ws-mpegps',
+  'webtransport',
+  'webrtc',
+  'hls',
+  'll-hls',
+];
+
 export function detectProtocol(url: string, hint?: Protocol | 'auto'): Protocol {
+  if (typeof url !== 'string') {
+    throw new Error('detectProtocol url must be a string');
+  }
+  if (hint !== undefined && hint !== 'auto' && !VALID_PROTOCOLS.includes(hint)) {
+    throw new Error(`detectProtocol hint must be a valid protocol or 'auto'`);
+  }
   if (hint && hint !== 'auto') {
     return hint as Protocol;
   }
