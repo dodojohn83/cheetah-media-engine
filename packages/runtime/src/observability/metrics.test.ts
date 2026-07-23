@@ -107,4 +107,31 @@ describe('MetricRegistry', () => {
     expect(hist.count).toBe(1);
     expect(hist.sum).toBe(5);
   });
+
+  it('ignores negative and non-finite counter increments', () => {
+    const registry = new MetricRegistry();
+    const counter = registry.counter('c', 'source');
+    counter.inc(-1);
+    counter.inc(NaN);
+    counter.inc(Infinity);
+    counter.inc(3);
+    const snapshot = registry.snapshot();
+    expect(snapshot.metrics.source?.c).toEqual({ type: 'counter', value: 3 });
+  });
+
+  it('ignores non-finite gauge values', () => {
+    const registry = new MetricRegistry();
+    const gauge = registry.gauge('g', 'memory', 'bytes');
+    gauge.set(NaN);
+    gauge.set(Infinity);
+    gauge.set(42);
+    const snapshot = registry.snapshot();
+    expect(snapshot.metrics.memory?.g).toEqual({ type: 'gauge', value: 42, unit: 'bytes' });
+  });
+
+  it('rejects invalid metric names and categories', () => {
+    const registry = new MetricRegistry();
+    expect(() => registry.counter('', 'source')).toThrow();
+    expect(() => registry.counter('x', 'unknown' as 'source')).toThrow();
+  });
 });
