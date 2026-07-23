@@ -256,6 +256,18 @@ describe('MseBackend', () => {
     expect(() => new MseBackend(ctx, makeOptions({ isLive: 'true' as unknown as boolean }))).toThrow('isLive must be a boolean');
   });
 
+  it('rejects construction when a track is malformed', () => {
+    expect(
+      () => new MseBackend(ctx, makeOptions({ tracks: [{ kind: 'video' } as unknown as TrackProfile] })),
+    ).toThrow('track at index 0 must have a non-empty codec string');
+    expect(
+      () => new MseBackend(ctx, makeOptions({ tracks: [{ kind: 'subtitle', codec: 'stpp' } as unknown as TrackProfile] })),
+    ).toThrow("track at index 0 must have kind 'video' or 'audio'");
+    expect(
+      () => new MseBackend(ctx, makeOptions({ tracks: [42 as unknown as TrackProfile] })),
+    ).toThrow('track at index 0 must be an object');
+  });
+
   it('appends segments to the SourceBuffer', async () => {
     const backend = new MseBackend(ctx, makeOptions());
     await backend.configure();

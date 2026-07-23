@@ -221,6 +221,19 @@ function validateMseOptions(options: MseBackendOptions): void {
   if (!Array.isArray(options.tracks) || options.tracks.length === 0) {
     throw new MseError('invalid-config', 'tracks must be a non-empty array');
   }
+  for (let i = 0; i < options.tracks.length; i += 1) {
+    const track = options.tracks[i] as unknown;
+    if (!track || typeof track !== 'object') {
+      throw new MseError('invalid-config', `track at index ${i} must be an object`);
+    }
+    const t = track as { kind?: unknown; codec?: unknown };
+    if (t.kind !== 'video' && t.kind !== 'audio') {
+      throw new MseError('invalid-config', `track at index ${i} must have kind 'video' or 'audio'`);
+    }
+    if (typeof t.codec !== 'string' || t.codec.length === 0) {
+      throw new MseError('invalid-config', `track at index ${i} must have a non-empty codec string`);
+    }
+  }
   if (options.isLive !== undefined && typeof options.isLive !== 'boolean') {
     throw new MseError('invalid-config', 'isLive must be a boolean');
   }
