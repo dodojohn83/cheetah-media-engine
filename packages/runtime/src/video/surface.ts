@@ -5,6 +5,31 @@
 import type { FitMode, VisibleRect, RendererConfig } from './types';
 import { RendererError } from './types';
 
+function isCanvasLike(value: unknown): value is HTMLCanvasElement | OffscreenCanvas {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as { getContext?: unknown }).getContext === 'function' &&
+    typeof (value as { width?: unknown }).width === 'number' &&
+    typeof (value as { height?: unknown }).height === 'number'
+  );
+}
+
+export function validateCanvasLike(canvas: unknown): asserts canvas is HTMLCanvasElement | OffscreenCanvas {
+  if (!isCanvasLike(canvas)) {
+    throw new RendererError('invalid-config', 'canvas must be a canvas-like element with getContext and finite width/height');
+  }
+  const c = canvas as { width: number; height: number };
+  if (
+    !Number.isFinite(c.width) ||
+    !Number.isFinite(c.height) ||
+    c.width <= 0 ||
+    c.height <= 0
+  ) {
+    throw new RendererError('invalid-config', 'Canvas width and height must be finite positive numbers');
+  }
+}
+
 export interface Viewport {
   readonly x: number;
   readonly y: number;
@@ -31,6 +56,7 @@ export class RendererSurface {
   private mirror = false;
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas) {
+    validateCanvasLike(canvas);
     this.canvas = canvas;
     this.cssWidth = canvas.width;
     this.cssHeight = canvas.height;
@@ -67,19 +93,8 @@ export class RendererSurface {
   }
 
   configure(config: RendererConfig): void {
-    if (!config.canvas) {
-      throw new RendererError('invalid-config', 'RendererSurface requires a canvas');
-    }
-    const canvasWidth = config.canvas.width;
-    const canvasHeight = config.canvas.height;
-    if (
-      !Number.isFinite(canvasWidth) ||
-      !Number.isFinite(canvasHeight) ||
-      canvasWidth <= 0 ||
-      canvasHeight <= 0
-    ) {
-      throw new RendererError('invalid-config', 'Canvas width and height must be finite positive numbers');
-    }
+    validateCanvasLike(config.canvas);
+    this.canvas = config.canvas;
     if (config.dpr !== undefined) {
       if (!Number.isFinite(config.dpr) || config.dpr <= 0) {
         throw new RendererError('invalid-config', 'dpr must be a finite positive number');
@@ -160,14 +175,41 @@ export class RendererSurface {
     codedHeight: number;
     visibleRect?: VisibleRect | undefined;
   }): VisibleRect {
-    return (
-      frame.visibleRect ?? {
-        x: 0,
-        y: 0,
-        width: frame.codedWidth,
-        height: frame.codedHeight,
+    if (!frame || typeof frame !== 'object') {
+      throw new RendererError('invalid-frame', 'frame must be an object');
+    }
+    const f = frame as { codedWidth?: unknown; codedHeight?: unknown; visibleRect?: unknown };
+    if (
+      typeof f.codedWidth !== 'number' ||
+      !Number.isFinite(f.codedWidth) ||
+      f.codedWidth <= 0 ||
+      typeof f.codedHeight !== 'number' ||
+      !Number.isFinite(f.codedHeight) ||
+      f.codedHeight <= 0
+    ) {
+      throw new RendererError('invalid-frame', 'frame.codedWidth and frame.codedHeight must be finite positive numbers');
+    }
+    if (f.visibleRect !== undefined) {
+      const r = f.visibleRect as Partial<VisibleRect>;
+      if (
+        !r ||
+        typeof r !== 'object' ||
+        typeof r.x !== 'number' ||
+        !Number.isFinite(r.x) ||
+        typeof r.y !== 'number' ||
+        !Number.isFinite(r.y) ||
+        typeof r.width !== 'number' ||
+        !Number.isFinite(r.width) ||
+        r.width <= 0 ||
+        typeof r.height !== 'number' ||
+        !Number.isFinite(r.height) ||
+        r.height <= 0
+      ) {
+        throw new RendererError('invalid-frame', 'frame.visibleRect must be a finite rectangle with positive width/height');
       }
-    );
+      return r as VisibleRect;
+    }
+    return { x: 0, y: 0, width: f.codedWidth as number, height: f.codedHeight as number };
   }
 
   getTransform(): SurfaceTransform {

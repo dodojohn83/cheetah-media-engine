@@ -6,6 +6,7 @@
 import type { Renderer, RendererConfig, RenderFrame, RendererMetrics, SnapshotOptions, SnapshotResult } from './types';
 import { RendererError } from './types';
 import { encodeSnapshot, computeTargetSize, type CanvasLike } from './snapshot-encoder';
+import { validateCanvasLike } from './surface';
 import { Canvas2DRenderer } from './canvas2d';
 import { WebGL2Renderer } from './webgl';
 import { WebGpuRenderer } from './webgpu';
@@ -19,6 +20,14 @@ export interface VideoRendererOptions {
 }
 
 const VALID_RENDERER_KINDS: readonly RendererKind[] = ['webgpu', 'webgl2', 'canvas2d'];
+
+function validateRendererConfig(config: unknown): asserts config is RendererConfig {
+  if (!config || typeof config !== 'object') {
+    throw new RendererError('invalid-config', 'renderer config must be an object');
+  }
+  const c = config as { canvas?: unknown };
+  validateCanvasLike(c.canvas);
+}
 
 export class VideoRenderer implements Renderer {
   readonly identity = 'video-renderer';
@@ -37,6 +46,7 @@ export class VideoRenderer implements Renderer {
 
   async configure(config: RendererConfig): Promise<void> {
     if (this.closed) throw new RendererError('closed', 'VideoRenderer is closed');
+    validateRendererConfig(config);
 
     const preferred = this.options.preferred ?? 'webgpu';
     const candidates: RendererKind[] =
