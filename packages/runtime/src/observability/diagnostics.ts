@@ -62,8 +62,10 @@ export function sanitizeUrl(url: string): string {
   }
 }
 
-export function redactHeaders(headers?: Record<string, string>): Record<string, string> {
-  if (!headers) return {};
+export function redactHeaders(
+  headers?: Record<string, string> | Iterable<readonly [string, string]>,
+): Record<string, string> {
+  if (!headers || typeof headers !== 'object') return {};
   const sensitive = new Set([
     'authorization',
     'cookie',
@@ -72,7 +74,12 @@ export function redactHeaders(headers?: Record<string, string>): Record<string, 
     'x-secret',
   ]);
   const redacted: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headers)) {
+  const entries =
+    typeof (headers as Iterable<unknown>)[Symbol.iterator] === 'function'
+      ? Array.from(headers as Iterable<readonly [string, string]>)
+      : Object.entries(headers);
+  for (const [key, value] of entries) {
+    if (typeof key !== 'string' || typeof value !== 'string') continue;
     redacted[key] = sensitive.has(key.toLowerCase()) ? '<redacted>' : value;
   }
   return redacted;
