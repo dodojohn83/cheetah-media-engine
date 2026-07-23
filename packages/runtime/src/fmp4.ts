@@ -44,8 +44,16 @@ function boxType(data: Uint8Array, offset: number): string {
 }
 
 export function concatUint8(chunks: readonly Uint8Array[]): Uint8Array {
+  if (!Array.isArray(chunks)) {
+    throw new Error('concatUint8 chunks must be an array');
+  }
   let total = 0;
-  for (const c of chunks) total += c.length;
+  for (const c of chunks) {
+    if (!isUint8Array(c)) {
+      throw new Error('concatUint8 chunks must contain only Uint8Array instances');
+    }
+    total += c.length;
+  }
   const out = new Uint8Array(total);
   let off = 0;
   for (const c of chunks) {
