@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeG711F32One, encodeG711Int16 } from './g711';
+import { encodeG711F32, encodeG711F32One, encodeG711Int16 } from './g711';
 
 describe('G.711 encoder', () => {
   it('encodes mu-law silence to 0xff', () => {
@@ -32,5 +32,22 @@ describe('G.711 encoder', () => {
     encodeG711Int16('alaw', input, output);
     expect(output.length).toBe(1);
     expect(output[0]).toBe(0xd5);
+  });
+
+  it('rejects invalid arguments', () => {
+    expect(() => encodeG711F32One('g711' as unknown as 'alaw', 0)).toThrow('G.711 kind');
+    expect(() => encodeG711F32One('alaw', NaN)).toThrow('finite number');
+    expect(() => encodeG711Int16('alaw', 'not typed' as unknown as Int16Array, new Uint8Array(1))).toThrow(
+      'encodeG711Int16 input must be an Int16Array',
+    );
+    expect(() => encodeG711Int16('alaw', new Int16Array(1), 'not typed' as unknown as Uint8Array)).toThrow(
+      'encodeG711Int16 output must be a Uint8Array',
+    );
+    expect(() => encodeG711F32('mulaw', 'not typed' as unknown as Float32Array, new Uint8Array(1))).toThrow(
+      'encodeG711F32 input must be a Float32Array',
+    );
+    expect(() => encodeG711F32('mulaw', new Float32Array(1), 'not typed' as unknown as Uint8Array)).toThrow(
+      'encodeG711F32 output must be a Uint8Array',
+    );
   });
 });
