@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectProtocol, protocolSupportedByMseSession } from './playback-session';
+import { detectProtocol, PlaybackSession, protocolSupportedByMseSession } from './playback-session';
 
 describe('playback session protocol detection', () => {
   it('detects HLS playlists', () => {
@@ -24,5 +24,49 @@ describe('playback session protocol detection', () => {
     expect(protocolSupportedByMseSession('http-flv')).toBe(true);
     expect(protocolSupportedByMseSession('ws-flv')).toBe(true);
     expect(protocolSupportedByMseSession('ws-annexb')).toBe(false);
+  });
+});
+
+describe('PlaybackSession constructor validation', () => {
+  function makeElement(): HTMLVideoElement {
+    return {
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      play: () => undefined,
+      pause: () => undefined,
+      load: () => undefined,
+      srcObject: null,
+      src: '',
+      currentTime: 0,
+      playbackRate: 1,
+      paused: true,
+      ended: false,
+      readyState: 0,
+      buffered: { length: 0 },
+      duration: NaN,
+      error: null,
+      videoWidth: 0,
+      videoHeight: 0,
+    } as unknown as HTMLVideoElement;
+  }
+
+  it('rejects non-object options', () => {
+    expect(() => new PlaybackSession(null as unknown as { videoElement: HTMLVideoElement; url: string; protocol: 'http-fmp4' })).toThrow('must be an object');
+  });
+
+  it('rejects non-object videoElement', () => {
+    expect(() => new PlaybackSession({ videoElement: 42, url: 'https://x/a.mp4', protocol: 'http-fmp4' } as any)).toThrow('object videoElement');
+  });
+
+  it('rejects non-boolean isLive', () => {
+    expect(() => new PlaybackSession({ videoElement: makeElement(), url: 'https://x/a.mp4', protocol: 'http-fmp4', isLive: 'false' } as any)).toThrow('isLive must be a boolean');
+  });
+
+  it('rejects invalid headers', () => {
+    expect(() => new PlaybackSession({ videoElement: makeElement(), url: 'https://x/a.mp4', protocol: 'http-fmp4', headers: { auth: 1 } } as any)).toThrow('header value');
+  });
+
+  it('rejects non-function onEvent', () => {
+    expect(() => new PlaybackSession({ videoElement: makeElement(), url: 'https://x/a.mp4', protocol: 'http-fmp4', onEvent: 'noop' } as any)).toThrow('onEvent');
   });
 });

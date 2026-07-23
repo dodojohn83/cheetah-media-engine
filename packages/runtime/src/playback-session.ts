@@ -8,6 +8,7 @@
  */
 
 import { createTransport, type Transport, type TransportError } from './transport';
+import { validateHeaders } from './transport-common';
 import { MseBackend, type HTMLVideoElementLike, type MseMetrics } from './mse';
 import type { Protocol, TrackProfile } from './planner';
 import { Fmp4BoxAccumulator, Fmp4SegmentBuilder, splitFmp4 } from './fmp4';
@@ -115,11 +116,26 @@ export class PlaybackSession {
   private statsTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(options: PlaybackSessionOptions) {
-    if (!options?.videoElement) {
-      throw new Error('PlaybackSession requires videoElement');
+    if (!options || typeof options !== 'object') {
+      throw new Error('PlaybackSession options must be an object');
+    }
+    if (typeof options.videoElement !== 'object' || options.videoElement === null) {
+      throw new Error('PlaybackSession requires an object videoElement');
     }
     if (typeof options.url !== 'string' || options.url.length === 0) {
       throw new Error('PlaybackSession requires a non-empty url');
+    }
+    if (options.isLive !== undefined && typeof options.isLive !== 'boolean') {
+      throw new Error('PlaybackSession isLive must be a boolean');
+    }
+    if (options.headers !== undefined) {
+      const headersError = validateHeaders(options.headers);
+      if (headersError) {
+        throw new Error(`PlaybackSession headers: ${headersError}`);
+      }
+    }
+    if (options.onEvent !== undefined && typeof options.onEvent !== 'function') {
+      throw new Error('PlaybackSession onEvent must be a function');
     }
     this.options = options;
     this.url = resolveMediaUrl(options.url);

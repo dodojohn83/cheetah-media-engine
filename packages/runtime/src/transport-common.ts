@@ -129,6 +129,24 @@ export function validateTransportConfig(config: TransportConfig): TransportError
   if (!Number.isFinite(maxRetries) || maxRetries < 0 || maxRetries % 1 !== 0) {
     return makeError(TransportErrorCode.InvalidConfig, 'maxRetries must be a finite non-negative integer', false);
   }
+  if (config.headers !== undefined) {
+    const headersError = validateHeaders(config.headers);
+    if (headersError) {
+      return makeError(TransportErrorCode.InvalidConfig, headersError, false);
+    }
+  }
+  return undefined;
+}
+
+export function validateHeaders(headers: unknown): string | undefined {
+  if (headers === null || typeof headers !== 'object' || Array.isArray(headers)) {
+    return 'headers must be an object';
+  }
+  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+    if (typeof value !== 'string') {
+      return `header value for "${key}" must be a string`;
+    }
+  }
   return undefined;
 }
 
