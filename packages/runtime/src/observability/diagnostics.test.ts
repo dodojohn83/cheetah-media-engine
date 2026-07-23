@@ -46,6 +46,26 @@ describe('diagnostics', () => {
     });
   });
 
+  it('redacts Headers and Map instances used as headers', () => {
+    const headers = new Headers({
+      Authorization: 'Bearer secret',
+      Accept: 'application/json',
+    });
+    expect(redactHeaders(headers as unknown as Record<string, string>)).toEqual({
+      authorization: '<redacted>',
+      accept: 'application/json',
+    });
+
+    const map = new Map<string, string>([
+      ['Cookie', 'session=abc'],
+      ['Accept-Language', 'en'],
+    ]);
+    expect(redactHeaders(map as unknown as Record<string, string>)).toEqual({
+      Cookie: '<redacted>',
+      'Accept-Language': 'en',
+    });
+  });
+
   it('builds a redacted bundle with version and state', () => {
     const registry = new MetricRegistry();
     registry.counter('packets', 'source').inc(3);
