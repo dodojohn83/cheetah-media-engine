@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { detectCapabilities, probeCapabilities, CapabilityCache, type ProbedCapabilityReport } from './capabilities';
 
 describe('detectCapabilities()', () => {
@@ -9,6 +9,17 @@ describe('detectCapabilities()', () => {
     expect(report.timestamp).toBeGreaterThan(0);
     expect(report.confidence).toBe('low');
     expect(Array.isArray(report.reasons)).toBe(true);
+  });
+
+  it('falls back to Date.now when performance is not available', () => {
+    const original = (globalThis as unknown as { performance?: unknown }).performance;
+    vi.stubGlobal('performance', undefined);
+    try {
+      const report = detectCapabilities();
+      expect(report.timestamp).toBeGreaterThan(0);
+    } finally {
+      (globalThis as unknown as { performance?: unknown }).performance = original;
+    }
   });
 
   it('reports wasm support when WebAssembly is available', () => {
