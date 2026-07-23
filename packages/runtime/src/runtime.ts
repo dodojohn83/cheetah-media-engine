@@ -163,6 +163,9 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
 
   function post(type: Envelope['type'], payload?: unknown, timeoutMs = 10000): Promise<unknown> {
     if (destroyed) return Promise.reject(new Error('Runtime destroyed'));
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      return Promise.reject(new Error('timeoutMs must be a finite positive number'));
+    }
     if (pending.size >= maxPendingCommands) {
       return Promise.reject(new Error('Too many pending commands'));
     }
@@ -247,12 +250,18 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
       if (direction !== 'forward' && direction !== 'backward') {
         throw new Error('frameStep direction must be forward or backward');
       }
+      if (typeof keyframeOnly !== 'boolean') {
+        throw new Error('frameStep keyframeOnly must be a boolean');
+      }
       const payload: FrameStepPayload = { direction, keyframeOnly };
       await post('frame-step', payload, 10000);
     },
 
     async pauseDisplay(keepConnection = true): Promise<void> {
       if (destroyed) throw new Error('Runtime destroyed');
+      if (typeof keepConnection !== 'boolean') {
+        throw new Error('pauseDisplay keepConnection must be a boolean');
+      }
       const payload: PauseDisplayPayload = { keepConnection };
       await post('pause-display', payload, 10000);
     },

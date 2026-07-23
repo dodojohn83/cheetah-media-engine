@@ -203,6 +203,25 @@ describe('createRuntime worker integration', () => {
     await expect(runtime.setPlaybackRate(NaN)).rejects.toThrow('playback rate');
   });
 
+  it('frameStep rejects non-boolean keyframeOnly', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await runtime.load('http://example.com/test.flv');
+    await expect(runtime.frameStep('forward', 'true' as unknown as boolean)).rejects.toThrow('keyframeOnly');
+  });
+
+  it('pauseDisplay rejects non-boolean keepConnection', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await runtime.load('http://example.com/test.flv');
+    await expect(runtime.pauseDisplay('true' as unknown as boolean)).rejects.toThrow('keepConnection');
+  });
+
+  it('request rejects invalid timeoutMs', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await runtime.load('http://example.com/test.flv');
+    await expect(runtime.request('play', undefined, -1)).rejects.toThrow('timeoutMs');
+    await expect(runtime.request('play', undefined, NaN)).rejects.toThrow('timeoutMs');
+  });
+
   it('destroy rejects pending commands', async () => {
     class NoReplyWorker extends EventTarget {
       public onmessage?: (event: MessageEvent<string>) => void;
