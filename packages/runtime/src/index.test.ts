@@ -75,6 +75,11 @@ describe('messages', () => {
     expect(() => decodeEnvelope(JSON.stringify({ ...base, sequence: Infinity }))).toThrow();
     expect(() => decodeEnvelope(JSON.stringify({ ...base, type: 'unknown' }))).toThrow();
   });
+
+  it('rejects non-JSON envelope data', () => {
+    expect(() => decodeEnvelope('not json')).toThrow('Malformed envelope');
+    expect(() => decodeEnvelope('{invalid')).toThrow('Malformed envelope');
+  });
 });
 
 describe('createRuntime validation', () => {

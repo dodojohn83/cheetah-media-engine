@@ -194,7 +194,12 @@ function isNonNegativeInteger(value: unknown): value is number {
 }
 
 export function decodeEnvelope(data: string): Envelope {
-  const parsed = JSON.parse(data) as Envelope;
+  let parsed: Envelope;
+  try {
+    parsed = JSON.parse(data) as Envelope;
+  } catch {
+    throw new Error('Malformed envelope');
+  }
   if (parsed.protocolVersion !== PROTOCOL_VERSION) {
     throw new Error(`Unsupported protocol version ${parsed.protocolVersion}`);
   }
