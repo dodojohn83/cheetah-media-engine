@@ -77,6 +77,28 @@ describe('messages', () => {
   });
 });
 
+describe('createRuntime validation', () => {
+  it('rejects non-string workerUrl', () => {
+    expect(() => createRuntime({ workerUrl: 123 as unknown as string })).toThrow('workerUrl must be a non-empty string');
+  });
+
+  it('rejects dangerous workerUrl schemes', () => {
+    expect(() => createRuntime({ workerUrl: 'data:text/javascript,alert(1)' })).toThrow('workerUrl must use http:');
+    expect(() => createRuntime({ workerUrl: 'javascript:alert(1)' })).toThrow('workerUrl must use http:');
+    expect(() => createRuntime({ workerUrl: 'vbscript:msgbox(1)' })).toThrow('workerUrl must use http:');
+  });
+
+  it('rejects dangerous wasmUrl schemes', () => {
+    expect(() => createRuntime({ workerUrl: 'mock-worker.js', wasmUrl: 'data:text/javascript,alert(1)' })).toThrow('wasmUrl must use http:');
+  });
+
+  it('allows relative, http, https, and blob URLs', () => {
+    expect(() => createRuntime({ workerUrl: 'mock-worker.js' })).not.toThrow();
+    expect(() => createRuntime({ workerUrl: 'https://example.com/worker.js' })).not.toThrow();
+    expect(() => createRuntime({ workerUrl: 'blob:https://example.com/uuid' })).not.toThrow();
+  });
+});
+
 describe('createRuntime worker integration', () => {
   let originalWorker: typeof Worker | undefined;
 
