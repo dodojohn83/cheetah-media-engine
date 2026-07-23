@@ -189,14 +189,18 @@ class BitReader {
   }
   readUE(): number {
     let zeros = 0;
-    while (this.readBits(1) === 0 && zeros < 31) zeros += 1;
+    while (this.readBits(1) === 0 && zeros < 32) zeros += 1;
     if (zeros === 0) return 0;
-    return (1 << zeros) - 1 + this.readBits(zeros);
+    if (zeros >= 32) return 0xffffffff;
+    const suffix = this.readBits(zeros);
+    const codeNum = (Math.pow(2, zeros) - 1 + suffix) >>> 0;
+    return codeNum;
   }
   readSE(): number {
     const v = this.readUE();
-    const sign = ((v & 1) === 0 ? -1 : 1) as number;
-    return sign * ((v + 1) >> 1);
+    const magnitude = Math.floor((v + 1) / 2);
+    const sign = v % 2 === 0 ? -1 : 1;
+    return sign * magnitude;
   }
 }
 
