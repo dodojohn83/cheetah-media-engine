@@ -230,6 +230,51 @@ function readFrameDescriptor(heap: Uint8Array, base: number): FrameDescriptor {
   };
 }
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  if (typeof Uint8Array !== 'undefined' && value instanceof Uint8Array) return true;
+  return Object.prototype.toString.call(value) === '[object Uint8Array]';
+}
+
+function validateBigint(value: unknown, name: string): void {
+  if (typeof value !== 'bigint') {
+    throw new FfmpegPackError('send-failed', `${name} must be a bigint`);
+  }
+}
+
+function validateFfmpegPacket(packet: unknown): asserts packet is FfmpegPacket {
+  if (!packet || typeof packet !== 'object') {
+    throw new FfmpegPackError('send-failed', 'packet must be an object');
+  }
+  const p = packet as Partial<FfmpegPacket>;
+  if (typeof p.trackIndex !== 'number' || !Number.isInteger(p.trackIndex) || p.trackIndex < 0) {
+    throw new FfmpegPackError('send-failed', 'packet.trackIndex must be a non-negative integer');
+  }
+  if (!isUint8Array(p.payload)) {
+    throw new FfmpegPackError('send-failed', 'packet.payload must be a Uint8Array');
+  }
+  if (p.sideData !== undefined && !isUint8Array(p.sideData)) {
+    throw new FfmpegPackError('send-failed', 'packet.sideData must be a Uint8Array');
+  }
+  if (p.ptsMs === undefined) {
+    throw new FfmpegPackError('send-failed', 'packet.ptsMs is required');
+  }
+  validateBigint(p.ptsMs, 'packet.ptsMs');
+  if (p.dtsMs !== undefined) {
+    validateBigint(p.dtsMs, 'packet.dtsMs');
+  }
+  if (p.durationMs !== undefined) {
+    validateBigint(p.durationMs, 'packet.durationMs');
+  }
+  if (p.epoch !== undefined) {
+    validateBigint(p.epoch, 'packet.epoch');
+  }
+  if (p.flags !== undefined) {
+    if (typeof p.flags !== 'number' || !Number.isInteger(p.flags) || p.flags < 0) {
+      throw new FfmpegPackError('send-failed', 'packet.flags must be a non-negative integer');
+    }
+  }
+}
+
 export interface FfmpegPack {
   readonly abiMajor: number;
   readonly abiMinor: number;
@@ -315,6 +360,7 @@ export class FfmpegPackImpl implements FfmpegPack {
 
   async send(packet: FfmpegPacket): Promise<void> {
     this.checkNotClosed();
+    validateFfmpegPacket(packet);
     if (!this.initialized) await this.init(0);
 
     const payloadPtr = this.copyToHeap(packet.payload);

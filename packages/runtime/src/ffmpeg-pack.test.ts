@@ -4,6 +4,7 @@ import {
   FfmpegPackError,
   PackReturnCode,
   type FfmpegPackModule,
+  type FfmpegPacket,
 } from './ffmpeg-pack';
 
 const PACK_ABI_VERSION_0_1 = (0 << 16) | 1;
@@ -139,5 +140,27 @@ describe('FfmpegPackImpl', () => {
     await expect(pack.send({ trackIndex: 0, payload: new Uint8Array(0), ptsMs: 0n })).rejects.toThrow(
       'pack is closed',
     );
+  });
+
+  it('throws for invalid send packets', async () => {
+    const module = makeFakeModule();
+    const pack = new FfmpegPackImpl(module);
+    const valid: FfmpegPacket = { trackIndex: 0, payload: new Uint8Array([1, 2, 3]), ptsMs: 100n };
+
+    await expect(pack.send(null as unknown as FfmpegPacket)).rejects.toThrow('packet must be an object');
+    await expect(pack.send({ ...valid, trackIndex: -1 })).rejects.toThrow('trackIndex');
+    await expect(pack.send({ ...valid, payload: 'bytes' as unknown as Uint8Array })).rejects.toThrow(
+      'payload',
+    );
+    await expect(pack.send({ ...valid, sideData: 'bytes' as unknown as Uint8Array })).rejects.toThrow(
+      'sideData',
+    );
+    await expect(pack.send({ ...valid, ptsMs: 100 as unknown as bigint })).rejects.toThrow('ptsMs');
+    await expect(pack.send({ ...valid, dtsMs: 100 as unknown as bigint })).rejects.toThrow('dtsMs');
+    await expect(pack.send({ ...valid, durationMs: 100 as unknown as bigint })).rejects.toThrow(
+      'durationMs',
+    );
+    await expect(pack.send({ ...valid, epoch: 100 as unknown as bigint })).rejects.toThrow('epoch');
+    await expect(pack.send({ ...valid, flags: -1 })).rejects.toThrow('flags');
   });
 });
