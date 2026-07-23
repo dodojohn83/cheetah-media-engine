@@ -18,6 +18,13 @@ describe('playback session protocol detection', () => {
     expect(detectProtocol('https://cdn.example/stream', 'http-fmp4')).toBe('http-fmp4');
   });
 
+  it('rejects invalid detectProtocol inputs', () => {
+    expect(() => detectProtocol(null as unknown as string)).toThrow('detectProtocol url must be a string');
+    expect(() => detectProtocol('https://cdn.example/stream', 'rtmp' as unknown as 'http-fmp4')).toThrow(
+      "detectProtocol hint must be a valid protocol or 'auto'",
+    );
+  });
+
   it('marks MSE-native and FLV-transmux protocols as supported by the session', () => {
     expect(protocolSupportedByMseSession('http-fmp4')).toBe(true);
     expect(protocolSupportedByMseSession('hls')).toBe(true);
