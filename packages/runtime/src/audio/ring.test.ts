@@ -40,6 +40,13 @@ describe('SharedAudioRingBuffer', () => {
     const metrics = ring.getMetrics();
     expect(metrics.available).toBe(0);
   });
+
+  it('rejects invalid constructor arguments', () => {
+    expect(() => new SharedAudioRingBuffer(null as unknown as SharedArrayBuffer, 8, 1)).toThrow('SharedArrayBuffer');
+    expect(() => new SharedAudioRingBuffer(new SharedArrayBuffer(32 + 8 * 1 * 4), 0, 1)).toThrow('capacity');
+    expect(() => new SharedAudioRingBuffer(new SharedArrayBuffer(32 + 8 * 1 * 4), 8, -1)).toThrow('channels');
+    expect(() => new SharedAudioRingBuffer(new SharedArrayBuffer(32), 8, 1)).toThrow('too small');
+  });
 });
 
 describe('LocalAudioRingBuffer', () => {
@@ -56,5 +63,10 @@ describe('LocalAudioRingBuffer', () => {
     ring.reportOverrun(2);
     const metrics = ring.getMetrics();
     expect(metrics.overrun).toBe(2);
+  });
+
+  it('rejects invalid constructor arguments', () => {
+    expect(() => new LocalAudioRingBuffer(0, 1)).toThrow('capacity');
+    expect(() => new LocalAudioRingBuffer(8, NaN)).toThrow('channels');
   });
 });

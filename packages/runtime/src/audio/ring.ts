@@ -46,6 +46,23 @@ export interface AudioRingBuffer {
   getMetrics(): AudioRingMetrics;
 }
 
+function isSharedArrayBuffer(value: unknown): value is SharedArrayBuffer {
+  if (typeof SharedArrayBuffer !== 'undefined' && value instanceof SharedArrayBuffer) return true;
+  return Object.prototype.toString.call(value) === '[object SharedArrayBuffer]';
+}
+
+function validateRingCapacity(capacity: number, label: string): void {
+  if (!Number.isFinite(capacity) || capacity <= 0 || !Number.isInteger(capacity)) {
+    throw new Error(`${label} must be a finite positive integer`);
+  }
+}
+
+function validateChannels(channels: number, label: string): void {
+  if (!Number.isFinite(channels) || channels <= 0 || !Number.isInteger(channels)) {
+    throw new Error(`${label} must be a finite positive integer`);
+  }
+}
+
 export class SharedAudioRingBuffer implements AudioRingBuffer {
   private sab: SharedArrayBuffer;
   private state: Int32Array;
@@ -55,15 +72,28 @@ export class SharedAudioRingBuffer implements AudioRingBuffer {
   private localGeneration = 0;
 
   constructor(sharedArrayBuffer: SharedArrayBuffer, capacity: number, channels: number) {
+    if (!sharedArrayBuffer || typeof sharedArrayBuffer !== 'object' || !isSharedArrayBuffer(sharedArrayBuffer)) {
+      throw new Error('SharedAudioRingBuffer sharedArrayBuffer must be a SharedArrayBuffer');
+    }
+    if (typeof sharedArrayBuffer.byteLength !== 'number' || !Number.isFinite(sharedArrayBuffer.byteLength)) {
+      throw new Error('SharedAudioRingBuffer sharedArrayBuffer byteLength must be finite');
+    }
+    validateRingCapacity(capacity, 'SharedAudioRingBuffer capacity');
+    validateChannels(channels, 'SharedAudioRingBuffer channels');
+
     this.sab = sharedArrayBuffer;
-    const required = STATE_BYTES + capacity * channels * 4;
+    const sampleCount = capacity * channels;
+    if (!Number.isFinite(sampleCount) || sampleCount > Number.MAX_SAFE_INTEGER / 4) {
+      throw new Error('SharedAudioRingBuffer capacity * channels too large');
+    }
+    const required = STATE_BYTES + sampleCount * 4;
     if (sharedArrayBuffer.byteLength < required) {
       throw new Error(
         `SharedArrayBuffer too small: ${sharedArrayBuffer.byteLength} < ${required}`,
       );
     }
     this.state = new Int32Array(sharedArrayBuffer, 0, STATE_SLOTS);
-    this.samples = new Float32Array(sharedArrayBuffer, STATE_BYTES, capacity * channels);
+    this.samples = new Float32Array(sharedArrayBuffer, STATE_BYTES, sampleCount);
     this._capacity = capacity;
     this._channels = channels;
     this.state[IDX_CAPACITY] = capacity;
@@ -177,9 +207,15 @@ export class LocalAudioRingBuffer implements AudioRingBuffer {
   private generation = 0;
 
   constructor(capacity: number, channels: number) {
+    validateRingCapacity(capacity, 'LocalAudioRingBuffer capacity');
+    validateChannels(channels, 'LocalAudioRingBuffer channels');
+    const sampleCount = capacity * channels;
+    if (!Number.isFinite(sampleCount) || sampleCount > Number.MAX_SAFE_INTEGER / 4) {
+      throw new Error('LocalAudioRingBuffer capacity * channels too large');
+    }
     this._capacity = capacity;
     this._channels = channels;
-    this.samples = new Float32Array(capacity * channels);
+    this.samples = new Float32Array(sampleCount);
   }
 
   get capacity(): number {
