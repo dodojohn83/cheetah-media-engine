@@ -130,6 +130,11 @@ interface Sample {
   key: boolean;
 }
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  if (typeof Uint8Array !== 'undefined' && value instanceof Uint8Array) return true;
+  return Object.prototype.toString.call(value) === '[object Uint8Array]';
+}
+
 /**
  * Incremental MPEG-TS → fMP4 for H.264 (+ optional AAC ADTS in stream type 0x0f).
  */
@@ -156,6 +161,9 @@ export class TsFmp4TransmuxerJs {
   private readonly maxBuffer = 32 * 1024 * 1024;
 
   push(chunk: Uint8Array): void {
+    if (!isUint8Array(chunk)) {
+      throw new Error('TsFmp4TransmuxerJs.push chunk must be a Uint8Array');
+    }
     if (chunk.length === 0) return;
     if (this.buffer.length + chunk.length > this.maxBuffer) {
       throw new Error('TS buffer exceeded limit');

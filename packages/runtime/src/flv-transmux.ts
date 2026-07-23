@@ -233,6 +233,11 @@ interface AudioState {
 /**
  * Incremental FLV → fMP4 transmuxer (H.264 + AAC).
  */
+function isUint8Array(value: unknown): value is Uint8Array {
+  if (typeof Uint8Array !== 'undefined' && value instanceof Uint8Array) return true;
+  return Object.prototype.toString.call(value) === '[object Uint8Array]';
+}
+
 export class FlvFmp4TransmuxerJs {
   private buffer: Uint8Array = new Uint8Array(0);
   private headerParsed = false;
@@ -250,7 +255,12 @@ export class FlvFmp4TransmuxerJs {
   private readonly maxSamples = 40;
 
   push(chunk: Uint8Array): void {
-    if (this.errored || chunk.length === 0) return;
+    if (this.errored) return;
+    if (!isUint8Array(chunk)) {
+      this.errored = true;
+      throw new Error('FlvFmp4TransmuxerJs.push chunk must be a Uint8Array');
+    }
+    if (chunk.length === 0) return;
     if (this.buffer.length + chunk.length > this.maxBuffer) {
       this.errored = true;
       throw new Error('FLV buffer exceeded limit');
