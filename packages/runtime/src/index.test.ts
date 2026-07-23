@@ -80,6 +80,23 @@ describe('messages', () => {
     expect(() => decodeEnvelope('not json')).toThrow('Malformed envelope');
     expect(() => decodeEnvelope('{invalid')).toThrow('Malformed envelope');
   });
+
+  it('rejects malformed envelopes in encodeEnvelope', () => {
+    const base = {
+      protocolVersion: 1,
+      instance: 1,
+      epoch: 1,
+      sequence: 1,
+      type: 'load',
+    } as const;
+    expect(() => encodeEnvelope(undefined as unknown as typeof base)).toThrow('Envelope must be an object');
+    expect(() => encodeEnvelope({ ...base, instance: NaN } as unknown as typeof base)).toThrow('Malformed envelope');
+    expect(() => encodeEnvelope({ ...base, sequence: -1 } as unknown as typeof base)).toThrow('Malformed envelope');
+    expect(() => encodeEnvelope({ ...base, type: 'unknown' } as unknown as typeof base)).toThrow('Malformed envelope');
+    expect(() => encodeEnvelope({ ...base, protocolVersion: 2 } as unknown as typeof base)).toThrow(
+      'Unsupported protocol version 2',
+    );
+  });
 });
 
 describe('createRuntime validation', () => {

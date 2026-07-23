@@ -156,9 +156,7 @@ export interface DiagnosticsPayload {
 }
 
 export function encodeEnvelope(envelope: Envelope): string {
-  if (envelope.protocolVersion !== PROTOCOL_VERSION) {
-    throw new Error(`Unsupported protocol version ${envelope.protocolVersion}`);
-  }
+  validateEnvelope(envelope);
   return JSON.stringify(envelope);
 }
 
@@ -193,24 +191,29 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && Number.isInteger(value);
 }
 
+function validateEnvelope(envelope: unknown): asserts envelope is Envelope {
+  if (!envelope || typeof envelope !== 'object') {
+    throw new Error('Envelope must be an object');
+  }
+  const e = envelope as Partial<Envelope>;
+  if (e.protocolVersion !== PROTOCOL_VERSION) {
+    throw new Error(`Unsupported protocol version ${e.protocolVersion}`);
+  }
+  if (!isNonNegativeInteger(e.instance) || !isNonNegativeInteger(e.epoch) || !isNonNegativeInteger(e.sequence)) {
+    throw new Error('Malformed envelope');
+  }
+  if (typeof e.type !== 'string' || !VALID_MESSAGE_TYPES.has(e.type)) {
+    throw new Error('Malformed envelope');
+  }
+}
+
 export function decodeEnvelope(data: string): Envelope {
-  let parsed: Envelope;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(data) as Envelope;
+    parsed = JSON.parse(data);
   } catch {
     throw new Error('Malformed envelope');
   }
-  if (parsed.protocolVersion !== PROTOCOL_VERSION) {
-    throw new Error(`Unsupported protocol version ${parsed.protocolVersion}`);
-  }
-  if (
-    !isNonNegativeInteger(parsed.instance) ||
-    !isNonNegativeInteger(parsed.epoch) ||
-    !isNonNegativeInteger(parsed.sequence) ||
-    typeof parsed.type !== 'string' ||
-    !VALID_MESSAGE_TYPES.has(parsed.type)
-  ) {
-    throw new Error('Malformed envelope');
-  }
+  validateEnvelope(parsed);
   return parsed;
 }
