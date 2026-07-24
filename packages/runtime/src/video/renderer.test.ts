@@ -323,4 +323,8 @@ describe('Color conversion', () => {
     expect(rgb[1]).toBeCloseTo(0, 3);
     expect(rgb[2]).toBeCloseTo(0, 3);
   });
+
+  it('rejects non-boolean fullRange', () => {
+    expect(() => getColorRange('true' as unknown as boolean)).toThrow('fullRange must be a boolean');
+  });
 });
