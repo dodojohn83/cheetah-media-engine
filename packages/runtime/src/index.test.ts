@@ -29,6 +29,21 @@ describe('messages', () => {
     expect(decodeEnvelope(encodeEnvelope(envelope))).toEqual(envelope);
   });
 
+  it('encodes BigInt payload values as strings instead of throwing', () => {
+    const envelope = {
+      protocolVersion: 1,
+      instance: 1,
+      epoch: 1,
+      sequence: 1,
+      type: 'output' as const,
+      payload: { slot: 0, generation: 1n },
+    };
+    const encoded = encodeEnvelope(envelope);
+    expect(encoded).toContain('"generation":"1"');
+    const decoded = decodeEnvelope(encoded);
+    expect((decoded.payload as { generation: string }).generation).toBe('1');
+  });
+
   it('rejects unsupported protocol versions', () => {
     const bad = { ...JSON.parse(encodeEnvelope({
       protocolVersion: 1,
