@@ -96,4 +96,11 @@ describe('fmp4 helpers', () => {
     mismatched[3] = 10; // declared size 10, actual 11
     expect(() => builder.feed(mismatched)).toThrow('declared box length');
   });
+
+  it('rejects non-finite or non-positive maxBytes', () => {
+    expect(() => new Fmp4BoxAccumulator(NaN)).toThrow('maxBytes must be a finite positive number');
+    expect(() => new Fmp4BoxAccumulator(0)).toThrow('maxBytes must be a finite positive number');
+    expect(() => new Fmp4BoxAccumulator(-1)).toThrow('maxBytes must be a finite positive number');
+    expect(() => new Fmp4BoxAccumulator(Infinity)).toThrow('maxBytes must be a finite positive number');
+  });
 });
