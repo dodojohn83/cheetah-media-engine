@@ -15,9 +15,9 @@ export interface SnapshotEncoderOptions {
   readonly format?: SnapshotFormat | undefined;
   /** Compression quality for lossy formats, 0..1. */
   readonly quality?: number | undefined;
-  /** Maximum width in CSS pixels; the image is scaled down preserving aspect ratio. */
+  /** Maximum width in CSS pixels; 0 means unconstrained. */
   readonly maxWidth?: number | undefined;
-  /** Maximum height in CSS pixels; the image is scaled down preserving aspect ratio. */
+  /** Maximum height in CSS pixels; 0 means unconstrained. */
   readonly maxHeight?: number | undefined;
   /** Whether to include on-screen overlays (not yet implemented). */
   readonly includeOverlay?: boolean | undefined;
@@ -62,15 +62,25 @@ export function validateSnapshotEncoderOptions(raw: unknown): SnapshotEncoderOpt
   }
 
   if ('maxWidth' in opts && opts.maxWidth !== undefined) {
-    if (typeof opts.maxWidth !== 'number' || !Number.isFinite(opts.maxWidth) || opts.maxWidth <= 0) {
-      throw new RendererError('invalid-option', 'snapshot maxWidth must be a finite positive number');
+    if (
+      typeof opts.maxWidth !== 'number' ||
+      !Number.isFinite(opts.maxWidth) ||
+      !Number.isInteger(opts.maxWidth) ||
+      opts.maxWidth < 0
+    ) {
+      throw new RendererError('invalid-option', 'snapshot maxWidth must be a finite non-negative integer');
     }
     result.maxWidth = opts.maxWidth;
   }
 
   if ('maxHeight' in opts && opts.maxHeight !== undefined) {
-    if (typeof opts.maxHeight !== 'number' || !Number.isFinite(opts.maxHeight) || opts.maxHeight <= 0) {
-      throw new RendererError('invalid-option', 'snapshot maxHeight must be a finite positive number');
+    if (
+      typeof opts.maxHeight !== 'number' ||
+      !Number.isFinite(opts.maxHeight) ||
+      !Number.isInteger(opts.maxHeight) ||
+      opts.maxHeight < 0
+    ) {
+      throw new RendererError('invalid-option', 'snapshot maxHeight must be a finite non-negative integer');
     }
     result.maxHeight = opts.maxHeight;
   }
@@ -121,9 +131,10 @@ export interface CanvasLike {
 export interface CanvasRenderingContext2DLike {
   putImageData(imagedata: ImageData, dx: number, dy: number): void;
   drawImage(image: unknown, dx: number, dy: number, dw: number, dh: number): void;
+  getImageData(sx: number, sy: number, sw: number, sh: number): ImageData;
 }
 
-function createCanvas(width: number, height: number): CanvasLike {
+export function createCanvas(width: number, height: number): CanvasLike {
   if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
     const canvas = document.createElement('canvas');
     canvas.width = width;

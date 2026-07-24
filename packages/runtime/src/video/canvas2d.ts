@@ -14,7 +14,7 @@ import type {
 } from './types';
 import { RendererError } from './types';
 import { RendererSurface } from './surface';
-import { validateSnapshotEncoderOptions } from './snapshot-encoder';
+import { validateSnapshotEncoderOptions, computeTargetSize, createCanvas } from './snapshot-encoder';
 
 export class Canvas2DRenderer implements Renderer {
   readonly identity = 'canvas2d';
@@ -96,23 +96,21 @@ export class Canvas2DRenderer implements Renderer {
     const canvas = this.surface.getCanvas();
     const w = canvas.width;
     const h = canvas.height;
-    if (options.maxWidth && options.maxHeight) {
-      const scale = Math.min(1, options.maxWidth / w, options.maxHeight / h);
-      const sw = Math.max(1, Math.floor(w * scale));
-      const sh = Math.max(1, Math.floor(h * scale));
-      const tmp = new OffscreenCanvas(sw, sh);
-      const tmpCtx = tmp.getContext('2d');
-      if (!tmpCtx) {
-        throw new RendererError('no-context', 'Cannot create snapshot canvas context');
-      }
-      tmpCtx.drawImage(this.ctx.canvas as unknown as CanvasImageSource, 0, 0, sw, sh);
-      const data = tmpCtx.getImageData(0, 0, sw, sh);
+    const { width, height } = computeTargetSize(w, h, options.maxWidth, options.maxHeight);
+    if (width === w && height === h) {
+      const data = this.ctx.getImageData(0, 0, w, h);
       this.metrics.snapshotsTaken += 1;
-      return { width: sw, height: sh, data };
+      return { width: w, height: h, data };
     }
-    const data = this.ctx.getImageData(0, 0, w, h);
+    const tmp = createCanvas(width, height);
+    const tmpCtx = tmp.getContext('2d');
+    if (!tmpCtx) {
+      throw new RendererError('no-context', 'Cannot create snapshot canvas context');
+    }
+    tmpCtx.drawImage(this.ctx.canvas as unknown as CanvasImageSource, 0, 0, width, height);
+    const data = tmpCtx.getImageData(0, 0, width, height);
     this.metrics.snapshotsTaken += 1;
-    return { width: w, height: h, data };
+    return { width, height, data };
   }
 
   getMetrics(): RendererMetrics {
