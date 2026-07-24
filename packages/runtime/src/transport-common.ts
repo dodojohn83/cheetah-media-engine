@@ -135,6 +135,9 @@ export function validateTransportConfig(config: TransportConfig): TransportError
       return makeError(TransportErrorCode.InvalidConfig, headersError, false);
     }
   }
+  if (config.method !== undefined && config.method !== 'GET' && config.method !== 'POST') {
+    return makeError(TransportErrorCode.InvalidConfig, 'method must be GET or POST', false);
+  }
   return undefined;
 }
 
