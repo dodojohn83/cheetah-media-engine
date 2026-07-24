@@ -140,6 +140,9 @@ export class Fmp4BoxAccumulator {
   private readonly maxBytes: number;
 
   constructor(maxBytes = 64 * 1024 * 1024) {
+    if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+      throw new Error('Fmp4BoxAccumulator maxBytes must be a finite positive number');
+    }
     this.maxBytes = maxBytes;
   }
 
