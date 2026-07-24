@@ -51,7 +51,11 @@ export interface HTMLVideoElementLike {
   play(): Promise<void> | undefined;
   pause(): void;
   load(): void;
-  addEventListener(type: string, listener: (event?: unknown) => void): void;
+  addEventListener(
+    type: string,
+    listener: (event?: unknown) => void,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
   removeEventListener(type: string, listener: (event?: unknown) => void): void;
 }
 

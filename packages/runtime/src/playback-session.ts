@@ -138,6 +138,7 @@ export class PlaybackSession {
   private generation = 0;
   private statsTimer: ReturnType<typeof setInterval> | undefined;
   private stopController: AbortController | undefined;
+  private videoEventController: AbortController | undefined;
 
   constructor(options: PlaybackSessionOptions) {
     if (!options || typeof options !== 'object') {
@@ -322,21 +323,36 @@ export class PlaybackSession {
 
   async seek(timeMs: number): Promise<void> {
     if (!this.mse) throw new Error('Session not started');
+    if (!Number.isFinite(timeMs) || timeMs < 0) {
+      throw new Error('seek timeMs must be a finite non-negative number');
+    }
     await this.mse.seek(timeMs);
   }
 
   async setPlaybackRate(rate: number): Promise<void> {
     if (!this.mse) throw new Error('Session not started');
+    if (!Number.isFinite(rate) || rate < 0.1 || rate > 16) {
+      throw new Error('playback rate must be between 0.1 and 16');
+    }
     await this.mse.setPlaybackRate?.(rate);
   }
 
   async frameStep(direction: 'forward' | 'backward', keyframeOnly = false): Promise<void> {
     if (!this.mse) throw new Error('Session not started');
+    if (direction !== 'forward' && direction !== 'backward') {
+      throw new Error('frameStep direction must be forward or backward');
+    }
+    if (typeof keyframeOnly !== 'boolean') {
+      throw new Error('frameStep keyframeOnly must be a boolean');
+    }
     await this.mse.frameStep?.(direction, keyframeOnly);
   }
 
   async pauseDisplay(keepConnection = true): Promise<void> {
     if (!this.mse) throw new Error('Session not started');
+    if (typeof keepConnection !== 'boolean') {
+      throw new Error('pauseDisplay keepConnection must be a boolean');
+    }
     await this.mse.pauseDisplay?.(keepConnection);
   }
 
@@ -346,6 +362,7 @@ export class PlaybackSession {
     this.generation += 1;
     this.stopStats();
     this.stopController?.abort();
+    this.videoEventController?.abort();
     this.transport?.stop();
     this.transport = undefined;
     if (this.mse) {
@@ -364,6 +381,9 @@ export class PlaybackSession {
 
   private bindVideoEvents(gen: number): void {
     const video = this.options.videoElement;
+    this.videoEventController?.abort();
+    this.videoEventController = new AbortController();
+    const signal = this.videoEventController.signal;
     const onPlaying = () => {
       if (this.generation !== gen || this.stopped) return;
       if (!this.firstFrameEmitted) {
@@ -384,10 +404,10 @@ export class PlaybackSession {
       if (this.generation !== gen || this.stopped) return;
       this.emit({ type: 'state', state: 'ended' });
     };
-    video.addEventListener('playing', onPlaying);
-    video.addEventListener('waiting', onWaiting);
-    video.addEventListener('pause', onPause);
-    video.addEventListener('ended', onEnded);
+    video.addEventListener('playing', onPlaying, { signal });
+    video.addEventListener('waiting', onWaiting, { signal });
+    video.addEventListener('pause', onPause, { signal });
+    video.addEventListener('ended', onEnded, { signal });
   }
 
   private startStats(gen: number): void {
