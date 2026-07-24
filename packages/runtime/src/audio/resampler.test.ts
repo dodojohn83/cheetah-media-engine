@@ -92,4 +92,12 @@ describe('AudioResampler', () => {
     expect(() => new AudioResampler({ inputSampleRate: 48000, outputSampleRate: 48000, channels: 1, minRatio: NaN })).toThrow();
     expect(() => new AudioResampler({ inputSampleRate: 48000, outputSampleRate: 48000, channels: 1, minRatio: 1.1, maxRatio: 1.0 })).toThrow();
   });
+
+  it('rejects non-Float32Array or non-array push input', () => {
+    const resampler = new AudioResampler({ inputSampleRate: 48000, outputSampleRate: 48000, channels: 1 });
+    expect(() => resampler.push(null as unknown as Float32Array[])).toThrow('push frames must be an array');
+    expect(() => resampler.push([new Int16Array([1, 2]) as unknown as Float32Array])).toThrow(
+      'push frames must contain only Float32Array instances',
+    );
+  });
 });
