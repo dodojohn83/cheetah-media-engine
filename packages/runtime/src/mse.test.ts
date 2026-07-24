@@ -566,6 +566,36 @@ describe('MseBackend', () => {
     await expect(stepPromise).resolves.toBeUndefined();
     await backend.stop();
   });
+
+  it('pushSegment rejects non-Uint8Array data', async () => {
+    const backend = new MseBackend(ctx, makeOptions());
+    await backend.configure();
+    expect(() => backend.pushSegment('not-bytes' as unknown as Uint8Array)).toThrow('pushSegment data must be a Uint8Array');
+    await backend.stop();
+  });
+
+  it('pushSegment validates numeric append window options', async () => {
+    const backend = new MseBackend(ctx, makeOptions());
+    await backend.configure();
+    expect(() => backend.pushSegment(new Uint8Array([1]), { timestampOffset: NaN })).toThrow('timestampOffset must be a finite number');
+    expect(() => backend.pushSegment(new Uint8Array([1]), { appendWindowStart: Infinity })).toThrow('appendWindowStart must be a finite number');
+    expect(() => backend.pushSegment(new Uint8Array([1]), { appendWindowEnd: -Infinity })).toThrow('appendWindowEnd must be a finite number');
+    await backend.stop();
+  });
+
+  it('pauseDisplay rejects non-boolean keepConnection', async () => {
+    const backend = new MseBackend(ctx, makeOptions());
+    await backend.configure();
+    await expect(backend.pauseDisplay('true' as unknown as boolean)).rejects.toThrow('keepConnection must be a boolean');
+    await backend.stop();
+  });
+
+  it('frameStep rejects non-boolean keyframeOnly', async () => {
+    const backend = new MseBackend(ctx, makeOptions());
+    await backend.configure();
+    await expect(backend.frameStep('forward', 'true' as unknown as boolean)).rejects.toThrow('keyframeOnly must be a boolean');
+    await backend.stop();
+  });
 });
 
 async function flushMicrotasks(count = 10): Promise<void> {
