@@ -12,6 +12,7 @@ import {
   type AiFrameProcessor,
   type ProcessableFrame,
   type AiFrameBudget,
+  type DownloadOptions,
 } from './index';
 import { type EngineRuntime } from '@cheetah-media/runtime';
 
@@ -452,6 +453,15 @@ describe('web sdk', () => {
       await expect(player.startDownload({ url: 'ftp://example.com/video.mp4' })).rejects.toBeInstanceOf(
         CheetahMediaError,
       );
+    });
+
+    it('rejects invalid download options', async () => {
+      const player = playerWithMock();
+      await expect(player.startDownload(null as unknown as DownloadOptions)).rejects.toBeInstanceOf(
+        CheetahMediaError,
+      );
+      await expect(player.startDownload({ url: '' } as DownloadOptions)).rejects.toBeInstanceOf(CheetahMediaError);
+      await expect(player.startDownload({} as DownloadOptions)).rejects.toBeInstanceOf(CheetahMediaError);
     });
 
     it('does not save a partial file when a download is paused', async () => {

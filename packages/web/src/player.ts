@@ -1528,8 +1528,14 @@ export class CheetahPlayerImpl implements CheetahPlayer {
 
   async startDownload(options: DownloadOptions): Promise<DownloadResult> {
     this.guardDestroyed();
+    if (!options || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Download options must be an object', { recoverable: true });
+    }
     if (this._downloadController) {
       throw new CheetahMediaError(6002, 'sdk', 'Download already active', { recoverable: true });
+    }
+    if (typeof options.url !== 'string' || options.url.length === 0) {
+      throw new CheetahMediaError(7001, 'download', 'URL must be a non-empty string', { recoverable: false });
     }
     let url: URL;
     try {
