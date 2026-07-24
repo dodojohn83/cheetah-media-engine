@@ -58,7 +58,7 @@ const FORMAT_TO_CATEGORY: Record<string, FormatCategory> = {
 };
 
 function parseFormat(format: string): FormatCategory | undefined {
-  const f = format.toLowerCase();
+  const f = typeof format === 'string' ? format.toLowerCase() : '';
   return FORMAT_TO_CATEGORY[f];
 }
 
