@@ -101,4 +101,16 @@ describe('extractPlanarF32', () => {
     };
     expect(() => extractPlanarF32(frame, 1)).toThrow('must provide data or copyTo');
   });
+
+  it('throws for malformed planar data planes', () => {
+    const frame: AudioFrame = {
+      timestamp: 0,
+      sampleRate: 48000,
+      channels: 2,
+      numberOfFrames: 3,
+      format: 'f32-planar',
+      data: [new Float32Array([1, 2, 3]), undefined as unknown as Float32Array],
+    };
+    expect(() => extractPlanarF32(frame, 2)).toThrow('data planes must be');
+  });
 });
