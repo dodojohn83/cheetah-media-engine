@@ -353,5 +353,14 @@ describe('StreamDownloader', () => {
     const dl = new StreamDownloader();
     await expect(dl.start({ url: 'https://example.com/video.mp4', sink: undefined as unknown as { write: () => void; close: () => void } })).rejects.toMatchObject({ code: 7016 });
     await expect(dl.start({ ...makeOptions('https://example.com/video.mp4', { write: () => undefined, close: () => undefined }), timeoutMs: NaN })).rejects.toMatchObject({ code: 7016 });
+    await expect(
+      dl.start({ ...makeOptions('https://example.com/video.mp4'), onProgress: 'not a function' as unknown as () => void }),
+    ).rejects.toMatchObject({ code: 7016 });
+    await expect(
+      dl.start({ ...makeOptions('https://example.com/video.mp4'), onError: 'not a function' as unknown as () => void }),
+    ).rejects.toMatchObject({ code: 7016 });
+    await expect(
+      dl.start({ ...makeOptions('https://example.com/video.mp4'), onComplete: 'not a function' as unknown as () => void }),
+    ).rejects.toMatchObject({ code: 7016 });
   });
 });
