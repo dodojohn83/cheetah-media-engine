@@ -1333,6 +1333,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
   }
 
   private validateSnapshotOptions(options: { maxWidth?: number; maxHeight?: number }): void {
+    if (!options || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'Snapshot options must be an object', { recoverable: true });
+    }
     if (options.maxWidth !== undefined) {
       if (!Number.isFinite(options.maxWidth) || options.maxWidth < 0 || options.maxWidth % 1 !== 0) {
         throw new CheetahMediaError(6002, 'sdk', 'maxWidth must be a non-negative integer', { recoverable: true });
