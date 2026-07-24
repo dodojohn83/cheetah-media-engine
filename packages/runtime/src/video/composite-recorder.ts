@@ -127,8 +127,10 @@ function getSourceSize(source: CanvasImageSource | ImageData): { width: number; 
       return { width, height };
     }
   } else if (typeof HTMLImageElement !== 'undefined' && source instanceof HTMLImageElement) {
-    const width = source.width;
-    const height = source.height;
+    // Use intrinsic dimensions, not the layout width/height, so an image that is
+    // styled or scaled to 0px does not prevent composite recording.
+    const width = source.naturalWidth;
+    const height = source.naturalHeight;
     if (width > 0 && height > 0) {
       return { width, height };
     }

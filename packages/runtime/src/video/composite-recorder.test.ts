@@ -286,4 +286,24 @@ describe('CompositeRecorder', () => {
     const recorder = new CompositeRecorder();
     await expect(recorder.start(makeOptions(source))).rejects.toBeInstanceOf(RendererError);
   });
+
+  it('uses intrinsic image dimensions when the image element has zero layout size', async () => {
+    const originalHTMLImageElement = (globalThis as unknown as { HTMLImageElement?: unknown }).HTMLImageElement;
+    (globalThis as unknown as { HTMLImageElement: unknown }).HTMLImageElement = MockImageElement;
+    try {
+      const image: any = new MockImageElement();
+      image.width = 0;
+      image.height = 0;
+      image.naturalWidth = 128;
+      image.naturalHeight = 64;
+      const recorder = new CompositeRecorder();
+      await recorder.start(makeOptions(image as unknown as CanvasImageSource));
+      flushRaf();
+      const result = await recorder.stop();
+      expect(result.blob).toBeTruthy();
+      expect(recorder.recordingActive).toBe(false);
+    } finally {
+      (globalThis as unknown as { HTMLImageElement?: unknown }).HTMLImageElement = originalHTMLImageElement;
+    }
+  });
 });
