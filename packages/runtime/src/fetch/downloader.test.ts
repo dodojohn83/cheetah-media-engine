@@ -85,6 +85,12 @@ describe('StreamDownloader', () => {
     await expect(dl.start({ ...base, method: 'GET', body: 'payload' })).rejects.toMatchObject({ code: 7016 });
   });
 
+  it('rejects non-object options', async () => {
+    const dl = new StreamDownloader();
+    await expect(dl.start(null as unknown as DownloadOptions)).rejects.toMatchObject({ code: 7016 });
+    await expect(dl.start(undefined as unknown as DownloadOptions)).rejects.toMatchObject({ code: 7016 });
+  });
+
   it('reports HTTP errors', async () => {
     const dl = new StreamDownloader();
     await expect(dl.start(makeOptions('https://example.com/fail'))).rejects.toMatchObject({ code: 7004 });
@@ -100,6 +106,16 @@ describe('StreamDownloader', () => {
       transform: (chunk) => (chunk.length > 2 ? chunk : undefined),
     });
     expect(sink.getBlob().size).toBe(3);
+  });
+
+  it('rejects transform output that is not a Uint8Array or undefined', async () => {
+    const dl = new StreamDownloader();
+    await expect(
+      dl.start({
+        ...makeOptions('https://example.com/video.mp4'),
+        transform: () => 'not-bytes' as unknown as Uint8Array,
+      }),
+    ).rejects.toMatchObject({ code: 7016 });
   });
 
   it('calls onProgress for each chunk', async () => {

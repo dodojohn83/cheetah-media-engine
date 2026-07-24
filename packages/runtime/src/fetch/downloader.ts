@@ -63,15 +63,15 @@ export class StreamDownloader {
   }
 
   async start(options: DownloadOptions): Promise<DownloadResult> {
-    const urlError = validateUrl(options.url);
-    if (urlError) {
-      this.report(options, urlError);
-      throw urlError;
-    }
     const configError = validateDownloadOptions(options);
     if (configError) {
       this.report(options, configError);
       throw configError;
+    }
+    const urlError = validateUrl(options.url);
+    if (urlError) {
+      this.report(options, urlError);
+      throw urlError;
     }
     if (this.state === 'running') {
       const err = makeError(TransportErrorCode.Canceled, 'Download already running', false);
@@ -125,15 +125,15 @@ export class StreamDownloader {
       this.report(options, err);
       throw err;
     }
-    const urlError = validateUrl(options.url);
-    if (urlError) {
-      this.report(options, urlError);
-      throw urlError;
-    }
     const configError = validateDownloadOptions(options);
     if (configError) {
       this.report(options, configError);
       throw configError;
+    }
+    const urlError = validateUrl(options.url);
+    if (urlError) {
+      this.report(options, urlError);
+      throw urlError;
     }
 
     this.state = 'running';
@@ -244,11 +244,26 @@ export class StreamDownloader {
           }
           if (done || !value) break;
           this.bytesReceived += value.length;
-          const chunk = options.transform ? options.transform(value) : value;
-          if (chunk) {
-            await options.sink.write(chunk);
-            this.bytesWritten += chunk.length;
+          let chunk: Uint8Array | undefined;
+          if (options.transform) {
+            chunk = options.transform(value);
+            if (chunk === undefined) {
+              options.onProgress?.(this.progress);
+              startTimer();
+              continue;
+            }
+            if (!isUint8Array(chunk)) {
+              throw makeError(
+                TransportErrorCode.InvalidConfig,
+                'download transform must return a Uint8Array or undefined',
+                false,
+              );
+            }
+          } else {
+            chunk = value;
           }
+          await options.sink.write(chunk);
+          this.bytesWritten += chunk.length;
           options.onProgress?.(this.progress);
           startTimer();
         }
@@ -269,9 +284,9 @@ export class StreamDownloader {
     }
   }
 
-  private report(options: DownloadOptions, error: TransportError): void {
+  private report(options: DownloadOptions | null | undefined, error: TransportError): void {
     try {
-      options.onError?.(error);
+      options?.onError?.(error);
     } catch {
       // User error handler must not break the downloader.
     }
@@ -300,6 +315,9 @@ export class StreamDownloader {
 }
 
 function validateDownloadOptions(options: DownloadOptions): TransportError | undefined {
+  if (!options || typeof options !== 'object') {
+    return makeError(INVALID_CONFIG_CODE, 'download options must be an object', false);
+  }
   if (!options.sink || typeof options.sink.write !== 'function' || typeof options.sink.close !== 'function') {
     return makeError(INVALID_CONFIG_CODE, 'sink must have write and close methods', false);
   }
