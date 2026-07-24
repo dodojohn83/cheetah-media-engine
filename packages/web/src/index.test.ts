@@ -171,6 +171,16 @@ describe('web sdk', () => {
     expect(states).toContain('idle');
   });
 
+  it('rejects non-object load options', async () => {
+    const player = playerWithMock();
+    await expect(player.load('http://example.com/test.flv', null as unknown as { isLive?: boolean })).rejects.toBeInstanceOf(
+      CheetahMediaError,
+    );
+    await expect(player.load('http://example.com/test.flv', 'bad' as unknown as { isLive?: boolean })).rejects.toBeInstanceOf(
+      CheetahMediaError,
+    );
+  });
+
   it('play and pause change state', () => {
     const player = playerWithMock();
     player.play();

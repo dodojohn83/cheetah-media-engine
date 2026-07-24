@@ -880,6 +880,9 @@ export class CheetahPlayerImpl implements CheetahPlayer {
     if (typeof url !== 'string' || url.length === 0) {
       throw new CheetahMediaError(7001, 'load', 'URL must be a non-empty string', { recoverable: false });
     }
+    if (options === null || typeof options !== 'object') {
+      throw new CheetahMediaError(6002, 'sdk', 'load options must be an object', { recoverable: true });
+    }
     if (options.isLive !== undefined && typeof options.isLive !== 'boolean') {
       throw new CheetahMediaError(6002, 'sdk', 'isLive must be a boolean', { recoverable: true });
     }
