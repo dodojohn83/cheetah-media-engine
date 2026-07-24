@@ -86,6 +86,43 @@ describe('PlaybackSession constructor validation', () => {
   });
 });
 
+describe('PlaybackSession start lifecycle', () => {
+  function makeElement(): HTMLVideoElement {
+    return {
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      play: () => undefined,
+      pause: () => undefined,
+      load: () => undefined,
+      srcObject: null,
+      src: '',
+      currentTime: 0,
+      playbackRate: 1,
+      paused: true,
+      ended: false,
+      readyState: 0,
+      buffered: { length: 0 },
+      duration: NaN,
+      error: null,
+      videoWidth: 0,
+      videoHeight: 0,
+    } as unknown as HTMLVideoElement;
+  }
+
+  it('resets started/starting after MSE configure failure so start can be retried', async () => {
+    const session = new PlaybackSession({
+      videoElement: makeElement(),
+      url: 'https://x/a.mp4',
+      protocol: 'http-fmp4',
+    } as any);
+    await expect(session.start()).rejects.toThrow();
+    expect((session as any).started).toBe(false);
+    expect((session as any).starting).toBe(false);
+    // A second start attempt should not short-circuit; it should try again and fail.
+    await expect(session.start()).rejects.toThrow();
+  });
+});
+
 describe('PlaybackSession method validation', () => {
   function makeElement(): HTMLVideoElement {
     return {

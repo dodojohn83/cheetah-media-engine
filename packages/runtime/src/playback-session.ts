@@ -132,6 +132,7 @@ export class PlaybackSession {
   private mse: MseBackend | undefined;
   private stopped = false;
   private started = false;
+  private starting = false;
   private networkBytes = 0;
   private firstFrameEmitted = false;
   private wantPlay = false;
@@ -203,12 +204,14 @@ export class PlaybackSession {
   }
 
   async start(): Promise<void> {
-    if (this.started) return;
+    if (this.started || this.starting) return;
     if (this.stopped) {
       throw new Error('PlaybackSession already stopped');
     }
+    this.starting = true;
     const protocol = this.options.protocol;
     if (!protocolSupportedByMseSession(protocol)) {
+      this.starting = false;
       const message = `Protocol ${protocol} is not supported by the main-thread MSE session`;
       this.emit({
         type: 'error',
@@ -221,7 +224,6 @@ export class PlaybackSession {
       throw new Error(message);
     }
 
-    this.started = true;
     this.generation += 1;
     this.stopController = new AbortController();
     const gen = this.generation;
@@ -233,38 +235,40 @@ export class PlaybackSession {
       sessionTracks = [{ kind: 'video', codec: 'h264' }, { kind: 'audio', codec: 'aac' }];
     }
 
-    this.mse = new MseBackend(
-      { candidate: { rank: 0, videoBackend: 'mse', audioBackend: 'mse', renderer: undefined, transport: 'fetch', reason: 'playback-session', isLive: this.options.isLive ?? true }, reason: 'session-start' },
-      {
-        videoElement: this.options.videoElement,
-        tracks: sessionTracks,
-        isLive: this.options.isLive ?? true,
-        liveLatencyTargetMs: this.options.softLatencyMs ?? 1000,
-        maxPlaybackRate: this.options.maxPlaybackRate ?? 1.05,
-        callbacks: {
-          onError: (err) => {
-            if (this.generation !== gen || this.stopped) return;
-            this.emit({
-              type: 'error',
-              code: 6200,
-              stage: 'mse',
-              message: err.message,
-              recoverable: true,
-            });
-            this.emit({ type: 'state', state: 'failed' });
+    try {
+      this.mse = new MseBackend(
+        { candidate: { rank: 0, videoBackend: 'mse', audioBackend: 'mse', renderer: undefined, transport: 'fetch', reason: 'playback-session', isLive: this.options.isLive ?? true }, reason: 'session-start' },
+        {
+          videoElement: this.options.videoElement,
+          tracks: sessionTracks,
+          isLive: this.options.isLive ?? true,
+          liveLatencyTargetMs: this.options.softLatencyMs ?? 1000,
+          maxPlaybackRate: this.options.maxPlaybackRate ?? 1.05,
+          callbacks: {
+            onError: (err) => {
+              if (this.generation !== gen || this.stopped) return;
+              this.emit({
+                type: 'error',
+                code: 6200,
+                stage: 'mse',
+                message: err.message,
+                recoverable: true,
+              });
+              this.emit({ type: 'state', state: 'failed' });
+            },
           },
         },
-      },
-    );
-
-    try {
+      );
       await this.mse.configure();
     } catch (err) {
+      this.starting = false;
       const message = err instanceof Error ? err.message : String(err);
       this.emit({ type: 'error', code: 6200, stage: 'mse', message, recoverable: false });
       this.emit({ type: 'state', state: 'failed' });
       throw err;
     }
+    this.started = true;
+    this.starting = false;
 
     if (this.generation !== gen || this.stopped) return;
 
