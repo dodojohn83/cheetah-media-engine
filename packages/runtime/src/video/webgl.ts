@@ -18,7 +18,7 @@ import type {
 import { RendererError } from './types';
 import { RendererSurface } from './surface';
 import { buildYuvToRgbCoeffs, resolveColorSpace } from './color';
-import { validateSnapshotEncoderOptions } from './snapshot-encoder';
+import { validateSnapshotEncoderOptions, computeTargetSize } from './snapshot-encoder';
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_position;
@@ -389,13 +389,7 @@ export class WebGL2Renderer implements Renderer {
     const canvas = this.surface.getCanvas();
     const canvasW = canvas.width;
     const canvasH = canvas.height;
-    let w = canvasW;
-    let h = canvasH;
-    if (options.maxWidth && options.maxHeight) {
-      const scale = Math.min(1, options.maxWidth / canvasW, options.maxHeight / canvasH);
-      w = Math.max(1, Math.floor(canvasW * scale));
-      h = Math.max(1, Math.floor(canvasH * scale));
-    }
+    const { width: w, height: h } = computeTargetSize(canvasW, canvasH, options.maxWidth, options.maxHeight);
 
     const raw = new Uint8Array(w * h * 4);
 

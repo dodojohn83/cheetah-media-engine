@@ -267,7 +267,9 @@ describe('VideoRenderer factory', () => {
       RendererError,
     );
     await expect(renderer.snapshot({ format: 'gif' as 'png' })).rejects.toThrow('Unsupported snapshot format');
-    await expect(renderer.snapshot({ maxWidth: -1 })).rejects.toThrow('snapshot maxWidth must be a finite positive number');
+    await expect(renderer.snapshot({ maxWidth: -1 })).rejects.toThrow(
+      'snapshot maxWidth must be a finite non-negative integer',
+    );
   });
 });
 

@@ -186,16 +186,27 @@ describe('validateSnapshotEncoderOptions', () => {
     });
   });
 
-  it('rejects non-positive or non-finite max dimensions', () => {
+  it('rejects negative, non-finite or non-integer max dimensions', () => {
     expect(() => validateSnapshotEncoderOptions({ maxWidth: -1 })).toThrow(
-      'snapshot maxWidth must be a finite positive number',
+      'snapshot maxWidth must be a finite non-negative integer',
     );
     expect(() => validateSnapshotEncoderOptions({ maxHeight: Infinity })).toThrow(
-      'snapshot maxHeight must be a finite positive number',
+      'snapshot maxHeight must be a finite non-negative integer',
     );
     expect(() => validateSnapshotEncoderOptions({ maxWidth: NaN })).toThrow(
-      'snapshot maxWidth must be a finite positive number',
+      'snapshot maxWidth must be a finite non-negative integer',
     );
+    expect(() => validateSnapshotEncoderOptions({ maxHeight: 100.5 })).toThrow(
+      'snapshot maxHeight must be a finite non-negative integer',
+    );
+  });
+
+  it('treats zero max dimensions as unconstrained', () => {
+    expect(validateSnapshotEncoderOptions({ maxWidth: 0 })).toEqual({ maxWidth: 0 });
+    expect(validateSnapshotEncoderOptions({ maxWidth: 0, maxHeight: 0 })).toEqual({
+      maxWidth: 0,
+      maxHeight: 0,
+    });
   });
 
   it('rejects non-boolean includeOverlay', () => {

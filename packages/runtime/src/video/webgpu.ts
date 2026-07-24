@@ -13,6 +13,7 @@ import type { RenderFrame, Renderer, RendererConfig, RendererMetrics, SnapshotOp
 import { RendererError } from './types';
 import { RendererSurface } from './surface';
 import { Canvas2DRenderer } from './canvas2d';
+import { validateSnapshotEncoderOptions, computeTargetSize } from './snapshot-encoder';
 
 const VERTEX_SHADER = `@vertex
 fn vs_main(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
@@ -214,36 +215,35 @@ export class WebGpuRenderer implements Renderer {
 
   async snapshot(opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     if (!this.device || !this.frameTexture) throw new RendererError('not-configured', 'WebGPU renderer not configured');
-    const width = this.frameTexture.width;
-    const height = this.frameTexture.height;
-    const bytesPerRow = Math.ceil((width * 4) / 256) * 256;
+    const options = validateSnapshotEncoderOptions(opts) as SnapshotOptions;
+    const sourceWidth = this.frameTexture.width;
+    const sourceHeight = this.frameTexture.height;
+    const bytesPerRow = Math.ceil((sourceWidth * 4) / 256) * 256;
     const buffer = this.device.createBuffer({
-      size: bytesPerRow * height,
+      size: bytesPerRow * sourceHeight,
       usage: MAP_READ | BUFFER_COPY_DST,
     });
     const encoder = this.device.createCommandEncoder();
     encoder.copyTextureToBuffer(
       { texture: this.frameTexture },
       { buffer, bytesPerRow },
-      [width, height, 1],
+      [sourceWidth, sourceHeight, 1],
     );
     this.device.queue.submit([encoder.finish()]);
     await buffer.mapAsync(MAP_READ_MODE);
     const mapped = new Uint8Array(buffer.getMappedRange());
-    const data = new Uint8ClampedArray(width * height * 4);
-    for (let row = 0; row < height; row += 1) {
-      for (let col = 0; col < width * 4; col += 1) {
-        data[row * width * 4 + col] = mapped[row * bytesPerRow + col]!;
+    const data = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
+    for (let row = 0; row < sourceHeight; row += 1) {
+      for (let col = 0; col < sourceWidth * 4; col += 1) {
+        data[row * sourceWidth * 4 + col] = mapped[row * bytesPerRow + col]!;
       }
     }
     buffer.unmap();
 
-    let imageData = new ImageData(data, width, height);
-    if (opts.maxWidth && opts.maxHeight) {
-      const scale = Math.min(1, opts.maxWidth / width, opts.maxHeight / height);
-      const sw = Math.max(1, Math.floor(width * scale));
-      const sh = Math.max(1, Math.floor(height * scale));
-      imageData = this.scaleImageData(imageData, sw, sh);
+    const { width: targetW, height: targetH } = computeTargetSize(sourceWidth, sourceHeight, options.maxWidth, options.maxHeight);
+    let imageData = new ImageData(data, sourceWidth, sourceHeight);
+    if (targetW !== sourceWidth || targetH !== sourceHeight) {
+      imageData = this.scaleImageData(imageData, targetW, targetH);
     }
 
     this.metrics.snapshotsTaken += 1;
