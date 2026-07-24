@@ -241,6 +241,11 @@ export class WebSocketTransport implements Transport {
       this.finish(urlError);
       return;
     }
+    const binaryType = this.config.binaryType ?? 'arraybuffer';
+    if (binaryType !== 'arraybuffer' && binaryType !== 'blob') {
+      this.finish(makeError(TransportErrorCode.InvalidConfig, 'binaryType must be arraybuffer or blob', false));
+      return;
+    }
 
     this.controller = new AbortController();
     this.connect(onChunk).catch((err) => {

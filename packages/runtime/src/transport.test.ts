@@ -400,6 +400,19 @@ describe('WebSocketTransport', () => {
     expect(err.code).toBe(TransportErrorCode.InsecureContent);
   });
 
+  it('rejects invalid binaryType before opening the socket', async () => {
+    const transport = new WebSocketTransport({ url: 'wss://example.com/stream', binaryType: 'json' as unknown as 'arraybuffer' });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => reject(new Error('unexpected end')),
+      );
+    });
+
+    expect(err.code).toBe(TransportErrorCode.InvalidConfig);
+  });
+
   it('cancels pending reconnect on stop and signals end', async () => {
     let socketCount = 0;
     class ReconnectMockSocket extends EventTarget {
