@@ -134,4 +134,31 @@ describe('WebTransportTransport', () => {
     transport.stop();
     expect(closeCalled).toBe(true);
   });
+
+  it('times out when the unidirectional stream accept stalls', async () => {
+    class MockTransport {
+      public readonly ready = Promise.resolve();
+      public readonly incomingUnidirectionalStreams = new ReadableStream<ReadableStream<Uint8Array>>({
+        start() {
+          // Never enqueue or close; simulates a stalled server.
+        },
+      });
+      public async close(): Promise<void> {}
+    }
+    (globalThis as unknown as { WebTransport: new (url: string) => unknown }).WebTransport =
+      MockTransport as unknown as new (url: string) => unknown;
+
+    const transport = new WebTransportTransport({
+      url: 'https://example.com/stream',
+      timeoutMs: 50,
+    });
+    const err = await new Promise<{ code: number }>((resolve, reject) => {
+      transport.start(
+        () => reject(new Error('unexpected chunk')),
+        (error) => resolve(error),
+        () => {},
+      );
+    });
+    expect(err.code).toBe(TransportErrorCode.Timeout);
+  });
 });
