@@ -616,6 +616,9 @@ export class WebCodecsBackend implements MediaBackend {
     if (this.stopped || this.closing || this.errored || !this.configured) {
       throw new Error('Cannot pause display before configure');
     }
+    if (typeof keepConnection !== 'boolean') {
+      throw new Error('pauseDisplay keepConnection must be a boolean');
+    }
     this.displayPaused = true;
     this.keepConnectionOnPause = keepConnection;
     if (!keepConnection) {
@@ -642,6 +645,9 @@ export class WebCodecsBackend implements MediaBackend {
     }
     if (direction !== 'forward' && direction !== 'backward') {
       throw new Error('frameStep direction must be forward or backward');
+    }
+    if (typeof keyframeOnly !== 'boolean') {
+      throw new Error('frameStep keyframeOnly must be a boolean');
     }
     if (direction === 'backward') {
       throw new Error('Backward frame step requires a GOP cache and is not yet implemented');

@@ -571,6 +571,20 @@ describe('WebCodecsBackend', () => {
     await backend.stop();
   });
 
+  it('frameStep rejects non-boolean keyframeOnly', async () => {
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+    await expect(backend.frameStep('forward', 'true' as unknown as boolean)).rejects.toThrow('keyframeOnly must be a boolean');
+    await backend.stop();
+  });
+
+  it('pauseDisplay rejects non-boolean keepConnection', async () => {
+    const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
+    await backend.configure();
+    await expect(backend.pauseDisplay('true' as unknown as boolean)).rejects.toThrow('keepConnection must be a boolean');
+    await backend.stop();
+  });
+
   it('frameStep rejects when stop is called before the next frame arrives', async () => {
     const backend = new WebCodecsBackend(ctx, { tracks: [videoTrack], callbacks: {} });
     await backend.configure();
