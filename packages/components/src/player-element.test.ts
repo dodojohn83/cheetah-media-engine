@@ -38,6 +38,19 @@ describe('CheetahPlayerElement', () => {
     expect(items?.[0]?.textContent).toBe('updated');
   });
 
+  it('cancels a pending resize requestAnimationFrame when disconnected', () => {
+    const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+    container.appendChild(el);
+    const internals = el as unknown as {
+      _onResize: (entries: ResizeObserverEntry[]) => void;
+      _pendingResizeFrame: ReturnType<typeof requestAnimationFrame> | undefined;
+    };
+    internals._onResize([{ contentRect: { width: 100, height: 100 } } as ResizeObserverEntry]);
+    expect(internals._pendingResizeFrame).toBeDefined();
+    el.remove();
+    expect(internals._pendingResizeFrame).toBeUndefined();
+  });
+
   it('keeps controls above the status overlay so they remain clickable', () => {
     const el = document.createElement('cheetah-player') as CheetahPlayerElement;
     container.appendChild(el);

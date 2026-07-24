@@ -508,6 +508,11 @@ export class CheetahPlayerElement extends HTMLElement {
   }
 
   private _disconnectResizeObserver(): void {
+    if (this._pendingResizeFrame) {
+      cancelAnimationFrame(this._pendingResizeFrame);
+      this._pendingResizeFrame = undefined;
+      this._pendingResizeEntry = undefined;
+    }
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = undefined;
