@@ -3,6 +3,7 @@ import {
   encodeSnapshot,
   formatToMime,
   computeTargetSize,
+  validateSnapshotEncoderOptions,
   type CanvasLike,
 } from './snapshot-encoder';
 import { RendererError } from './types';
@@ -152,6 +153,57 @@ function getLastFakeCanvas(): FakeCanvasStorage | undefined {
   const instance = instances[instances.length - 1];
   return instance?.__calls;
 }
+
+describe('validateSnapshotEncoderOptions', () => {
+  it('accepts undefined and empty options', () => {
+    expect(validateSnapshotEncoderOptions(undefined)).toEqual({});
+    expect(validateSnapshotEncoderOptions({})).toEqual({});
+  });
+
+  it('rejects non-object options', () => {
+    expect(() => validateSnapshotEncoderOptions(null)).toThrow(RendererError);
+    expect(() => validateSnapshotEncoderOptions('opts' as unknown as object)).toThrow(
+      'snapshot options must be an object',
+    );
+  });
+
+  it('rejects unsupported formats', () => {
+    expect(() => validateSnapshotEncoderOptions({ format: 'gif' })).toThrow('Unsupported snapshot format');
+  });
+
+  it('rejects invalid quality for lossy formats', () => {
+    expect(() => validateSnapshotEncoderOptions({ format: 'jpeg', quality: NaN })).toThrow(
+      'snapshot quality must be a finite number between 0 and 1',
+    );
+    expect(() => validateSnapshotEncoderOptions({ format: 'webp', quality: 2 })).toThrow(
+      'snapshot quality must be a finite number between 0 and 1',
+    );
+  });
+
+  it('ignores non-finite quality for PNG', () => {
+    expect(validateSnapshotEncoderOptions({ format: 'png', quality: NaN })).toEqual({
+      format: 'png',
+    });
+  });
+
+  it('rejects non-positive or non-finite max dimensions', () => {
+    expect(() => validateSnapshotEncoderOptions({ maxWidth: -1 })).toThrow(
+      'snapshot maxWidth must be a finite positive number',
+    );
+    expect(() => validateSnapshotEncoderOptions({ maxHeight: Infinity })).toThrow(
+      'snapshot maxHeight must be a finite positive number',
+    );
+    expect(() => validateSnapshotEncoderOptions({ maxWidth: NaN })).toThrow(
+      'snapshot maxWidth must be a finite positive number',
+    );
+  });
+
+  it('rejects non-boolean includeOverlay', () => {
+    expect(() => validateSnapshotEncoderOptions({ includeOverlay: 'yes' as unknown as boolean })).toThrow(
+      'snapshot includeOverlay must be a boolean',
+    );
+  });
+});
 
 describe('encodeSnapshot', () => {
   it('encodes an ImageData source with default PNG format', async () => {

@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { RendererError } from './types';
 import { RendererSurface } from './surface';
+import { validateSnapshotEncoderOptions } from './snapshot-encoder';
 
 export class Canvas2DRenderer implements Renderer {
   readonly identity = 'canvas2d';
@@ -91,11 +92,12 @@ export class Canvas2DRenderer implements Renderer {
     if (!this.ctx) {
       throw new RendererError('not-configured', 'Canvas2DRenderer not configured');
     }
+    const options = validateSnapshotEncoderOptions(opts) as SnapshotOptions;
     const canvas = this.surface.getCanvas();
     const w = canvas.width;
     const h = canvas.height;
-    if (opts.maxWidth && opts.maxHeight) {
-      const scale = Math.min(1, opts.maxWidth / w, opts.maxHeight / h);
+    if (options.maxWidth && options.maxHeight) {
+      const scale = Math.min(1, options.maxWidth / w, options.maxHeight / h);
       const sw = Math.max(1, Math.floor(w * scale));
       const sh = Math.max(1, Math.floor(h * scale));
       const tmp = new OffscreenCanvas(sw, sh);

@@ -5,7 +5,7 @@
 
 import type { Renderer, RendererConfig, RenderFrame, RendererMetrics, SnapshotOptions, SnapshotResult } from './types';
 import { RendererError } from './types';
-import { encodeSnapshot, computeTargetSize, type CanvasLike } from './snapshot-encoder';
+import { encodeSnapshot, computeTargetSize, validateSnapshotEncoderOptions, type CanvasLike } from './snapshot-encoder';
 import { validateCanvasLike } from './surface';
 import { Canvas2DRenderer } from './canvas2d';
 import { WebGL2Renderer } from './webgl';
@@ -99,16 +99,11 @@ export class VideoRenderer implements Renderer {
   async snapshot(opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     if (this.closed) throw new RendererError('closed', 'VideoRenderer is closed');
     if (!this.backend) throw new RendererError('not-configured', 'configure() must be called before snapshot()');
-    const result = await this.backend.snapshot(opts);
-    if (opts.format) {
-      const { width, height } = computeTargetSize(result.width, result.height, opts.maxWidth, opts.maxHeight);
-      const blob = await encodeSnapshot(result.data as ImageData | CanvasLike, {
-        format: opts.format,
-        quality: opts.quality,
-        maxWidth: opts.maxWidth,
-        maxHeight: opts.maxHeight,
-        includeOverlay: opts.includeOverlay,
-      });
+    const options = validateSnapshotEncoderOptions(opts) as SnapshotOptions;
+    const result = await this.backend.snapshot(options);
+    if (options.format) {
+      const { width, height } = computeTargetSize(result.width, result.height, options.maxWidth, options.maxHeight);
+      const blob = await encodeSnapshot(result.data as ImageData | CanvasLike, options);
       return { width, height, data: blob };
     }
     return result;

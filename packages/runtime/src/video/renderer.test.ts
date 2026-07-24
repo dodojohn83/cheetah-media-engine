@@ -209,6 +209,20 @@ describe('VideoRenderer factory', () => {
       'canvas must be a canvas-like element',
     );
   });
+
+  it('rejects invalid snapshot options', async () => {
+    const canvas = makeMockCanvas(320, 240);
+    const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D & { getImageData: ReturnType<typeof vi.fn> };
+    ctx.getImageData.mockReturnValue({ width: 320, height: 240, data: new Uint8ClampedArray(320 * 240 * 4) });
+    const renderer = new VideoRenderer({ preferred: 'canvas2d' });
+    await renderer.configure({ canvas });
+
+    await expect(renderer.snapshot(null as unknown as Parameters<typeof renderer.snapshot>[0])).rejects.toThrow(
+      RendererError,
+    );
+    await expect(renderer.snapshot({ format: 'gif' as 'png' })).rejects.toThrow('Unsupported snapshot format');
+    await expect(renderer.snapshot({ maxWidth: -1 })).rejects.toThrow('snapshot maxWidth must be a finite positive number');
+  });
 });
 
 describe('Color conversion', () => {

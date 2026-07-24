@@ -33,6 +33,58 @@ export function formatToMime(format: SnapshotFormat): string | undefined {
   return FORMAT_TO_MIME[format];
 }
 
+const VALID_FORMATS = Object.keys(FORMAT_TO_MIME) as readonly string[];
+
+type MutableSnapshotEncoderOptions = {
+  -readonly [K in keyof SnapshotEncoderOptions]: SnapshotEncoderOptions[K];
+};
+
+export function validateSnapshotEncoderOptions(raw: unknown): SnapshotEncoderOptions {
+  if (raw === undefined) return {};
+  if (raw === null || typeof raw !== 'object') {
+    throw new RendererError('invalid-option', 'snapshot options must be an object');
+  }
+  const opts = raw as Record<string, unknown>;
+  const result: MutableSnapshotEncoderOptions = {};
+
+  if ('format' in opts && opts.format !== undefined) {
+    if (typeof opts.format !== 'string' || !VALID_FORMATS.includes(opts.format)) {
+      throw new RendererError('invalid-option', `Unsupported snapshot format: ${opts.format}`);
+    }
+    result.format = opts.format as SnapshotFormat;
+  }
+
+  if ('quality' in opts && opts.quality !== undefined && result.format !== 'png') {
+    if (typeof opts.quality !== 'number' || !Number.isFinite(opts.quality) || opts.quality < 0 || opts.quality > 1) {
+      throw new RendererError('invalid-option', 'snapshot quality must be a finite number between 0 and 1');
+    }
+    result.quality = opts.quality;
+  }
+
+  if ('maxWidth' in opts && opts.maxWidth !== undefined) {
+    if (typeof opts.maxWidth !== 'number' || !Number.isFinite(opts.maxWidth) || opts.maxWidth <= 0) {
+      throw new RendererError('invalid-option', 'snapshot maxWidth must be a finite positive number');
+    }
+    result.maxWidth = opts.maxWidth;
+  }
+
+  if ('maxHeight' in opts && opts.maxHeight !== undefined) {
+    if (typeof opts.maxHeight !== 'number' || !Number.isFinite(opts.maxHeight) || opts.maxHeight <= 0) {
+      throw new RendererError('invalid-option', 'snapshot maxHeight must be a finite positive number');
+    }
+    result.maxHeight = opts.maxHeight;
+  }
+
+  if ('includeOverlay' in opts && opts.includeOverlay !== undefined) {
+    if (typeof opts.includeOverlay !== 'boolean') {
+      throw new RendererError('invalid-option', 'snapshot includeOverlay must be a boolean');
+    }
+    result.includeOverlay = opts.includeOverlay;
+  }
+
+  return result;
+}
+
 export function computeTargetSize(
   sourceWidth: number,
   sourceHeight: number,
@@ -124,8 +176,9 @@ function isCanvasLike(source: unknown): source is CanvasLike {
  */
 export async function encodeSnapshot(
   source: ImageData | CanvasLike,
-  options: SnapshotEncoderOptions = {},
+  rawOptions: SnapshotEncoderOptions = {},
 ): Promise<Blob> {
+  const options = validateSnapshotEncoderOptions(rawOptions);
   const format = options.format ?? 'png';
   const mimeType = formatToMime(format);
   if (!mimeType) {
