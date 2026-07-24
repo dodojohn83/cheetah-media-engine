@@ -71,7 +71,7 @@ function fullBox(type: string, version: number, flags: number, body: number[]): 
   return box(type, b);
 }
 
-function parseAvcCDimensions(avcc: Uint8Array): { width: number; height: number; codec: string } {
+export function parseAvcCDimensions(avcc: Uint8Array): { width: number; height: number; codec: string } {
   // Minimal: profile/compat/level for codec string; dimensions defaulted if SPS parse fails.
   let codec = 'avc1.42001e';
   if (avcc.length >= 4) {
