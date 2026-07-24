@@ -167,11 +167,19 @@ export function extractPlanarF32(frame: AudioFrame, outputChannels: number): Flo
   const { numberOfFrames } = frame;
 
   if (frame.data) {
-    if (!Array.isArray(frame.data) || frame.data.length === 0) {
+    const planar = frame.data;
+    if (!Array.isArray(planar) || planar.length === 0) {
       throw new Error('AudioFrame data must be a non-empty array of Float32Array planes');
     }
-    const planar = frame.data;
-    const minFrames = planar.reduce((m, p) => Math.min(m, p.length), Infinity);
+    let minFrames = Infinity;
+    for (const p of planar) {
+      if (!p || typeof p.length !== 'number' || typeof p.at !== 'function') {
+        throw new Error('AudioFrame data planes must be Float32Array-like arrays');
+      }
+      if (p.length < minFrames) {
+        minFrames = p.length;
+      }
+    }
     if (!Number.isFinite(minFrames) || numberOfFrames > minFrames) {
       throw new Error('AudioFrame numberOfFrames exceeds provided plane length');
     }
