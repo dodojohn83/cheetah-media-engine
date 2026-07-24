@@ -277,6 +277,14 @@ describe('web sdk', () => {
     expect(image.height).toBe(100);
   });
 
+  it('snapshot rejects non-object options', async () => {
+    const player = playerWithMock();
+    player.runtime.emitEvent('statechange', { to: 'playing' });
+    await expect(player.snapshot(null as unknown as { maxWidth?: number })).rejects.toBeInstanceOf(
+      CheetahMediaError,
+    );
+  });
+
   it('snapshot preserves validation error message', async () => {
     const runtime = mockRuntime();
     runtime.request = (type) => {
