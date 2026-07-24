@@ -91,6 +91,18 @@ describe('extractPlanarF32', () => {
     expect(out.at(1)?.at(2)).toBeCloseTo(30);
   });
 
+  it('throws a clear error for non-string audio format', () => {
+    const frame: AudioFrame = {
+      timestamp: 0,
+      sampleRate: 48000,
+      channels: 1,
+      numberOfFrames: 1,
+      format: 123 as unknown as string,
+      copyTo: () => undefined,
+    };
+    expect(() => extractPlanarF32(frame, 1)).toThrow('Unsupported audio format');
+  });
+
   it('throws for missing data and copyTo', () => {
     const frame: AudioFrame = {
       timestamp: 0,
