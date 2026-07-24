@@ -170,6 +170,12 @@ describe('createRuntime worker integration', () => {
     await expect(runtime.load('http://example.com/test.flv')).resolves.toBeUndefined();
   });
 
+  it('load rejects null or non-object options', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await expect(runtime.load('http://example.com/test.flv', null as unknown as { isLive?: boolean })).rejects.toThrow('load options must be an object');
+    await expect(runtime.load('http://example.com/test.flv', 'bad' as unknown as { isLive?: boolean })).rejects.toThrow('load options must be an object');
+  });
+
   it('play sends a control command', async () => {
     const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
     await runtime.load('http://example.com/test.flv');

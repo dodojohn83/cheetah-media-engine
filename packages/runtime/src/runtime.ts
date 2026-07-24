@@ -216,7 +216,7 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
       if (typeof url !== 'string' || url.length === 0) {
         throw new Error('load url must be a non-empty string');
       }
-      if (options !== null && typeof options !== 'object') {
+      if (options === null || typeof options !== 'object') {
         throw new Error('load options must be an object');
       }
       const isLive = options?.isLive;
