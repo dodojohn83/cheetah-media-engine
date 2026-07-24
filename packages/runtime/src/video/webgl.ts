@@ -18,6 +18,7 @@ import type {
 import { RendererError } from './types';
 import { RendererSurface } from './surface';
 import { buildYuvToRgbCoeffs, resolveColorSpace } from './color';
+import { validateSnapshotEncoderOptions } from './snapshot-encoder';
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_position;
@@ -380,14 +381,15 @@ export class WebGL2Renderer implements Renderer {
   async snapshot(opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     const gl = this.gl;
     if (!gl) throw new RendererError('not-configured', 'WebGL2Renderer not configured');
+    const options = validateSnapshotEncoderOptions(opts) as SnapshotOptions;
 
     const canvas = this.surface.getCanvas();
     const canvasW = canvas.width;
     const canvasH = canvas.height;
     let w = canvasW;
     let h = canvasH;
-    if (opts.maxWidth && opts.maxHeight) {
-      const scale = Math.min(1, opts.maxWidth / canvasW, opts.maxHeight / canvasH);
+    if (options.maxWidth && options.maxHeight) {
+      const scale = Math.min(1, options.maxWidth / canvasW, options.maxHeight / canvasH);
       w = Math.max(1, Math.floor(canvasW * scale));
       h = Math.max(1, Math.floor(canvasH * scale));
     }
