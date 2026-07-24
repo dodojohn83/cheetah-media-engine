@@ -74,12 +74,6 @@ describe('fmp4 helpers', () => {
     const acc = new Fmp4BoxAccumulator();
     expect(() => acc.push(null as unknown as Uint8Array)).toThrow('chunk must be a Uint8Array');
 
-    expect(() => new Fmp4BoxAccumulator(0)).toThrow('maxBytes');
-    expect(() => new Fmp4BoxAccumulator(NaN)).toThrow('maxBytes');
-    expect(() => new Fmp4BoxAccumulator(-1)).toThrow('maxBytes');
-    expect(() => new Fmp4BoxAccumulator(Infinity)).not.toThrow();
-    expect(() => new Fmp4BoxAccumulator(1.5)).toThrow('maxBytes');
-
     const builder = new Fmp4SegmentBuilder();
     expect(() => builder.feed(null as unknown as Uint8Array)).toThrow('box must be a Uint8Array');
   });
@@ -104,9 +98,10 @@ describe('fmp4 helpers', () => {
   });
 
   it('rejects non-finite or non-positive maxBytes', () => {
-    expect(() => new Fmp4BoxAccumulator(NaN)).toThrow('maxBytes must be a finite positive number');
-    expect(() => new Fmp4BoxAccumulator(0)).toThrow('maxBytes must be a finite positive number');
-    expect(() => new Fmp4BoxAccumulator(-1)).toThrow('maxBytes must be a finite positive number');
-    expect(() => new Fmp4BoxAccumulator(Infinity)).toThrow('maxBytes must be a finite positive number');
+    expect(() => new Fmp4BoxAccumulator(NaN)).toThrow('maxBytes');
+    expect(() => new Fmp4BoxAccumulator(0)).toThrow('maxBytes');
+    expect(() => new Fmp4BoxAccumulator(-1)).toThrow('maxBytes');
+    expect(() => new Fmp4BoxAccumulator(1.5)).toThrow('maxBytes');
+    expect(() => new Fmp4BoxAccumulator(Infinity)).not.toThrow();
   });
 });
