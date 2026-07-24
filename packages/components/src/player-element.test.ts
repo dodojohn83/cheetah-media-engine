@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CheetahPlayerElement } from './player-element';
 import type { CheetahPlayer, CheetahPlayerEvent } from '@cheetah-media/web';
+import type { Watermark } from './watermark';
 
 describe('CheetahPlayerElement', () => {
   let container: HTMLElement;
@@ -36,6 +37,16 @@ describe('CheetahPlayerElement', () => {
     const items = el.shadowRoot?.querySelectorAll('.watermark-item');
     expect(items?.length).toBe(1);
     expect(items?.[0]?.textContent).toBe('updated');
+  });
+
+  it('gracefully drops non-serializable watermarks instead of throwing', () => {
+    const el = document.createElement('cheetah-player') as CheetahPlayerElement;
+    container.appendChild(el);
+    const circular = { type: 'text', content: 'x' } as unknown as Record<string, unknown>;
+    circular.self = circular;
+    expect(() => el.setWatermarks([circular] as unknown as Watermark[])).not.toThrow();
+    expect(el.hasAttribute('watermarks')).toBe(false);
+    expect(el.watermarks).toEqual([]);
   });
 
   it('keeps controls above the status overlay so they remain clickable', () => {

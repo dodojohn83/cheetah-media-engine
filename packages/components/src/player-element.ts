@@ -182,8 +182,14 @@ export class CheetahPlayerElement extends HTMLElement {
   set watermarks(value: Watermark[]) {
     if (!Array.isArray(value) || value.length === 0) {
       this.removeAttribute('watermarks');
-    } else {
+      return;
+    }
+    try {
       this.setAttribute('watermarks', JSON.stringify(value));
+    } catch {
+      // Non-serializable values (e.g. circular refs, BigInt) should not break
+      // the custom element; treat them the same as an empty watermark list.
+      this.removeAttribute('watermarks');
     }
   }
 
