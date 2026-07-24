@@ -222,6 +222,14 @@ describe('createRuntime worker integration', () => {
     await expect(runtime.request('play', undefined, NaN)).rejects.toThrow('timeoutMs');
   });
 
+  it('request rejects non-JSON-serializable payloads instead of throwing synchronously', async () => {
+    const runtime = createRuntime({ workerUrl: 'mock-worker.js' });
+    await runtime.load('http://example.com/test.flv');
+    const payload: Record<string, unknown> = { a: 1 };
+    payload.self = payload;
+    await expect(runtime.request('metrics', payload)).rejects.toThrow();
+  });
+
   it('destroy rejects pending commands', async () => {
     class NoReplyWorker extends EventTarget {
       public onmessage?: (event: MessageEvent<string>) => void;
