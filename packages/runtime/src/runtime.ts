@@ -181,12 +181,19 @@ export function createRuntime(options: RuntimeOptions = {}): EngineRuntime {
       payload,
     };
     return new Promise<unknown>((resolve, reject) => {
+      let message: string;
+      try {
+        message = encodeEnvelope(envelope);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
+      }
       const timer = setTimeout(() => {
         pending.delete(seq);
         reject(new Error(`Command ${type} timed out`));
       }, timeoutMs);
       pending.set(seq, { resolve, reject, timer });
-      w.postMessage(encodeEnvelope(envelope));
+      w.postMessage(message);
     });
   }
 
