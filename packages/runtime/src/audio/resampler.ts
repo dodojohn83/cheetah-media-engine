@@ -81,6 +81,17 @@ export class AudioResampler {
     this.ratio = this.baseRatio;
   }
 
+  private validateFrames(frames: unknown): asserts frames is readonly Float32Array[] {
+    if (!Array.isArray(frames)) {
+      throw new RangeError('push frames must be an array');
+    }
+    for (const frame of frames) {
+      if (!(frame instanceof Float32Array)) {
+        throw new RangeError('push frames must contain only Float32Array instances');
+      }
+    }
+  }
+
   private combineInput(frames: readonly Float32Array[]): Float32Array[] {
     const full: Float32Array[] = [];
     for (let c = 0; c < this.channels; c += 1) {
@@ -134,6 +145,7 @@ export class AudioResampler {
    * Any un-consumed input is retained for the next call.
    */
   push(frames: readonly Float32Array[]): Float32Array[] {
+    this.validateFrames(frames);
     const full = this.combineInput(frames);
     const output = this.resample(full);
 
