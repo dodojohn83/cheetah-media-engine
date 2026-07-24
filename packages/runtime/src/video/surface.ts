@@ -114,7 +114,12 @@ export class RendererSurface {
       }
       this.rotation = config.rotation % 360;
     }
-    if (config.mirror !== undefined) this.mirror = config.mirror;
+    if (config.mirror !== undefined) {
+      if (typeof config.mirror !== 'boolean') {
+        throw new RendererError('invalid-config', 'mirror must be a boolean');
+      }
+      this.mirror = config.mirror;
+    }
     this.resize(config.canvas.width, config.canvas.height);
   }
 
