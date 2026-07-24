@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RendererSurface } from './surface';
 import { Canvas2DRenderer } from './canvas2d';
+import { WebGL2Renderer } from './webgl';
 import { createRenderer, VideoRenderer } from './renderer';
 import { buildYuvToRgbCoeffs, getColorRange, getYuvMatrix } from './color';
 import type { RenderFrame, VisibleRect, RendererConfig } from './types';
@@ -33,6 +34,35 @@ function makeMockFrame(overrides?: Partial<RenderFrame>): RenderFrame {
     }),
     ...overrides,
   };
+}
+
+function makeMockWebGLCanvas(width = 320, height = 240) {
+  const gl = {
+    createShader: vi.fn(() => ({})),
+    shaderSource: vi.fn(),
+    compileShader: vi.fn(),
+    createProgram: vi.fn(() => ({})),
+    attachShader: vi.fn(),
+    linkProgram: vi.fn(),
+    getProgramParameter: vi.fn(() => true),
+    getProgramInfoLog: vi.fn(() => ''),
+    createVertexArray: vi.fn(() => ({})),
+    bindVertexArray: vi.fn(),
+    createBuffer: vi.fn(() => ({})),
+    bindBuffer: vi.fn(),
+    bufferData: vi.fn(),
+    createTexture: vi.fn(() => ({})),
+    viewport: vi.fn(),
+    clearColor: vi.fn(),
+    clear: vi.fn(),
+    isContextLost: vi.fn(() => false),
+  } as unknown as WebGL2RenderingContext;
+  const canvas = {
+    width,
+    height,
+    getContext: vi.fn((type: string) => (type === 'webgl2' ? gl : null)),
+  } as unknown as HTMLCanvasElement;
+  return { canvas, gl };
 }
 
 function makeMockCanvas(width = 320, height = 240): HTMLCanvasElement {
@@ -173,6 +203,16 @@ describe('Canvas2DRenderer', () => {
     expect(snapshot.width).toBe(320);
     expect(snapshot.height).toBe(240);
     expect(renderer.getMetrics().snapshotsTaken).toBe(1);
+  });
+});
+
+describe('WebGL2Renderer', () => {
+  it('rejects non-string frame.format before rendering', async () => {
+    const { canvas } = makeMockWebGLCanvas(320, 240);
+    const renderer = new WebGL2Renderer(canvas);
+    await renderer.configure({ canvas, fit: 'contain' });
+    const frame = makeMockFrame({ format: 123 as unknown as string });
+    await expect(renderer.render(frame)).rejects.toThrow('frame.format must be a string');
   });
 });
 

@@ -177,6 +177,9 @@ export class WebGL2Renderer implements Renderer {
     const visibleRect = RendererSurface.resolveVisibleRect(frame);
     this.metrics.framesSubmitted += 1;
     try {
+      if (frame.format !== undefined && typeof frame.format !== 'string') {
+        throw new RendererError('invalid-frame', 'frame.format must be a string');
+      }
       const format = (frame.format ?? '').toLowerCase();
       const viewport = this.surface.computeViewport(visibleRect.width, visibleRect.height);
 
