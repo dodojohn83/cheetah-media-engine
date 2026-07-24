@@ -235,5 +235,17 @@ describe('MicrophoneCapture', () => {
     expect(() => new MicrophoneCapture({ frameDurationMs: -10 })).toThrow(CaptureError);
     expect(() => new MicrophoneCapture({ maxBufferedFrames: -1 })).toThrow(CaptureError);
     expect(() => new MicrophoneCapture({ encoder: 'pcm' as unknown as 'mulaw' })).toThrow(CaptureError);
+    expect(() => new MicrophoneCapture({ audioContext: {} as unknown as AudioContextLike })).toThrow(CaptureError);
+    expect(() => new MicrophoneCapture({ getUserMedia: 'not a function' as unknown as GetUserMedia })).toThrow(CaptureError);
+    expect(() => new MicrophoneCapture({ workletSourceUrl: 123 as unknown as string })).toThrow(CaptureError);
+    expect(() => new MicrophoneCapture({ workletNodeCtor: 'not a function' as unknown as AudioWorkletNodeConstructor })).toThrow(
+      CaptureError,
+    );
+    expect(
+      () => new MicrophoneCapture({}, { onPacket: 'not a function' as unknown as (packet: AudioPacket) => void }),
+    ).toThrow(CaptureError);
+    expect(
+      () => new MicrophoneCapture({}, { onError: 'not a function' as unknown as (error: CaptureError) => void }),
+    ).toThrow(CaptureError);
   });
 });

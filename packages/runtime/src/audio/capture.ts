@@ -122,6 +122,28 @@ const DEFAULT_SAMPLE_RATE = 8000;
 const DEFAULT_FRAME_DURATION_MS = 20;
 const DEFAULT_MAX_BUFFERED_FRAMES = 4;
 
+function isAudioContextLike(value: unknown): value is AudioContextLike {
+  if (!value || typeof value !== 'object') return false;
+  const c = value as Record<string, unknown>;
+  return (
+    typeof c.sampleRate === 'number' &&
+    Number.isFinite(c.sampleRate) &&
+    c.sampleRate > 0 &&
+    (c.state === 'closed' || c.state === 'running' || c.state === 'suspended') &&
+    typeof c.resume === 'function' &&
+    typeof c.close === 'function' &&
+    typeof c.createMediaStreamSource === 'function' &&
+    typeof c.audioWorklet === 'object' &&
+    c.audioWorklet !== null &&
+    typeof (c.audioWorklet as { addModule?: unknown }).addModule === 'function' &&
+    typeof c.destination === 'object' &&
+    c.destination !== null &&
+    typeof (c.destination as { maxChannelCount?: unknown }).maxChannelCount === 'number' &&
+    Number.isFinite((c.destination as { maxChannelCount: number }).maxChannelCount) &&
+    (c.destination as { maxChannelCount: number }).maxChannelCount > 0
+  );
+}
+
 function getGlobalAudioContext(): AudioContextConstructor | undefined {
   if (typeof globalThis !== 'undefined' && 'AudioContext' in globalThis) {
     return (globalThis as unknown as { AudioContext: AudioContextConstructor }).AudioContext;
@@ -183,6 +205,24 @@ export class MicrophoneCapture {
     }
     if (!Number.isFinite(maxBufferedFrames) || maxBufferedFrames < 0 || maxBufferedFrames % 1 !== 0) {
       throw new CaptureError('bad-option', 'maxBufferedFrames must be a finite non-negative integer');
+    }
+    if (options.audioContext !== undefined && !isAudioContextLike(options.audioContext)) {
+      throw new CaptureError('bad-option', 'audioContext must be an AudioContext-like object');
+    }
+    if (options.getUserMedia !== undefined && typeof options.getUserMedia !== 'function') {
+      throw new CaptureError('bad-option', 'getUserMedia must be a function');
+    }
+    if (options.workletSourceUrl !== undefined && typeof options.workletSourceUrl !== 'string') {
+      throw new CaptureError('bad-option', 'workletSourceUrl must be a string');
+    }
+    if (options.workletNodeCtor !== undefined && typeof options.workletNodeCtor !== 'function') {
+      throw new CaptureError('bad-option', 'workletNodeCtor must be a function');
+    }
+    if (callbacks.onPacket !== undefined && typeof callbacks.onPacket !== 'function') {
+      throw new CaptureError('bad-option', 'callbacks.onPacket must be a function');
+    }
+    if (callbacks.onError !== undefined && typeof callbacks.onError !== 'function') {
+      throw new CaptureError('bad-option', 'callbacks.onError must be a function');
     }
 
     this.options = {
