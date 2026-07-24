@@ -20,6 +20,9 @@ export interface ColorRange {
 }
 
 export function getColorRange(fullRange: boolean): ColorRange {
+  if (typeof fullRange !== 'boolean') {
+    throw new Error('fullRange must be a boolean');
+  }
   if (fullRange) {
     return { yMin: 0, yMax: 255, cZero: 128, cMax: 255 };
   }
