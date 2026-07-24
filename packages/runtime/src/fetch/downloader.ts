@@ -325,6 +325,13 @@ function validateDownloadOptions(options: DownloadOptions): TransportError | und
       return makeError(INVALID_CONFIG_CODE, headersError, false);
     }
   }
+  const method = options.method ?? 'GET';
+  if (typeof method !== 'string' || (method !== 'GET' && method !== 'POST')) {
+    return makeError(INVALID_CONFIG_CODE, 'method must be GET or POST', false);
+  }
+  if (method === 'GET' && options.body !== undefined && options.body !== null) {
+    return makeError(INVALID_CONFIG_CODE, 'GET requests cannot have a body', false);
+  }
   return undefined;
 }
 

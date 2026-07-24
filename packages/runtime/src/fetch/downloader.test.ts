@@ -77,6 +77,14 @@ describe('StreamDownloader', () => {
     await expect(dl.start(makeOptions('not-a-url'))).rejects.toMatchObject({ code: 7001 });
   });
 
+  it('rejects unsupported methods and GET with a body', async () => {
+    const dl = new StreamDownloader();
+    const base = makeOptions('https://example.com/video.mp4');
+    await expect(dl.start({ ...base, method: 'PUT' as unknown as 'GET' | 'POST' })).rejects.toMatchObject({ code: 7016 });
+    await expect(dl.start({ ...base, body: 'payload' })).rejects.toMatchObject({ code: 7016 });
+    await expect(dl.start({ ...base, method: 'GET', body: 'payload' })).rejects.toMatchObject({ code: 7016 });
+  });
+
   it('reports HTTP errors', async () => {
     const dl = new StreamDownloader();
     await expect(dl.start(makeOptions('https://example.com/fail'))).rejects.toMatchObject({ code: 7004 });
