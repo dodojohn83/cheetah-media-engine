@@ -85,3 +85,64 @@ describe('PlaybackSession constructor validation', () => {
     expect(() => new PlaybackSession({ ...base, maxPlaybackRate: Infinity })).toThrow('maxPlaybackRate');
   });
 });
+
+describe('PlaybackSession method validation', () => {
+  function makeElement(): HTMLVideoElement {
+    return {
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      play: () => undefined,
+      pause: () => undefined,
+      load: () => undefined,
+      srcObject: null,
+      src: '',
+      currentTime: 0,
+      playbackRate: 1,
+      paused: true,
+      ended: false,
+      readyState: 0,
+      buffered: { length: 0 },
+      duration: NaN,
+      error: null,
+      videoWidth: 0,
+      videoHeight: 0,
+    } as unknown as HTMLVideoElement;
+  }
+
+  function makeSession(): PlaybackSession {
+    return new PlaybackSession({
+      videoElement: makeElement(),
+      url: 'https://x/a.mp4',
+      protocol: 'http-fmp4',
+    });
+  }
+
+  it('rejects invalid seek timeMs', async () => {
+    const session = makeSession();
+    (session as any).mse = { seek: () => {} };
+    await expect(session.seek(NaN)).rejects.toThrow('seek timeMs');
+    await expect(session.seek(-1)).rejects.toThrow('seek timeMs');
+    await expect(session.seek(Infinity)).rejects.toThrow('seek timeMs');
+  });
+
+  it('rejects invalid playback rate', async () => {
+    const session = makeSession();
+    (session as any).mse = { setPlaybackRate: () => {} };
+    await expect(session.setPlaybackRate(0)).rejects.toThrow('playback rate');
+    await expect(session.setPlaybackRate(20)).rejects.toThrow('playback rate');
+    await expect(session.setPlaybackRate(NaN)).rejects.toThrow('playback rate');
+  });
+
+  it('rejects invalid frameStep arguments', async () => {
+    const session = makeSession();
+    (session as any).mse = { frameStep: () => {} };
+    await expect(session.frameStep('up' as 'forward')).rejects.toThrow('frameStep direction');
+    await expect(session.frameStep('forward', 'yes' as unknown as boolean)).rejects.toThrow('frameStep keyframeOnly');
+  });
+
+  it('rejects invalid pauseDisplay keepConnection', async () => {
+    const session = makeSession();
+    (session as any).mse = { pauseDisplay: () => {} };
+    await expect(session.pauseDisplay('yes' as unknown as boolean)).rejects.toThrow('pauseDisplay keepConnection');
+  });
+});
