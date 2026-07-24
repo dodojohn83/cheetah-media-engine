@@ -129,6 +129,12 @@ describe('RendererSurface', () => {
       } as unknown as RenderFrame),
     ).toThrow('visibleRect');
   });
+
+  it('rejects non-boolean mirror', () => {
+    const canvas = makeMockCanvas(100, 100);
+    const surface = new RendererSurface(canvas);
+    expect(() => surface.configure({ canvas, mirror: 'true' as unknown as boolean })).toThrow('mirror must be a boolean');
+  });
 });
 
 describe('Canvas2DRenderer', () => {
