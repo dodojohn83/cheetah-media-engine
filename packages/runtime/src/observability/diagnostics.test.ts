@@ -130,4 +130,21 @@ describe('diagnostics', () => {
     const bundle = buildDiagnostics('p', 'idle', 0, {}, { events }, { maxSizeBytes: 64 });
     expect(bundle.recentEvents.length).toBeLessThanOrEqual(3);
   });
+
+  it('does not crash when the config contains a BigInt', () => {
+    const bundle = buildDiagnostics('p', 'idle', 0, { big: 1n }, {});
+    expect(bundle.config).toBe('<unserializable>');
+    expect(bundle.recentEvents.length).toBe(0);
+    expect(bundle.metrics).toBeUndefined();
+    expect(bundle.trace).toBeUndefined();
+  });
+
+  it('does not crash when the config contains a circular reference', () => {
+    const config: Record<string, unknown> = { a: 1 };
+    config.self = config;
+    const bundle = buildDiagnostics('p', 'idle', 0, config, {});
+    const redacted = bundle.config as Record<string, unknown>;
+    expect(redacted.self).toBe('<circular>');
+    expect(() => JSON.stringify(bundle)).not.toThrow();
+  });
 });

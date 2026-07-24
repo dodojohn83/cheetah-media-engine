@@ -140,9 +140,17 @@ export function buildDiagnostics(
 }
 
 function redactConfig(config: unknown): unknown {
+  return redactConfigImpl(config, new WeakSet());
+}
+
+function redactConfigImpl(config: unknown, seen: WeakSet<object>): unknown {
   if (config === null || typeof config !== 'object') return config;
+  if (seen.has(config)) return '<circular>';
+  seen.add(config);
   if (Array.isArray(config)) {
-    return config.map(redactConfig);
+    const result = config.map((item) => redactConfigImpl(item, seen));
+    seen.delete(config);
+    return result;
   }
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(config as Record<string, unknown>)) {
@@ -167,12 +175,13 @@ function redactConfig(config: unknown): unknown {
       if (lower === 'headers') {
         result[key] = redactHeaders(value as Record<string, string>);
       } else {
-        result[key] = redactConfig(value);
+        result[key] = redactConfigImpl(value, seen);
       }
     } else {
       result[key] = value;
     }
   }
+  seen.delete(config);
   return result;
 }
 
@@ -190,17 +199,48 @@ function truncateTrace(span: TraceSpan, depth: number): TraceSpan {
   };
 }
 
+function degradedBundle(bundle: DiagnosticsBundle): DiagnosticsBundle {
+  return {
+    ...bundle,
+    recentEvents: [],
+    metrics: undefined,
+    trace: undefined,
+    config: '<unserializable>',
+  };
+}
+
 function fitToSize(bundle: DiagnosticsBundle, maxSizeBytes: number): DiagnosticsBundle {
   let events = bundle.recentEvents;
   let current = bundle;
-  while (events.length > 0 && roughSize(JSON.stringify(current)) > maxSizeBytes - SIZE_SAFETY_MARGIN) {
+  while (events.length > 0) {
+    let json: string;
+    try {
+      json = JSON.stringify(current);
+    } catch {
+      // Non-serializable values (BigInt, circular references) make size trimming
+      // impossible. Return a degraded but serializable bundle instead of crashing.
+      return degradedBundle(bundle);
+    }
+    if (roughSize(json) <= maxSizeBytes - SIZE_SAFETY_MARGIN) {
+      break;
+    }
     events = events.slice(Math.max(1, Math.floor(events.length / 4)));
     current = { ...bundle, recentEvents: events };
   }
-  if (events.length !== bundle.recentEvents.length) {
-    return current;
+  // Always do a final serializability and size check, even when there are no
+  // events to trim. This catches BigInt/circular values in config/metrics/trace.
+  try {
+    const json = JSON.stringify(current);
+    if (roughSize(json) <= maxSizeBytes - SIZE_SAFETY_MARGIN) {
+      if (events.length !== bundle.recentEvents.length) {
+        return current;
+      }
+      return bundle;
+    }
+  } catch {
+    // fall through to degraded bundle
   }
-  return bundle;
+  return degradedBundle(bundle);
 }
 
 function roughSize(json: string): number {
