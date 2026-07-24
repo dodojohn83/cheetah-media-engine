@@ -77,4 +77,23 @@ describe('fmp4 helpers', () => {
     const builder = new Fmp4SegmentBuilder();
     expect(() => builder.feed(null as unknown as Uint8Array)).toThrow('box must be a Uint8Array');
   });
+
+  it('rejects invalid peekBox offsets', () => {
+    const box = makeBox('moof');
+    expect(() => peekBox(box, -1)).toThrow('peekBox offset must be a non-negative integer');
+    expect(() => peekBox(box, NaN)).toThrow('peekBox offset must be a non-negative integer');
+    expect(() => peekBox(box, 1.5)).toThrow('peekBox offset must be a non-negative integer');
+    expect(peekBox(box, box.length)).toBeUndefined();
+  });
+
+  it('rejects incomplete or size-mismatched boxes in Fmp4SegmentBuilder', () => {
+    const builder = new Fmp4SegmentBuilder();
+    expect(() => builder.feed(new Uint8Array(4))).toThrow('at least 8 bytes');
+    const mismatched = makeBox('moof', new Uint8Array([1, 2, 3]));
+    mismatched[0] = 0;
+    mismatched[1] = 0;
+    mismatched[2] = 0;
+    mismatched[3] = 10; // declared size 10, actual 11
+    expect(() => builder.feed(mismatched)).toThrow('declared box length');
+  });
 });
