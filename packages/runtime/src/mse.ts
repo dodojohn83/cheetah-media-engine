@@ -218,6 +218,27 @@ function validatePositiveFiniteNumber(value: number, name: string): void {
   }
 }
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  if (typeof Uint8Array !== 'undefined' && value instanceof Uint8Array) return true;
+  return Object.prototype.toString.call(value) === '[object Uint8Array]';
+}
+
+function validateFiniteNumber(value: unknown, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new MseError('invalid-config', `${name} must be a finite number`);
+  }
+  return value;
+}
+
+function validateBoolean(value: unknown, name: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') {
+    throw new MseError('invalid-config', `${name} must be a boolean`);
+  }
+  return value;
+}
+
 function validateMseOptions(options: MseBackendOptions): void {
   if (typeof options.videoElement !== 'object' || options.videoElement === null) {
     throw new MseError('invalid-config', 'videoElement is required');
@@ -425,6 +446,16 @@ export class MseBackend implements MediaBackend {
     },
   ): void {
     if (this.stopped || this.closing || this.errored || !this.configured) return;
+    if (!isUint8Array(data)) {
+      throw new MseError('invalid-config', 'pushSegment data must be a Uint8Array');
+    }
+    if (opts !== undefined && (opts === null || typeof opts !== 'object')) {
+      throw new MseError('invalid-config', 'pushSegment opts must be an object');
+    }
+    const isInit = validateBoolean(opts?.isInit, 'isInit') ?? false;
+    const timestampOffset = validateFiniteNumber(opts?.timestampOffset, 'timestampOffset');
+    const appendWindowStart = validateFiniteNumber(opts?.appendWindowStart, 'appendWindowStart');
+    const appendWindowEnd = validateFiniteNumber(opts?.appendWindowEnd, 'appendWindowEnd');
     if (this.displayPaused && !this.displayKeepConnection) {
       this._metrics.droppedSegments += 1;
       return;
@@ -437,10 +468,10 @@ export class MseBackend implements MediaBackend {
       type: 'append',
       data,
       generation: this.generation,
-      isInit: opts?.isInit ?? false,
-      timestampOffset: opts?.timestampOffset,
-      appendWindowStart: opts?.appendWindowStart,
-      appendWindowEnd: opts?.appendWindowEnd,
+      isInit,
+      timestampOffset,
+      appendWindowStart,
+      appendWindowEnd,
     });
     this.processQueue();
   }
@@ -583,6 +614,9 @@ export class MseBackend implements MediaBackend {
     if (this.stopped || this.closing || this.errored || !this.configured) {
       throw new MseError('not-configured', 'Cannot pause display before configure');
     }
+    if (typeof keepConnection !== 'boolean') {
+      throw new MseError('seek', 'pauseDisplay keepConnection must be a boolean');
+    }
     // Freeze the displayed picture while keeping the media pipeline alive.
     this.videoElement.pause?.();
     this.displayPaused = true;
@@ -604,6 +638,9 @@ export class MseBackend implements MediaBackend {
     }
     if (direction !== 'forward' && direction !== 'backward') {
       throw new MseError('seek', 'frameStep direction must be forward or backward');
+    }
+    if (typeof keyframeOnly !== 'boolean') {
+      throw new MseError('seek', 'frameStep keyframeOnly must be a boolean');
     }
     if (keyframeOnly) {
       // MSE does not have frame-type visibility into the buffered segment; this
