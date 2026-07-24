@@ -166,7 +166,10 @@ export class WebTransportTransport implements Transport {
     if (streams) {
       this.streamsReader = streams.getReader();
       while (!this.stopped) {
-        const { value: receiveStream, done } = await this.streamsReader.read();
+        const { value: receiveStream, done } = await this.withTimeout(
+          this.streamsReader.read(),
+          'WebTransport stream accept timed out',
+        );
         if (done || this.stopped) break;
         if (receiveStream) {
           const promise = this.readStream(receiveStream, onChunk).catch((err) => {
@@ -188,7 +191,10 @@ export class WebTransportTransport implements Transport {
     } else if (transport.datagrams?.readable) {
       this.datagramReader = transport.datagrams.readable.getReader();
       while (!this.stopped) {
-        const { value, done } = await this.datagramReader.read();
+        const { value, done } = await this.withTimeout(
+          this.datagramReader.read(),
+          'WebTransport datagram read timed out',
+        );
         if (done || this.stopped) break;
         if (value) this.deliver(value, onChunk);
       }
@@ -208,7 +214,7 @@ export class WebTransportTransport implements Transport {
     const reader = stream.getReader();
     try {
       while (!this.stopped) {
-        const { value, done } = await reader.read();
+        const { value, done } = await this.withTimeout(reader.read(), 'WebTransport stream read timed out');
         if (done || this.stopped) break;
         if (value) this.deliver(value, onChunk);
       }
