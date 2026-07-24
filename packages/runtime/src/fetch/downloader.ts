@@ -310,6 +310,15 @@ function validateDownloadOptions(options: DownloadOptions): TransportError | und
   if (options.transform !== undefined && typeof options.transform !== 'function') {
     return makeError(INVALID_CONFIG_CODE, 'transform must be a function', false);
   }
+  if (options.onProgress !== undefined && typeof options.onProgress !== 'function') {
+    return makeError(INVALID_CONFIG_CODE, 'onProgress must be a function', false);
+  }
+  if (options.onError !== undefined && typeof options.onError !== 'function') {
+    return makeError(INVALID_CONFIG_CODE, 'onError must be a function', false);
+  }
+  if (options.onComplete !== undefined && typeof options.onComplete !== 'function') {
+    return makeError(INVALID_CONFIG_CODE, 'onComplete must be a function', false);
+  }
   if (options.headers !== undefined) {
     const headersError = validateHeaders(options.headers);
     if (headersError) {
