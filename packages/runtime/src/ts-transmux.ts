@@ -6,6 +6,7 @@
  */
 
 import { concatUint8 } from './fmp4';
+import { parseAvcCDimensions } from './flv-transmux';
 
 export interface TsFmp4Segment {
   readonly init?: Uint8Array;
@@ -147,8 +148,8 @@ export class TsFmp4TransmuxerJs {
   private videoSamples: Sample[] = [];
   private audioSamples: Sample[] = [];
   private avcc: Uint8Array | undefined;
-  private width = 640;
-  private height = 360;
+  private videoWidth = 640;
+  private videoHeight = 360;
   private audioAsc: Uint8Array | undefined;
   private sampleRate = 44100;
   private channels = 2;
@@ -325,8 +326,11 @@ export class TsFmp4TransmuxerJs {
     const { sps, pps, key } = extractSpsPps(es);
     if (sps.length && pps.length && !this.avcc) {
       this.avcc = buildAvcC(sps, pps);
+      const dim = parseAvcCDimensions(this.avcc);
+      this.videoWidth = dim.width;
+      this.videoHeight = dim.height;
       if (!this.tracks.some((t) => t.kind === 'video')) {
-        this.tracks.push({ kind: 'video', codec: 'h264', width: this.width, height: this.height });
+        this.tracks.push({ kind: 'video', codec: 'h264', width: this.videoWidth, height: this.videoHeight });
       }
     }
     if (!this.avcc) return;
@@ -493,8 +497,8 @@ export class TsFmp4TransmuxerJs {
     writeU16(tkhdBody, 0);
     const matrix = [0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000];
     for (const m of matrix) writeU32(tkhdBody, m);
-    writeU32(tkhdBody, this.width << 16);
-    writeU32(tkhdBody, this.height << 16);
+    writeU32(tkhdBody, this.videoWidth << 16);
+    writeU32(tkhdBody, this.videoHeight << 16);
     const tkhd = fullBox('tkhd', 0, 7, tkhdBody);
 
     const mdhdBody: number[] = [];
@@ -527,8 +531,8 @@ export class TsFmp4TransmuxerJs {
     writeU16(avc1Body, 0);
     writeU16(avc1Body, 0);
     for (let i = 0; i < 12; i++) avc1Body.push(0);
-    writeU16(avc1Body, this.width);
-    writeU16(avc1Body, this.height);
+    writeU16(avc1Body, this.videoWidth);
+    writeU16(avc1Body, this.videoHeight);
     writeU32(avc1Body, 0x00480000);
     writeU32(avc1Body, 0x00480000);
     writeU32(avc1Body, 0);
