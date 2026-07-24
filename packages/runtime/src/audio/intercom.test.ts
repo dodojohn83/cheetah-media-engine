@@ -58,6 +58,10 @@ describe('IntercomPacketizer', () => {
     expect(() => new IntercomPacketizer({ payloadType: 128 })).toThrow();
     expect(() => new IntercomPacketizer({ payloadType: NaN })).toThrow();
     expect(() => new IntercomPacketizer({ ssrc: -1 })).toThrow();
+    expect(() => new IntercomPacketizer({ ssrc: 0xffffffff + 1 })).toThrow('ssrc');
+    expect(() => new IntercomPacketizer({ onPacket: 'not a function' as unknown as (p: IntercomPacket) => void })).toThrow(
+      'onPacket',
+    );
   });
 
   it('rejects malformed audio packets', () => {
