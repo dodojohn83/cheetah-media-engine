@@ -157,7 +157,12 @@ export interface DiagnosticsPayload {
 
 export function encodeEnvelope(envelope: Envelope): string {
   validateEnvelope(envelope);
-  return JSON.stringify(envelope);
+  // Worker payloads such as `poll_output()` may contain `bigint` values
+  // (e.g. generation counters). JSON cannot represent BigInt, so encode them
+  // as strings instead of letting `JSON.stringify()` throw a TypeError.
+  return JSON.stringify(envelope, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value,
+  );
 }
 
 const VALID_MESSAGE_TYPES: ReadonlySet<string> = new Set([
